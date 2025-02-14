@@ -858,13 +858,15 @@ impl App {
     }
 
     fn moveleft(&mut self) {
-        self.render_state.camera.pos.z += CAM_SPEED;
-        self.render_state.camera.target.z += CAM_SPEED;
+        self.render_state
+            .camera
+            .move_along_view_orthogonal(-CAM_SPEED);
     }
 
     fn moveright(&mut self) {
-        self.render_state.camera.pos.z -= CAM_SPEED;
-        self.render_state.camera.target.z -= CAM_SPEED;
+        self.render_state
+            .camera
+            .move_along_view_orthogonal(CAM_SPEED);
     }
 
     fn up(&mut self) {

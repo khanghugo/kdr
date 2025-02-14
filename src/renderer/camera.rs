@@ -90,4 +90,15 @@ impl Camera {
         self.target += offset;
         self.pos += offset;
     }
+
+    pub fn move_along_view_orthogonal(&mut self, distance: f32) {
+        let v = self.target - self.pos;
+        let up = self.up;
+        let orthogonal = v.cross(up);
+
+        let offset = orthogonal.normalize() * distance;
+
+        self.target += offset;
+        self.pos += offset;
+    }
 }
