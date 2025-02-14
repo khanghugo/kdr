@@ -10,7 +10,13 @@ use utils::{
 use wgpu::{Extent3d, util::DeviceExt};
 use wgpu_profiler::{GpuProfiler, GpuProfilerSettings};
 use winit::{
-    application::ApplicationHandler, dpi::LogicalSize, event::WindowEvent, event_loop::{ControlFlow, EventLoop}, keyboard::KeyCode, platform::x11::WindowAttributesExtX11, window::Window
+    application::ApplicationHandler,
+    dpi::LogicalSize,
+    event::WindowEvent,
+    event_loop::{ControlFlow, EventLoop},
+    keyboard::KeyCode,
+    platform::x11::WindowAttributesExtX11,
+    window::Window,
 };
 
 use cgmath::{Deg, EuclideanSpace, Matrix4, MetricSpace, Point3, Vector3, perspective};
@@ -21,7 +27,7 @@ mod camera;
 mod utils;
 
 const FILE: &str = "./examples/textures.obj";
-const BSP_FILE: &str = "./examples/vLy_stairsblock.bsp";
+const BSP_FILE: &str = "./examples/chk_section.bsp";
 
 struct RenderContext {
     device: wgpu::Device,
@@ -135,7 +141,7 @@ impl RenderContext {
         // camera stuffs
         let cam_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("camera buffer"),
-            size: 64 * 2, // 2x 4x4 matrix
+            size: 4 * 4 * 4, // 4x4 matrix
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false, // we will update it
         });
@@ -484,9 +490,14 @@ impl RenderContext {
                     .zip(vertices_texcoord.into_iter())
                     .flat_map(|(pos, texcoord)| {
                         [
-                            -pos.x,
-                            pos.z, // flip y and z because the game is z up
+                            // no need to flip any of the geometry
+                            // we will do that to the camera
+                            // -pos.x,
+                            // pos.z, // flip y and z because the game is z up
+                            // pos.y,
+                            pos.x,
                             pos.y,
+                            pos.z,
                             normal.x,
                             normal.y,
                             normal.z,
@@ -869,11 +880,11 @@ impl App {
     }
 
     fn left(&mut self) {
-        self.render_state.camera.rotate_in_place_yaw(-Deg(CAM_TURN));
+        self.render_state.camera.rotate_in_place_yaw(Deg(CAM_TURN));
     }
 
     fn right(&mut self) {
-        self.render_state.camera.rotate_in_place_yaw(Deg(CAM_TURN));
+        self.render_state.camera.rotate_in_place_yaw(-Deg(CAM_TURN));
     }
 
     fn tick(&mut self) {

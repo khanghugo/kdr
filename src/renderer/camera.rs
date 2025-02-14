@@ -1,4 +1,7 @@
-use cgmath::{Deg, EuclideanSpace, InnerSpace, Matrix4, MetricSpace, Point3, Vector3, perspective};
+use cgmath::{
+    Deg, ElementWise, EuclideanSpace, InnerSpace, Matrix4, MetricSpace, Point3, Vector3,
+    perspective,
+};
 
 pub struct Camera {
     pub pos: Point3<f32>,
@@ -10,12 +13,15 @@ pub struct Camera {
     pub zfar: f32,
 }
 
+const CAM_START_POS: [f32; 3] = [-300., -1000., -2000.];
+
 impl Default for Camera {
     fn default() -> Self {
         Self {
-            pos: Point3::<f32>::new(2.0, 2.0, 2.0),
-            target: Point3::<f32>::origin(),
-            up: Vector3::unit_y(), // all in the vulkan coordinate
+            pos: Point3::<f32>::from(CAM_START_POS),
+            target: Point3::<f32>::from(CAM_START_POS)
+                .add_element_wise(Point3::<f32>::new(2., -2., -2.)),
+            up: Vector3::unit_z(), // using the game up vector
             aspect: 640 as f32 / 480 as f32,
             fovy: Deg(90.0),
             znear: 1.0,
@@ -41,7 +47,7 @@ impl Camera {
         let v = self.pos - self.target;
 
         let x = v.x;
-        let y = v.z;
+        let y = v.y;
 
         let turn = angle.0.to_radians();
 
@@ -49,7 +55,7 @@ impl Camera {
         let rotatex_y = x * turn.sin() + y * turn.cos();
 
         self.pos.x = self.target.x + rotated_x;
-        self.pos.z = self.target.z + rotatex_y;
+        self.pos.y = self.target.y + rotatex_y;
     }
 
     // written by deepseek specifically
@@ -59,8 +65,8 @@ impl Camera {
         let radius = self.pos.distance(self.target);
 
         // Get current spherical coordinates
-        let horizontal_dist = (to_camera.x * to_camera.x + to_camera.z * to_camera.z).sqrt();
-        let current_pitch = to_camera.y.atan2(horizontal_dist);
+        let horizontal_dist = (to_camera.x * to_camera.x + to_camera.y * to_camera.y).sqrt();
+        let current_pitch = to_camera.z.atan2(horizontal_dist);
 
         // Apply pitch change with clamping
         let new_pitch = (current_pitch + angle.0.to_radians()).clamp(
@@ -69,11 +75,11 @@ impl Camera {
         );
 
         // Calculate new position while maintaining yaw
-        let yaw = to_camera.z.atan2(to_camera.x);
+        let yaw = to_camera.y.atan2(to_camera.x);
         self.pos = Point3::new(
             self.target.x + radius * new_pitch.cos() * yaw.cos(),
-            self.target.y + radius * new_pitch.sin(),
-            self.target.z + radius * new_pitch.cos() * yaw.sin(),
+            self.target.y + radius * new_pitch.cos() * yaw.sin(),
+            self.target.z + radius * new_pitch.sin(),
         );
     }
 
