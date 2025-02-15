@@ -1,8 +1,9 @@
 use std::{io::BufReader, num::NonZeroU32, sync::Arc, time::Instant};
 
-use camera::Camera;
+use camera::{CAM_SPEED, CAM_TURN, Camera};
 use glam::Vec3;
 use image::{RgbaImage, imageops::grayscale};
+use types::{BspFaceBuffer, BspTextureBatchBuffer, MeshBuffer, TextureBuffer};
 use utils::{
     convex_polygon_to_triangle_strip_indices, eightbpp_to_rgba8, face_to_tri_strip,
     triangulate_convex_polygon,
@@ -23,11 +24,15 @@ use cgmath::{Deg, EuclideanSpace, Matrix4, MetricSpace, Point3, Vector3, perspec
 
 use bitflags::bitflags;
 
+mod bsp_load;
 mod camera;
+mod types;
 mod utils;
 
 const FILE: &str = "./examples/textures.obj";
 const BSP_FILE: &str = "./examples/chk_section.bsp";
+
+const MAX_TEXTURES: u32 = 128;
 
 struct RenderContext {
     device: wgpu::Device,
@@ -46,7 +51,7 @@ struct RenderState {
     models: Vec<MeshBuffer>,
     textures: Vec<TextureBuffer>,
 
-    bsp_vertices: Vec<BspFaceBuffer>,
+    bsp_vertices_batches: Vec<BspTextureBatchBuffer>,
     bsp_textures: Vec<TextureBuffer>,
     camera: Camera,
 }
@@ -57,50 +62,11 @@ impl Default for RenderState {
             textures: Default::default(),
             camera: Default::default(),
             models: Default::default(),
-            bsp_vertices: Default::default(),
+            bsp_vertices_batches: Default::default(),
             bsp_textures: Default::default(),
         }
     }
 }
-
-struct BspFaceBuffer {
-    // one face right now is one mesh
-    vertex_buffer: wgpu::Buffer,
-    index_buffer: wgpu::Buffer,
-    index_count: usize,
-    material: usize,
-}
-
-struct MeshBuffer {
-    vertex_buffer: wgpu::Buffer,
-    index_buffer: wgpu::Buffer,
-    index_length: usize,
-
-    // vector of indices, pointing to render object textures
-    // for some convenient reasons, .obj will have 1 texture per mesh!!!
-    material: Option<usize>,
-}
-
-impl Drop for MeshBuffer {
-    fn drop(&mut self) {
-        self.vertex_buffer.destroy();
-        self.index_buffer.destroy();
-    }
-}
-
-struct TextureBuffer {
-    texture: wgpu::Texture,
-    view: wgpu::TextureView,
-    bind_group: wgpu::BindGroup,
-}
-
-impl Drop for TextureBuffer {
-    fn drop(&mut self) {
-        self.texture.destroy();
-    }
-}
-
-const MAX_TEXTURES: u32 = 128; // complying to max_sampled_textures_per_shader_stage
 
 impl RenderContext {
     pub async fn new(window: Arc<Window>) -> Self {
@@ -120,7 +86,7 @@ impl RenderContext {
         // edit limits
         let mut limits =
             wgpu::Limits::downlevel_webgl2_defaults().using_resolution(adapter.limits());
-        limits.max_sampled_textures_per_shader_stage = MAX_TEXTURES;
+        // limits.max_sampled_textures_per_shader_stage = MAX_TEXTURES;
         // end limits
 
         let (device, queue) = adapter
@@ -172,6 +138,7 @@ impl RenderContext {
         });
 
         // texture stuffs
+        // array of texture so we can have varied texture dimensions
         let texture_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 label: Some("texture bind group layout"),
@@ -326,47 +293,6 @@ impl RenderContext {
                 .write_buffer(&self.cam_buffer, 0, view_proj_bytes);
         }
 
-        // render obj
-        // {
-        // let pass_descriptor = wgpu::RenderPassDescriptor {
-        //     label: None,
-        //     color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-        //         view: &view,
-        //         resolve_target: None,
-        //         ops: wgpu::Operations {
-        //             load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
-        //             store: wgpu::StoreOp::Store,
-        //         },
-        //     })],
-        //     depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-        //         view: &self.depth_view,
-        //         depth_ops: Some(wgpu::Operations {
-        //             load: wgpu::LoadOp::Clear(1.0),
-        //             store: wgpu::StoreOp::Store,
-        //         }),
-        //         stencil_ops: None,
-        //     }),
-        //     timestamp_writes: None,
-        //     occlusion_query_set: None,
-        // };
-
-        // // let mut rpass =
-        // //     encoder.scoped_render_pass("in render pass", &self.device, pass_descriptor);
-        // let mut rpass = encoder.begin_render_pass(&pass_descriptor);
-
-        // rpass.set_pipeline(&self.render_pipeline);
-        // rpass.set_bind_group(0, &self.cam_bind_group, &[]);
-
-        // // TODO: room for improvement
-        // state.models.iter().for_each(|obj| {
-        //     rpass.set_bind_group(1, &state.textures[obj.material.unwrap()].bind_group, &[]);
-
-        //     rpass.set_vertex_buffer(0, obj.vertex_buffer.slice(..));
-        //     rpass.set_index_buffer(obj.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
-        //     rpass.draw_indexed(0..obj.index_length as u32, 0, 0..1);
-        // });
-        // }
-
         // render bsp
         {
             let pass_descriptor = wgpu::RenderPassDescriptor {
@@ -397,12 +323,11 @@ impl RenderContext {
             rpass.set_bind_group(0, &self.cam_bind_group, &[]);
 
             // TODO: room for improvement
-            state.bsp_vertices.iter().for_each(|face| {
-                rpass.set_bind_group(1, &state.bsp_textures[face.material].bind_group, &[]);
-                rpass.set_vertex_buffer(0, face.vertex_buffer.slice(..));
-                rpass.set_index_buffer(face.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
-
-                rpass.draw_indexed(0..face.index_count as u32, 0, 0..1);
+            state.bsp_vertices_batches.iter().for_each(|batch| {
+                rpass.set_bind_group(1, &state.bsp_textures[batch.texture_index].bind_group, &[]);
+                rpass.set_vertex_buffer(0, batch.vertex_buffer.slice(..));
+                rpass.set_index_buffer(batch.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
+                rpass.draw_indexed(0..batch.index_count as u32, 0, 0..1);
             });
         }
 
@@ -437,115 +362,6 @@ impl RenderContext {
             index_length: vertex_index_array.len(),
             material: model.mesh.material_id,
         }
-    }
-
-    fn load_bsp(&self, bsp: &bsp::Bsp) -> Vec<BspFaceBuffer> {
-        let res = bsp
-            .faces
-            .iter()
-            .map(|face| {
-                let mut face_vertices = vec![];
-
-                for edge_idx in
-                    (face.first_edge as u32)..(face.first_edge as u32 + face.edge_count as u32)
-                {
-                    let surf_edge = bsp.surf_edges[edge_idx as usize];
-
-                    let [v1_idx, v2_idx] = bsp.edges[surf_edge.abs() as usize];
-
-                    if surf_edge.is_positive() {
-                        face_vertices.push(bsp.vertices[v1_idx as usize]);
-                    } else {
-                        face_vertices.push(bsp.vertices[v2_idx as usize]);
-                    }
-                }
-
-                let indices = triangulate_convex_polygon(&face_vertices);
-
-                // very inefficient right now
-                // becuase all vertices here have the same normal
-                let normal = bsp.planes[face.plane as usize].normal;
-                let texinfo = &bsp.texinfo[face.texinfo as usize];
-
-                let vertex_count = indices.len();
-
-                // uv
-                let miptex = &bsp.textures[texinfo.texture_index as usize];
-                let inv_width = 1.0 / miptex.width as f32;
-                let inv_height = 1.0 / miptex.height as f32;
-
-                let vertices_texcoord: Vec<[f32; 2]> = face_vertices
-                    .iter()
-                    .map(|pos| {
-                        [
-                            (pos.dot(texinfo.u) + texinfo.u_offset) * inv_width,
-                            (pos.dot(texinfo.v) + texinfo.v_offset) * inv_height,
-                        ]
-                    })
-                    .collect();
-
-                // collect to buffer
-                let interleaved: Vec<f32> = face_vertices
-                    .into_iter()
-                    .zip(vertices_texcoord.into_iter())
-                    .flat_map(|(pos, texcoord)| {
-                        [
-                            // no need to flip any of the geometry
-                            // we will do that to the camera
-                            // -pos.x,
-                            // pos.z, // flip y and z because the game is z up
-                            // pos.y,
-                            pos.x,
-                            pos.y,
-                            pos.z,
-                            normal.x,
-                            normal.y,
-                            normal.z,
-                            texcoord[0],
-                            texcoord[1],
-                        ]
-                    })
-                    .collect();
-
-                let vertex_buffer =
-                    self.device
-                        .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                            label: Some("loading a bsp vertex"),
-                            contents: bytemuck::cast_slice(&interleaved),
-                            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
-                        });
-
-                let vertex_index_buffer =
-                    self.device
-                        .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                            label: Some("loading a bsp vertex index"),
-                            contents: bytemuck::cast_slice(&indices),
-                            usage: wgpu::BufferUsages::INDEX | wgpu::BufferUsages::COPY_DST,
-                        });
-
-                BspFaceBuffer {
-                    vertex_buffer,
-                    material: texinfo.texture_index as usize,
-                    index_count: vertex_count,
-                    index_buffer: vertex_index_buffer,
-                }
-            })
-            .collect();
-
-        res
-    }
-
-    fn load_miptex(&self, miptex: &bsp::Texture) -> TextureBuffer {
-        // TODO: maybe this needs checking??
-        let mip_image = &miptex.mip_images[0];
-        let rgba8 = eightbpp_to_rgba8(
-            mip_image.data.get_bytes(),
-            miptex.palette.get_bytes(),
-            miptex.width,
-            miptex.height,
-        );
-
-        self.load_texture(&rgba8)
     }
 
     fn load_texture(&self, img: &RgbaImage) -> TextureBuffer {
@@ -730,7 +546,8 @@ impl ApplicationHandler for App {
         // load bsp
         {
             let bsp = bsp::Bsp::from_file(BSP_FILE).unwrap();
-            self.render_state.bsp_vertices = render_context.load_bsp(&bsp);
+            self.render_state.bsp_vertices_batches =
+                render_context.load_bsp_based_on_texture_batch(&bsp);
             self.render_state.bsp_textures = bsp
                 .textures
                 .iter()
@@ -870,23 +687,19 @@ impl App {
     }
 
     fn up(&mut self) {
-        self.render_state
-            .camera
-            .rotate_in_place_pitch(-Deg(CAM_TURN));
+        self.render_state.camera.rotate_in_place_pitch(-CAM_TURN);
     }
 
     fn down(&mut self) {
-        self.render_state
-            .camera
-            .rotate_in_place_pitch(Deg(CAM_TURN));
+        self.render_state.camera.rotate_in_place_pitch(CAM_TURN);
     }
 
     fn left(&mut self) {
-        self.render_state.camera.rotate_in_place_yaw(Deg(CAM_TURN));
+        self.render_state.camera.rotate_in_place_yaw(CAM_TURN);
     }
 
     fn right(&mut self) {
-        self.render_state.camera.rotate_in_place_yaw(-Deg(CAM_TURN));
+        self.render_state.camera.rotate_in_place_yaw(-CAM_TURN);
     }
 
     fn tick(&mut self) {
@@ -916,9 +729,6 @@ impl App {
         }
     }
 }
-
-const CAM_SPEED: f32 = 10.;
-const CAM_TURN: f32 = 1.; // degrees
 
 pub fn bsp() {
     // let vertices = models.iter().map(|model| model.mesh)

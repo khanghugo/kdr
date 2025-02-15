@@ -15,6 +15,9 @@ pub struct Camera {
 
 const CAM_START_POS: [f32; 3] = [-300., -1000., -2000.];
 
+pub const CAM_SPEED: f32 = 10.;
+pub const CAM_TURN: Deg<f32> = Deg(2.); // degrees
+
 impl Default for Camera {
     fn default() -> Self {
         Self {
