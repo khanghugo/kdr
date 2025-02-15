@@ -469,10 +469,15 @@ struct App {
     graphic_context: Option<RenderContext>,
     window: Option<Arc<Window>>,
     objs: Vec<MeshBuffer>,
-    last_time: Instant,
 
+    // time
+    last_time: Instant,
+    frame_time: f32,
+
+    // stuffs
     render_state: RenderState,
 
+    // input
     keys: Key,
 }
 
@@ -496,6 +501,7 @@ impl Default for App {
             window: Default::default(),
             objs: Default::default(),
             last_time: Instant::now(),
+            frame_time: 1.,
             render_state: Default::default(),
             keys: Key::empty(),
         }
@@ -569,18 +575,12 @@ impl ApplicationHandler for App {
         window_id: winit::window::WindowId,
         event: winit::event::WindowEvent,
     ) {
-        self.tick();
-
         match event {
             WindowEvent::CloseRequested => {
                 event_loop.exit();
             }
             WindowEvent::RedrawRequested => {
-                let now = Instant::now();
-                let diff = now.duration_since(self.last_time);
-                self.last_time = now;
-
-                // self.render_state.camera.update(diff.as_secs_f32());
+                self.tick();
 
                 self.graphic_context
                     .as_mut()
@@ -588,8 +588,7 @@ impl ApplicationHandler for App {
 
                 self.window.as_mut().map(|window| {
                     // rename window based on fps
-                    window
-                        .set_title(format!("FPS: {}", (1.0 / diff.as_secs_f32()).round()).as_str());
+                    window.set_title(format!("FPS: {}", (1.0 / self.frame_time).round()).as_str());
                     // update
                     window.request_redraw();
                 });
@@ -667,42 +666,67 @@ impl ApplicationHandler for App {
 
 impl App {
     fn forward(&mut self) {
-        self.render_state.camera.move_along_view(CAM_SPEED);
+        self.render_state
+            .camera
+            .move_along_view(self.get_move_displacement());
     }
 
     fn back(&mut self) {
-        self.render_state.camera.move_along_view(-CAM_SPEED);
+        self.render_state
+            .camera
+            .move_along_view(-self.get_move_displacement());
     }
 
     fn moveleft(&mut self) {
         self.render_state
             .camera
-            .move_along_view_orthogonal(-CAM_SPEED);
+            .move_along_view_orthogonal(-self.get_move_displacement());
     }
 
     fn moveright(&mut self) {
         self.render_state
             .camera
-            .move_along_view_orthogonal(CAM_SPEED);
+            .move_along_view_orthogonal(self.get_move_displacement());
     }
 
     fn up(&mut self) {
-        self.render_state.camera.rotate_in_place_pitch(-CAM_TURN);
+        self.render_state
+            .camera
+            .rotate_in_place_pitch(-self.get_camera_displacement());
     }
 
     fn down(&mut self) {
-        self.render_state.camera.rotate_in_place_pitch(CAM_TURN);
+        self.render_state
+            .camera
+            .rotate_in_place_pitch(self.get_camera_displacement());
     }
 
     fn left(&mut self) {
-        self.render_state.camera.rotate_in_place_yaw(CAM_TURN);
+        self.render_state
+            .camera
+            .rotate_in_place_yaw(self.get_camera_displacement());
     }
 
     fn right(&mut self) {
-        self.render_state.camera.rotate_in_place_yaw(-CAM_TURN);
+        self.render_state
+            .camera
+            .rotate_in_place_yaw(-self.get_camera_displacement());
     }
 
+    fn get_move_displacement(&self) -> f32 {
+        CAM_SPEED * self.frame_time
+    }
+
+    fn get_camera_displacement(&self) -> Deg<f32> {
+        Deg(CAM_TURN * self.frame_time)
+    }
+
+    /// Only ticks on redraw
     fn tick(&mut self) {
+        let now = Instant::now();
+        self.frame_time = now.duration_since(self.last_time).as_secs_f32();
+        self.last_time = now;
+
         if self.keys.contains(Key::Forward) {
             self.forward();
         }
