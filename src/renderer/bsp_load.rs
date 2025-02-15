@@ -1,12 +1,57 @@
 use std::collections::HashMap;
 
+use cgmath::{Point2, Point3};
 use wgpu::util::DeviceExt;
 
 use super::{
     BspFaceBuffer, RenderContext, TextureBuffer,
-    types::BspTextureBatchBuffer,
     utils::{eightbpp_to_rgba8, triangulate_convex_polygon},
 };
+
+#[repr(C)]
+pub struct BspVertex {
+    pos: Point3<f32>,
+    norm: Point3<f32>,
+    tex_coord: Point2<f32>,
+    // lightmap: Vec<[f32; 3]>,
+}
+
+// one buffer contains all vertices with the same texture
+pub struct BspTextureBatchBuffer {
+    pub vertex_buffer: wgpu::Buffer,
+    pub index_buffer: wgpu::Buffer,
+    pub index_count: usize,
+    pub texture_index: usize,
+}
+
+impl BspVertex {
+    pub fn buffer_layout() -> wgpu::VertexBufferLayout<'static> {
+        wgpu::VertexBufferLayout {
+            array_stride: std::mem::size_of::<Self>() as u64,
+            step_mode: wgpu::VertexStepMode::Vertex,
+            attributes: &[
+                // pos
+                wgpu::VertexAttribute {
+                    format: wgpu::VertexFormat::Float32x3,
+                    offset: 0,
+                    shader_location: 0,
+                },
+                // normal
+                wgpu::VertexAttribute {
+                    format: wgpu::VertexFormat::Float32x3,
+                    offset: 12,
+                    shader_location: 1,
+                },
+                // tex
+                wgpu::VertexAttribute {
+                    format: wgpu::VertexFormat::Float32x2,
+                    offset: 24,
+                    shader_location: 2,
+                },
+            ],
+        }
+    }
+}
 
 impl RenderContext {
     pub fn load_bsp_based_on_texture_batch(&self, bsp: &bsp::Bsp) -> Vec<BspTextureBatchBuffer> {
@@ -95,19 +140,6 @@ impl RenderContext {
             .collect();
 
         res
-    }
-
-    pub fn load_miptex(&self, miptex: &bsp::Texture) -> TextureBuffer {
-        // TODO: maybe this needs checking??
-        let mip_image = &miptex.mip_images[0];
-        let rgba8 = eightbpp_to_rgba8(
-            mip_image.data.get_bytes(),
-            miptex.palette.get_bytes(),
-            miptex.width,
-            miptex.height,
-        );
-
-        self.load_texture(&rgba8)
     }
 }
 

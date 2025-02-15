@@ -14,14 +14,6 @@ impl Drop for BspFaceBuffer {
     }
 }
 
-// one buffer contains all vertices with the same texture
-pub struct BspTextureBatchBuffer {
-    pub vertex_buffer: wgpu::Buffer,
-    pub index_buffer: wgpu::Buffer,
-    pub index_count: usize,
-    pub texture_index: usize,
-}
-
 pub struct MeshBuffer {
     pub vertex_buffer: wgpu::Buffer,
     pub index_buffer: wgpu::Buffer,

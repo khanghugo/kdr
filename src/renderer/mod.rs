@@ -1,9 +1,11 @@
 use std::{io::BufReader, num::NonZeroU32, sync::Arc, time::Instant};
 
+use bsp_load::{BspTextureBatchBuffer, BspVertex};
 use camera::{CAM_SPEED, CAM_TURN, Camera};
 use glam::Vec3;
 use image::{RgbaImage, imageops::grayscale};
-use types::{BspFaceBuffer, BspTextureBatchBuffer, MeshBuffer, TextureBuffer};
+use miptex_load::BspMipTex;
+use types::{BspFaceBuffer, MeshBuffer, TextureBuffer};
 use utils::{
     convex_polygon_to_triangle_strip_indices, eightbpp_to_rgba8, face_to_tri_strip,
     triangulate_convex_polygon,
@@ -26,6 +28,7 @@ use bitflags::bitflags;
 
 mod bsp_load;
 mod camera;
+mod miptex_load;
 mod types;
 mod utils;
 
@@ -37,7 +40,7 @@ const MAX_TEXTURES: u32 = 128;
 struct RenderContext {
     device: wgpu::Device,
     queue: wgpu::Queue,
-    render_pipeline: wgpu::RenderPipeline,
+    bsp_render_pipeline: wgpu::RenderPipeline,
     swapchain_format: wgpu::TextureFormat,
     surface: wgpu::Surface<'static>,
     cam_buffer: wgpu::Buffer,
@@ -53,6 +56,8 @@ struct RenderState {
 
     bsp_vertices_batches: Vec<BspTextureBatchBuffer>,
     bsp_textures: Vec<TextureBuffer>,
+    bsp_miptexes: Vec<BspMipTex>,
+
     camera: Camera,
 }
 
@@ -64,6 +69,7 @@ impl Default for RenderState {
             models: Default::default(),
             bsp_vertices_batches: Default::default(),
             bsp_textures: Default::default(),
+            bsp_miptexes: Default::default(),
         }
     }
 }
@@ -84,8 +90,7 @@ impl RenderContext {
             .unwrap();
 
         // edit limits
-        let mut limits =
-            wgpu::Limits::downlevel_webgl2_defaults().using_resolution(adapter.limits());
+        let limits = wgpu::Limits::downlevel_webgl2_defaults().using_resolution(adapter.limits());
         // limits.max_sampled_textures_per_shader_stage = MAX_TEXTURES;
         // end limits
 
@@ -138,31 +143,8 @@ impl RenderContext {
         });
 
         // texture stuffs
-        // array of texture so we can have varied texture dimensions
         let texture_bind_group_layout =
-            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                label: Some("texture bind group layout"),
-                entries: &[
-                    // sampler
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 0,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                        count: None,
-                    },
-                    // textures
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 1,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Texture {
-                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                            view_dimension: wgpu::TextureViewDimension::D2,
-                            multisampled: false,
-                        },
-                        count: None,
-                    },
-                ],
-            });
+            device.create_bind_group_layout(&BspMipTex::bind_group_layout_descriptor());
 
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: None,
@@ -192,39 +174,16 @@ impl RenderContext {
         let swapchain_capabilities = surface.get_capabilities(&adapter);
         let swapchain_format = swapchain_capabilities.formats[0];
 
-        let vertex_buffer_layout = wgpu::VertexBufferLayout {
-            array_stride: 4 * 8,                     // 3 pos + 3 normal + 2 tex = 8
-            step_mode: wgpu::VertexStepMode::Vertex, // huh
-            attributes: &[
-                // pos
-                wgpu::VertexAttribute {
-                    format: wgpu::VertexFormat::Float32x3,
-                    offset: 0,
-                    shader_location: 0,
-                },
-                // // normal
-                wgpu::VertexAttribute {
-                    format: wgpu::VertexFormat::Float32x3,
-                    offset: 3 * 4,
-                    shader_location: 1,
-                },
-                // // tex
-                wgpu::VertexAttribute {
-                    format: wgpu::VertexFormat::Float32x2,
-                    offset: 3 * 4 * 2,
-                    shader_location: 2,
-                },
-            ],
-        };
+        let bsp_vertex_buffer_layout = BspVertex::buffer_layout();
 
-        let render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        let bsp_render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("main render pipeline"),
             layout: Some(&pipeline_layout),
             vertex: wgpu::VertexState {
                 module: &shader,
                 entry_point: Some("vs_main"),
                 compilation_options: Default::default(),
-                buffers: &[vertex_buffer_layout],
+                buffers: &[bsp_vertex_buffer_layout],
             },
             fragment: Some(wgpu::FragmentState {
                 module: &shader,
@@ -264,7 +223,7 @@ impl RenderContext {
         Self {
             device,
             queue,
-            render_pipeline,
+            bsp_render_pipeline,
             swapchain_format,
             surface,
             cam_bind_group,
@@ -319,12 +278,13 @@ impl RenderContext {
 
             let mut rpass = encoder.begin_render_pass(&pass_descriptor);
 
-            rpass.set_pipeline(&self.render_pipeline);
+            rpass.set_pipeline(&self.bsp_render_pipeline);
             rpass.set_bind_group(0, &self.cam_bind_group, &[]);
 
             // TODO: room for improvement
             state.bsp_vertices_batches.iter().for_each(|batch| {
-                rpass.set_bind_group(1, &state.bsp_textures[batch.texture_index].bind_group, &[]);
+                // rpass.set_bind_group(1, &state.bsp_textures[batch.texture_index].bind_group, &[]);
+                rpass.set_bind_group(1, &state.bsp_miptexes[batch.texture_index].bind_group, &[]);
                 rpass.set_vertex_buffer(0, batch.vertex_buffer.slice(..));
                 rpass.set_index_buffer(batch.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
                 rpass.draw_indexed(0..batch.index_count as u32, 0, 0..1);
@@ -491,6 +451,7 @@ bitflags! {
         const Right     = (1 << 5);
         const Up        = (1 << 6);
         const Down      = (1 << 7);
+        const Shift     = (1 << 8);
     }
 }
 
@@ -521,40 +482,45 @@ impl ApplicationHandler for App {
         let render_context = pollster::block_on(RenderContext::new(window.clone()));
 
         // loading obj
-        {
-            let (models, materials) = tobj::load_obj(FILE, &tobj::LoadOptions {
-                triangulate: true,
-                single_index: true,
-                ..Default::default()
-            })
-            .unwrap();
+        // {
+        //     let (models, materials) = tobj::load_obj(FILE, &tobj::LoadOptions {
+        //         triangulate: true,
+        //         single_index: true,
+        //         ..Default::default()
+        //     })
+        //     .unwrap();
 
-            self.render_state.models = models
-                .into_iter()
-                .map(|model| render_context.load_obj(model))
-                .collect();
-            let materials = materials.unwrap_or(vec![]);
+        //     self.render_state.models = models
+        //         .into_iter()
+        //         .map(|model| render_context.load_obj(model))
+        //         .collect();
+        //     let materials = materials.unwrap_or(vec![]);
 
-            let textures = materials
-                .into_iter()
-                .filter_map(|material| material.diffuse_texture)
-                .map(|path| {
-                    image::open(path)
-                        .unwrap()
-                        .flipv() // flip vertically
-                        .to_rgba8()
-                })
-                .map(|img| render_context.load_texture(&img))
-                .collect::<Vec<TextureBuffer>>();
-            self.render_state.textures = textures;
-        }
+        //     let textures = materials
+        //         .into_iter()
+        //         .filter_map(|material| material.diffuse_texture)
+        //         .map(|path| {
+        //             image::open(path)
+        //                 .unwrap()
+        //                 .flipv() // flip vertically
+        //                 .to_rgba8()
+        //         })
+        //         .map(|img| render_context.load_texture(&img))
+        //         .collect::<Vec<TextureBuffer>>();
+        //     self.render_state.textures = textures;
+        // }
 
         // load bsp
         {
             let bsp = bsp::Bsp::from_file(BSP_FILE).unwrap();
             self.render_state.bsp_vertices_batches =
                 render_context.load_bsp_based_on_texture_batch(&bsp);
-            self.render_state.bsp_textures = bsp
+            // self.render_state.bsp_textures = bsp
+            //     .textures
+            //     .iter()
+            //     .map(|miptex| render_context.load_miptex_to_rgba8(miptex))
+            //     .collect();
+            self.render_state.bsp_miptexes = bsp
                 .textures
                 .iter()
                 .map(|miptex| render_context.load_miptex(miptex))
@@ -655,6 +621,13 @@ impl ApplicationHandler for App {
                             self.keys = self.keys.intersection(Key::Down.complement());
                         }
                     }
+                    KeyCode::ShiftLeft => {
+                        if event.state.is_pressed() {
+                            self.keys = self.keys.union(Key::Shift);
+                        } else {
+                            self.keys = self.keys.intersection(Key::Shift.complement());
+                        }
+                    }
                     _ => (),
                 },
                 _ => (),
@@ -714,11 +687,19 @@ impl App {
     }
 
     fn get_move_displacement(&self) -> f32 {
-        CAM_SPEED * self.frame_time
+        CAM_SPEED * self.frame_time * self.get_multiplier()
     }
 
     fn get_camera_displacement(&self) -> Deg<f32> {
-        Deg(CAM_TURN * self.frame_time)
+        Deg(CAM_TURN * self.frame_time) * self.get_multiplier()
+    }
+
+    fn get_multiplier(&self) -> f32 {
+        if self.keys.contains(Key::Shift) {
+            2.0
+        } else {
+            1.0
+        }
     }
 
     /// Only ticks on redraw
