@@ -1,7 +1,4 @@
-use cgmath::{
-    Deg, ElementWise, EuclideanSpace, InnerSpace, Matrix4, MetricSpace, Point3, Vector3,
-    perspective,
-};
+use cgmath::{Deg, ElementWise, InnerSpace, Matrix4, MetricSpace, Point3, Vector3, perspective};
 
 pub struct Camera {
     pub pos: Point3<f32>,

@@ -3,10 +3,7 @@ use std::collections::HashMap;
 use cgmath::{Point2, Point3};
 use wgpu::util::DeviceExt;
 
-use super::{
-    BspFaceBuffer, RenderContext, TextureBuffer,
-    utils::{eightbpp_to_rgba8, triangulate_convex_polygon},
-};
+use super::{BspFaceBuffer, RenderContext, utils::triangulate_convex_polygon};
 
 #[repr(C)]
 pub struct BspVertex {
@@ -22,6 +19,20 @@ pub struct BspTextureBatchBuffer {
     pub index_buffer: wgpu::Buffer,
     pub index_count: usize,
     pub texture_index: usize,
+}
+
+// world spawn can just render
+#[derive(Default)]
+pub struct BspWorldSpawnBuffer(pub Vec<BspTextureBatchBuffer>);
+
+// entities needs to sort
+#[derive(Default)]
+pub struct BspEntitiesBuffer(pub Vec<BspTextureBatchBuffer>);
+
+#[derive(Default)]
+pub struct BspBuffer {
+    pub worldspawn: BspWorldSpawnBuffer,
+    pub entities: BspEntitiesBuffer,
 }
 
 impl BspVertex {
@@ -54,6 +65,135 @@ impl BspVertex {
 }
 
 impl RenderContext {
+    fn load_faces(&self, bsp: &bsp::Bsp, faces: &[bsp::Face]) -> Vec<BspTextureBatchBuffer> {
+        let mut batches = HashMap::<usize, (Vec<f32>, Vec<u32>)>::new();
+
+        for face in faces {
+            let (vertices, indices) = process_face(face, bsp);
+            let texinfo = &bsp.texinfo[face.texinfo as usize];
+
+            let batch = batches
+                .entry(texinfo.texture_index as usize)
+                .or_insert((Vec::new(), Vec::new()));
+
+            // newer vertices will have their index start at 0 but we don't want that
+            // need to divide by 8 because each "vertices" has 8 floats
+            let new_vertices_offset = batch.0.len() / 8;
+
+            batch.0.extend(vertices);
+            batch
+                .1
+                .extend(indices.into_iter().map(|i| i + new_vertices_offset as u32));
+        }
+
+        let batches = batches
+            .into_iter()
+            .map(|(texture_index, (vertices, indices))| {
+                let vertex_buffer =
+                    self.device
+                        .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                            label: Some("loading a bsp vertex"),
+                            contents: bytemuck::cast_slice(&vertices),
+                            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+                        });
+
+                let index_buffer =
+                    self.device
+                        .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                            label: Some("loading a bsp vertex index"),
+                            contents: bytemuck::cast_slice(&indices),
+                            usage: wgpu::BufferUsages::INDEX | wgpu::BufferUsages::COPY_DST,
+                        });
+
+                BspTextureBatchBuffer {
+                    vertex_buffer,
+                    index_buffer,
+                    index_count: indices.len(),
+                    texture_index,
+                }
+            })
+            .collect();
+
+        batches
+    }
+
+    fn load_worldspawn(&self, bsp: &bsp::Bsp) -> BspWorldSpawnBuffer {
+        let worldspawn = &bsp.models[0];
+        let faces = &bsp.faces[worldspawn.first_face as usize
+            ..(worldspawn.first_face as usize + worldspawn.face_count as usize)];
+
+        let batches = self.load_faces(bsp, faces);
+
+        BspWorldSpawnBuffer(batches)
+    }
+
+    fn load_entities(&self, bsp: &bsp::Bsp) -> BspEntitiesBuffer {
+        // TODO sort all of the vertices later
+        let rest = &bsp.models[1..];
+
+        let mut batches = HashMap::<usize, (Vec<f32>, Vec<u32>)>::new();
+
+        for model in rest {
+            let faces = &bsp.faces[model.first_face as usize
+                ..(model.first_face as usize + model.face_count as usize)];
+
+            for face in faces {
+                let (vertices, indices) = process_face(face, bsp);
+                let texinfo = &bsp.texinfo[face.texinfo as usize];
+
+                let batch = batches
+                    .entry(texinfo.texture_index as usize)
+                    .or_insert((Vec::new(), Vec::new()));
+
+                // newer vertices will have their index start at 0 but we don't want that
+                // need to divide by 8 because each "vertices" has 8 floats
+                let new_vertices_offset = batch.0.len() / 8;
+
+                batch.0.extend(vertices);
+                batch
+                    .1
+                    .extend(indices.into_iter().map(|i| i + new_vertices_offset as u32));
+            }
+        }
+
+        let batches = batches
+            .into_iter()
+            .map(|(texture_index, (vertices, indices))| {
+                let vertex_buffer =
+                    self.device
+                        .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                            label: Some("loading a bsp vertex"),
+                            contents: bytemuck::cast_slice(&vertices),
+                            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+                        });
+
+                let index_buffer =
+                    self.device
+                        .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                            label: Some("loading a bsp vertex index"),
+                            contents: bytemuck::cast_slice(&indices),
+                            usage: wgpu::BufferUsages::INDEX | wgpu::BufferUsages::COPY_DST,
+                        });
+
+                BspTextureBatchBuffer {
+                    vertex_buffer,
+                    index_buffer,
+                    index_count: indices.len(),
+                    texture_index,
+                }
+            })
+            .collect();
+
+        BspEntitiesBuffer(batches)
+    }
+
+    pub fn load_bsp(&self, bsp: &bsp::Bsp) -> BspBuffer {
+        BspBuffer {
+            worldspawn: self.load_worldspawn(bsp),
+            entities: self.load_entities(bsp),
+        }
+    }
+
     pub fn load_bsp_based_on_texture_batch(&self, bsp: &bsp::Bsp) -> Vec<BspTextureBatchBuffer> {
         let mut batches = HashMap::<usize, (Vec<f32>, Vec<u32>)>::new();
 
