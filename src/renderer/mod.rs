@@ -4,6 +4,7 @@ use bsp_load::{BspBuffer, BspTextureBatchBuffer, BspVertex, BspWorldSpawnBuffer}
 use camera::{CAM_SPEED, CAM_TURN, Camera};
 use glam::Vec3;
 use image::{RgbaImage, imageops::grayscale};
+use lightmap_load::LightMapAtlasBuffer;
 use miptex_load::BspMipTex;
 use types::{BspFaceBuffer, MeshBuffer};
 use utils::{
@@ -28,10 +29,10 @@ use bitflags::bitflags;
 
 mod bsp_load;
 mod camera;
+mod lightmap_load;
 mod miptex_load;
 mod types;
 mod utils;
-mod lightmap_load;
 
 const FILE: &str = "./examples/textures.obj";
 const BSP_FILE: &str = "./examples/chk_section.bsp";
@@ -140,9 +141,17 @@ impl RenderContext {
         let texture_bind_group_layout =
             device.create_bind_group_layout(&BspMipTex::bind_group_layout_descriptor());
 
+        // lightmap stuffs
+        let lightmap_bind_group_layout =
+            device.create_bind_group_layout(&LightMapAtlasBuffer::bind_group_layout_descriptor());
+
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: None,
-            bind_group_layouts: &[&cam_bind_group_layout, &texture_bind_group_layout],
+            bind_group_layouts: &[
+                &cam_bind_group_layout,
+                &texture_bind_group_layout,
+                &lightmap_bind_group_layout,
+            ],
             push_constant_ranges: &[],
         });
 
@@ -288,6 +297,11 @@ impl RenderContext {
 
             rpass.set_pipeline(&self.bsp_render_pipeline);
             rpass.set_bind_group(0, &self.cam_bind_group, &[]);
+            rpass.set_bind_group(
+                2,
+                &state.bsp_buffer.lightmap.as_ref().unwrap().bind_group,
+                &[],
+            );
 
             // TODO: room for improvement
 

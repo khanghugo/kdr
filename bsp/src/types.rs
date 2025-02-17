@@ -127,7 +127,7 @@ pub struct TexInfo {
     pub flags: u32,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct Face {
     pub plane: u16,
     pub side: u16,
@@ -136,6 +136,13 @@ pub struct Face {
     pub texinfo: u16,
     pub styles: [u8; 4],
     pub lightmap_offset: i32,
+}
+
+// extension of [`Face`] type because what the fuck
+#[derive(Debug, Clone, Copy)]
+pub struct FaceExt<'a> {
+    pub idx: usize,
+    pub face: &'a Face,
 }
 
 pub type LightMap = Vec<[u8; 3]>;

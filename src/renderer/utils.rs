@@ -2,6 +2,8 @@ use std::collections::{HashMap, VecDeque};
 
 use image::RgbaImage;
 
+use super::lightmap_load::LightMapAtlasBuffer;
+
 fn most_repeating_number<T>(a: &[T]) -> T
 where
     T: std::hash::Hash + Eq + Copy,
@@ -130,4 +132,174 @@ pub fn triangulate_convex_polygon(vertices: &[bsp::Vec3]) -> Vec<u32> {
         indices.push((i + 1) as u32);
     }
     indices
+}
+
+pub fn face_vertices(face: &bsp::Face, bsp: &bsp::Bsp) -> Vec<bsp::Vec3> {
+    let mut face_vertices = vec![];
+
+    for edge_idx in (face.first_edge as u32)..(face.first_edge as u32 + face.edge_count as u32) {
+        let surf_edge = bsp.surf_edges[edge_idx as usize];
+
+        let [v1_idx, v2_idx] = bsp.edges[surf_edge.abs() as usize];
+
+        if surf_edge.is_positive() {
+            face_vertices.push(bsp.vertices[v1_idx as usize]);
+        } else {
+            face_vertices.push(bsp.vertices[v2_idx as usize]);
+        }
+    }
+
+    face_vertices
+}
+
+pub fn vertex_uv(pos: &bsp::Vec3, texinfo: &bsp::TexInfo) -> [f32; 2] {
+    [
+        (pos.dot(texinfo.u) + texinfo.u_offset),
+        (pos.dot(texinfo.v) + texinfo.v_offset),
+    ]
+}
+
+pub fn process_face(
+    face: &bsp::Face,
+    bsp: &bsp::Bsp,
+    lightmap: &LightMapAtlasBuffer,
+    face_idx: usize,
+) -> (Vec<f32>, Vec<u32>) {
+    let face_vertices = face_vertices(face, bsp);
+
+    let indices = triangulate_convex_polygon(&face_vertices);
+
+    // very inefficient right now
+    // becuase all vertices here have the same normal
+    let normal = bsp.planes[face.plane as usize].normal;
+    let texinfo = &bsp.texinfo[face.texinfo as usize];
+
+    // uv
+    let miptex = &bsp.textures[texinfo.texture_index as usize];
+
+    let vertices_texcoords: Vec<[f32; 2]> = face_vertices
+        .iter()
+        .map(|pos| vertex_uv(pos, &texinfo))
+        .collect();
+
+    let vertices_normalized_texcoords: Vec<[f32; 2]> = vertices_texcoords
+        .iter()
+        .map(|uv| [uv[0] / miptex.width as f32, uv[1] / miptex.height as f32])
+        .collect();
+
+    // lightmap
+    let what = lightmap.allocations.get(&face_idx);
+
+    let lightmap_texcoords: Vec<[f32; 2]> = if let Some(allocation) = what {
+        let lightmap_texcoords = vertices_normalized_texcoords.iter().map(|&[u, v, ..]| {
+            [
+                (u * allocation.x_scale) + allocation.x_offset,
+                (v * allocation.y_scale) + allocation.y_offset,
+            ]
+        });
+
+        lightmap_texcoords.collect()
+    } else {
+        vertices_normalized_texcoords
+            .iter()
+            .map(|_| [0., 0.])
+            .collect()
+    };
+
+    // collect to buffer
+    let interleaved: Vec<f32> = face_vertices
+        .into_iter()
+        .zip(vertices_normalized_texcoords.into_iter())
+        .zip(lightmap_texcoords.into_iter())
+        .flat_map(|((pos, texcoord), lightmap_coord)| {
+            [
+                // no need to flip any of the geometry
+                // we will do that to the camera
+                // -pos.x,
+                // pos.z, // flip y and z because the game is z up
+                // pos.y,
+                pos.x,
+                pos.y,
+                pos.z,
+                normal.x,
+                normal.y,
+                normal.z,
+                texcoord[0],
+                texcoord[1],
+                lightmap_coord[0],
+                lightmap_coord[1],
+            ]
+        })
+        .collect();
+
+    (interleaved, indices)
+}
+
+// the dimension of the face on texture coordinate
+pub fn get_face_uv_dimensions(uvs: &[[f32; 2]]) -> (i32, i32) {
+    let mut min_u = uvs[0][0].floor() as i32;
+    let mut min_v = uvs[0][1].floor() as i32;
+    let mut max_u = uvs[0][0].floor() as i32;
+    let mut max_v = uvs[0][1].floor() as i32;
+
+    for i in 1..uvs.len() {
+        let u = uvs[i][0].floor() as i32;
+        let v = uvs[i][1].floor() as i32;
+
+        if u < min_u {
+            min_u = u;
+        }
+        if v < min_v {
+            min_v = v;
+        }
+        if u > max_u {
+            max_u = u;
+        }
+        if v > max_v {
+            max_v = v;
+        }
+    }
+
+    return (max_u - min_u + 1, max_v - min_v + 1);
+}
+
+pub struct LightmapDimension {
+    pub width: i32,
+    pub height: i32,
+    pub min_u: i32,
+    pub min_v: i32,
+}
+
+pub fn get_lightmap_dimensions(uvs: &[[f32; 2]]) -> LightmapDimension {
+    let mut min_u = uvs[0][0].floor() as i32;
+    let mut min_v = uvs[0][1].floor() as i32;
+    let mut max_u = uvs[0][0].floor() as i32;
+    let mut max_v = uvs[0][1].floor() as i32;
+
+    for i in 1..uvs.len() {
+        let u = uvs[i][0].floor() as i32;
+        let v = uvs[i][1].floor() as i32;
+
+        if u < min_u {
+            min_u = u;
+        }
+        if v < min_v {
+            min_v = v;
+        }
+        if u > max_u {
+            max_u = u;
+        }
+        if v > max_v {
+            max_v = v;
+        }
+    }
+
+    // light map dimension is basically the face dimensions divided by 16
+    // because luxel is 1 per 16 texel
+    return LightmapDimension {
+        width: ((max_u as f32 / 16.0).ceil() as i32) - ((min_u as f32 / 16.0).floor() as i32) + 1,
+        height: ((max_v as f32 / 16.0).ceil() as i32) - ((min_v as f32 / 16.0).floor() as i32) + 1,
+        min_u,
+        min_v,
+    };
 }
