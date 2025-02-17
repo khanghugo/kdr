@@ -36,7 +36,7 @@ pub struct BspEntitiesBuffer(pub Vec<BspTextureBatchBuffer>);
 #[derive(Default)]
 pub struct BspBuffer {
     pub worldspawn: BspWorldSpawnBuffer,
-    pub entities: BspEntitiesBuffer,
+    pub entities: Option<BspEntitiesBuffer>,
     pub lightmap: Option<LightMapAtlasBuffer>,
 }
 
@@ -154,9 +154,13 @@ impl RenderContext {
         BspWorldSpawnBuffer(batches)
     }
 
-    fn load_entities(&self, bsp: &bsp::Bsp, lightmap: &LightMapAtlasBuffer) -> BspEntitiesBuffer {
+    fn load_entities(&self, bsp: &bsp::Bsp, lightmap: &LightMapAtlasBuffer) -> Option<BspEntitiesBuffer> {
         // TODO sort all of the vertices later
         let rest = &bsp.models[1..];
+
+        if rest.is_empty() {
+            return None;
+        }
 
         let entity_faces: Vec<bsp::Face> = rest
             .iter()
@@ -180,11 +184,12 @@ impl RenderContext {
             &lightmap,
         );
 
-        BspEntitiesBuffer(batches)
+        Some(BspEntitiesBuffer(batches))
     }
 
     pub fn load_bsp(&self, bsp: &bsp::Bsp) -> BspBuffer {
         let lightmap = self.load_lightmap(bsp);
+        lightmap.debug_visualization();
 
         BspBuffer {
             worldspawn: self.load_worldspawn(bsp, &lightmap),
@@ -192,94 +197,6 @@ impl RenderContext {
             lightmap: lightmap.into(),
         }
     }
-
-    // fn load_bsp_based_on_texture_batch(&self, bsp: &bsp::Bsp) -> Vec<BspTextureBatchBuffer> {
-    //     let mut batches = HashMap::<usize, (Vec<f32>, Vec<u32>)>::new();
-
-    //     for face in &bsp.faces {
-    //         let (vertices, indices) = process_face(face, bsp);
-
-    //         let texinfo = &bsp.texinfo[face.texinfo as usize];
-
-    //         let batch = batches
-    //             .entry(texinfo.texture_index as usize)
-    //             .or_insert((Vec::new(), Vec::new()));
-
-    //         // newer vertices will have their index start at 0 but we don't want that
-    //         // need to divide by 8 because each "vertices" has 8 floats
-    //         let new_vertices_offset = batch.0.len() / 8;
-
-    //         batch.0.extend(vertices);
-    //         batch
-    //             .1
-    //             .extend(indices.into_iter().map(|i| i + new_vertices_offset as u32));
-    //     }
-
-    //     batches
-    //         .into_iter()
-    //         .map(|(texture_index, (vertices, indices))| {
-    //             let vertex_buffer =
-    //                 self.device
-    //                     .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-    //                         label: Some("loading a bsp vertex"),
-    //                         contents: bytemuck::cast_slice(&vertices),
-    //                         usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
-    //                     });
-
-    //             let index_buffer =
-    //                 self.device
-    //                     .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-    //                         label: Some("loading a bsp vertex index"),
-    //                         contents: bytemuck::cast_slice(&indices),
-    //                         usage: wgpu::BufferUsages::INDEX | wgpu::BufferUsages::COPY_DST,
-    //                     });
-
-    //             BspTextureBatchBuffer {
-    //                 vertex_buffer,
-    //                 index_buffer,
-    //                 index_count: indices.len(),
-    //                 texture_index,
-    //             }
-    //         })
-    //         .collect()
-    // }
-
-    // batch loading based on polygon
-    // fn load_bsp_based_on_face(&self, bsp: &bsp::Bsp) -> Vec<BspFaceBuffer> {
-    //     let res = bsp
-    //         .faces
-    //         .iter()
-    //         .map(|face| {
-    //             let (vertices, indices) = process_face(face, bsp);
-    //             let texinfo = &bsp.texinfo[face.texinfo as usize];
-
-    //             let vertex_buffer =
-    //                 self.device
-    //                     .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-    //                         label: Some("loading a bsp vertex"),
-    //                         contents: bytemuck::cast_slice(&vertices),
-    //                         usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
-    //                     });
-
-    //             let vertex_index_buffer =
-    //                 self.device
-    //                     .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-    //                         label: Some("loading a bsp vertex index"),
-    //                         contents: bytemuck::cast_slice(&indices),
-    //                         usage: wgpu::BufferUsages::INDEX | wgpu::BufferUsages::COPY_DST,
-    //                     });
-
-    //             BspFaceBuffer {
-    //                 vertex_buffer,
-    //                 texture_index: texinfo.texture_index as usize,
-    //                 index_count: indices.len(),
-    //                 index_buffer: vertex_index_buffer,
-    //             }
-    //         })
-    //         .collect();
-
-    //     res
-    // }
 }
 
 struct LightmapDimensions {
@@ -287,37 +204,4 @@ struct LightmapDimensions {
     height: i32,
     min_u: i32,
     min_v: i32,
-}
-
-// https://github.com/rein4ce/hlbsp/blob/1546eaff4e350a2329bc2b67378f042b09f0a0b7/js/hlbsp.js#L499
-fn get_lightmap_dimensions(uvs: &[[f32; 2]]) -> LightmapDimensions {
-    let mut min_u = uvs[0][0].floor() as i32;
-    let mut min_v = uvs[0][1].floor() as i32;
-    let mut max_u = uvs[0][0].floor() as i32;
-    let mut max_v = uvs[0][1].floor() as i32;
-
-    for i in 1..uvs.len() {
-        let u = uvs[i][0].floor() as i32;
-        let v = uvs[i][1].floor() as i32;
-
-        if u < min_u {
-            min_u = u;
-        }
-        if v < min_v {
-            min_v = v;
-        }
-        if u > max_u {
-            max_u = u;
-        }
-        if v > max_v {
-            max_v = v;
-        }
-    }
-
-    return LightmapDimensions {
-        width: ((max_u as f32 / 16.0).ceil() as i32) - ((min_u as f32 / 16.0).floor() as i32) + 1,
-        height: ((max_v as f32 / 16.0).ceil() as i32) - ((min_v as f32 / 16.0).floor() as i32) + 1,
-        min_u,
-        min_v,
-    };
 }

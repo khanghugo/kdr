@@ -190,11 +190,16 @@ pub fn process_face(
     // lightmap
     let what = lightmap.allocations.get(&face_idx);
 
+    let (face_width, face_height) = get_face_uv_dimensions(&vertices_texcoords);
+
+    // in here, we take the un-normalized coordinate then we normalize it on 0-1 so that number can sample the lightmap
     let lightmap_texcoords: Vec<[f32; 2]> = if let Some(allocation) = what {
-        let lightmap_texcoords = vertices_normalized_texcoords.iter().map(|&[u, v, ..]| {
+        let lightmap_texcoords = vertices_texcoords.iter().map(|&[u, v, ..]| {
             [
-                (u * allocation.x_scale) + allocation.x_offset,
-                (v * allocation.y_scale) + allocation.y_offset,
+                allocation.atlas_x
+                    + (u - allocation.min_x) / face_width as f32 * allocation.atlas_width,
+                allocation.atlas_y
+                    + (v - allocation.min_y) / face_height as f32 * allocation.atlas_height,
             ]
         });
 
@@ -236,7 +241,7 @@ pub fn process_face(
 }
 
 // the dimension of the face on texture coordinate
-pub fn get_face_uv_dimensions(uvs: &[[f32; 2]]) -> (i32, i32) {
+fn get_face_uv_dimensions(uvs: &[[f32; 2]]) -> (i32, i32) {
     let mut min_u = uvs[0][0].floor() as i32;
     let mut min_v = uvs[0][1].floor() as i32;
     let mut max_u = uvs[0][0].floor() as i32;
@@ -263,6 +268,7 @@ pub fn get_face_uv_dimensions(uvs: &[[f32; 2]]) -> (i32, i32) {
     return (max_u - min_u + 1, max_v - min_v + 1);
 }
 
+#[derive(Debug)]
 pub struct LightmapDimension {
     pub width: i32,
     pub height: i32,
@@ -270,6 +276,8 @@ pub struct LightmapDimension {
     pub min_v: i32,
 }
 
+// minimum light map size is always 2x2
+// https://github.com/rein4ce/hlbsp/blob/1546eaff4e350a2329bc2b67378f042b09f0a0b7/js/hlbsp.js#L499
 pub fn get_lightmap_dimensions(uvs: &[[f32; 2]]) -> LightmapDimension {
     let mut min_u = uvs[0][0].floor() as i32;
     let mut min_v = uvs[0][1].floor() as i32;

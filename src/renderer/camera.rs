@@ -10,7 +10,8 @@ pub struct Camera {
     pub zfar: f32,
 }
 
-const CAM_START_POS: [f32; 3] = [-300., -1000., -2000.];
+// const CAM_START_POS: [f32; 3] = [-300., -1000., -2000.];
+const CAM_START_POS: [f32; 3] = [1000., 300., 500.];
 
 pub const CAM_SPEED: f32 = 1000.;
 pub const CAM_TURN: f32 = 150.; // degrees

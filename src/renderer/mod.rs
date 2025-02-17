@@ -317,13 +317,17 @@ impl RenderContext {
             });
 
             // drawing entities
-            let entities = &state.bsp_buffer.entities;
-
-            entities.0.iter().for_each(|batch| {
-                rpass.set_bind_group(1, &state.bsp_miptexes[batch.texture_index].bind_group, &[]);
-                rpass.set_vertex_buffer(0, batch.vertex_buffer.slice(..));
-                rpass.set_index_buffer(batch.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
-                rpass.draw_indexed(0..batch.index_count as u32, 0, 0..1);
+            state.bsp_buffer.entities.as_ref().map(|entities| {
+                entities.0.iter().for_each(|batch| {
+                    rpass.set_bind_group(
+                        1,
+                        &state.bsp_miptexes[batch.texture_index].bind_group,
+                        &[],
+                    );
+                    rpass.set_vertex_buffer(0, batch.vertex_buffer.slice(..));
+                    rpass.set_index_buffer(batch.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
+                    rpass.draw_indexed(0..batch.index_count as u32, 0, 0..1);
+                });
             });
         }
 
