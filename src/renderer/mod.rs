@@ -31,6 +31,7 @@ mod camera;
 mod miptex_load;
 mod types;
 mod utils;
+mod lightmap_load;
 
 const FILE: &str = "./examples/textures.obj";
 const BSP_FILE: &str = "./examples/chk_section.bsp";

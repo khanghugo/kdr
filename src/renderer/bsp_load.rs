@@ -10,7 +10,7 @@ pub struct BspVertex {
     pos: Point3<f32>,
     norm: Point3<f32>,
     tex_coord: Point2<f32>,
-    // lightmap: Vec<[f32; 3]>,
+    lightmap_coord: Point2<f32>,
 }
 
 // one buffer contains all vertices with the same texture
@@ -36,6 +36,10 @@ pub struct BspBuffer {
 }
 
 impl BspVertex {
+    fn f32_count() -> usize {
+        std::mem::size_of::<Self>() / 4
+    }
+
     pub fn buffer_layout() -> wgpu::VertexBufferLayout<'static> {
         wgpu::VertexBufferLayout {
             array_stride: std::mem::size_of::<Self>() as u64,
@@ -59,6 +63,12 @@ impl BspVertex {
                     offset: 24,
                     shader_location: 2,
                 },
+                // lightmap
+                wgpu::VertexAttribute {
+                    format: wgpu::VertexFormat::Float32x2,
+                    offset: 32,
+                    shader_location: 3,
+                },
             ],
         }
     }
@@ -77,8 +87,8 @@ impl RenderContext {
                 .or_insert((Vec::new(), Vec::new()));
 
             // newer vertices will have their index start at 0 but we don't want that
-            // need to divide by 8 because each "vertices" has 8 floats
-            let new_vertices_offset = batch.0.len() / 8;
+            // need to divide by <x> because each "vertices" has <x> floats
+            let new_vertices_offset = batch.0.len() / BspVertex::f32_count();
 
             batch.0.extend(vertices);
             batch
@@ -147,7 +157,7 @@ impl RenderContext {
 
                 // newer vertices will have their index start at 0 but we don't want that
                 // need to divide by 8 because each "vertices" has 8 floats
-                let new_vertices_offset = batch.0.len() / 8;
+                let new_vertices_offset = batch.0.len() / BspVertex::f32_count();
 
                 batch.0.extend(vertices);
                 batch
@@ -307,23 +317,30 @@ fn process_face(face: &bsp::Face, bsp: &bsp::Bsp) -> (Vec<f32>, Vec<u32>) {
 
     // uv
     let miptex = &bsp.textures[texinfo.texture_index as usize];
-    let inv_width = 1.0 / miptex.width as f32;
-    let inv_height = 1.0 / miptex.height as f32;
 
-    let vertices_texcoord: Vec<[f32; 2]> = face_vertices
+    let vertices_texcoords: Vec<[f32; 2]> = face_vertices
         .iter()
         .map(|pos| {
             [
-                (pos.dot(texinfo.u) + texinfo.u_offset) * inv_width,
-                (pos.dot(texinfo.v) + texinfo.v_offset) * inv_height,
+                (pos.dot(texinfo.u) + texinfo.u_offset),
+                (pos.dot(texinfo.v) + texinfo.v_offset),
             ]
         })
         .collect();
 
+    let vertices_normalized_texcoords: Vec<[f32; 2]> = vertices_texcoords
+        .iter()
+        .map(|uv| [uv[0] / miptex.width as f32, uv[1] / miptex.height as f32])
+        .collect();
+
+    // lightmap
+    // dont use the normalized uvs
+    let lightmap_dimensions = get_lightmap_dimensions(&vertices_texcoords);
+
     // collect to buffer
     let interleaved: Vec<f32> = face_vertices
         .into_iter()
-        .zip(vertices_texcoord.into_iter())
+        .zip(vertices_normalized_texcoords.into_iter())
         .flat_map(|(pos, texcoord)| {
             [
                 // no need to flip any of the geometry
@@ -339,9 +356,51 @@ fn process_face(face: &bsp::Face, bsp: &bsp::Bsp) -> (Vec<f32>, Vec<u32>) {
                 normal.z,
                 texcoord[0],
                 texcoord[1],
+                1.0,
+                1.0,
             ]
         })
         .collect();
 
     (interleaved, indices)
+}
+
+struct LightmapDimensions {
+    width: i32,
+    height: i32,
+    min_u: i32,
+    min_v: i32,
+}
+
+// https://github.com/rein4ce/hlbsp/blob/1546eaff4e350a2329bc2b67378f042b09f0a0b7/js/hlbsp.js#L499
+fn get_lightmap_dimensions(uvs: &[[f32; 2]]) -> LightmapDimensions {
+    let mut min_u = uvs[0][0].floor() as i32;
+    let mut min_v = uvs[0][1].floor() as i32;
+    let mut max_u = uvs[0][0].floor() as i32;
+    let mut max_v = uvs[0][1].floor() as i32;
+
+    for i in 1..uvs.len() {
+        let u = uvs[i][0].floor() as i32;
+        let v = uvs[i][1].floor() as i32;
+
+        if u < min_u {
+            min_u = u;
+        }
+        if v < min_v {
+            min_v = v;
+        }
+        if u > max_u {
+            max_u = u;
+        }
+        if v > max_v {
+            max_v = v;
+        }
+    }
+
+    return LightmapDimensions {
+        width: ((max_u as f32 / 16.0).ceil() as i32) - ((min_u as f32 / 16.0).floor() as i32) + 1,
+        height: ((max_v as f32 / 16.0).ceil() as i32) - ((min_v as f32 / 16.0).floor() as i32) + 1,
+        min_u,
+        min_v,
+    };
 }
