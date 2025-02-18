@@ -25,6 +25,12 @@ pub struct LightMapAtlasBuffer {
     pub allocations: HashMap<usize, LightMapAtlasAllocation>,
 }
 
+impl Drop for LightMapAtlasBuffer {
+    fn drop(&mut self) {
+        self.texture.destroy();
+    }
+}
+
 impl LightMapAtlasBuffer {
     pub fn bind_group_layout_descriptor() -> wgpu::BindGroupLayoutDescriptor<'static> {
         wgpu::BindGroupLayoutDescriptor {

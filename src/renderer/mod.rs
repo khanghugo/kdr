@@ -27,7 +27,7 @@ mod types;
 mod utils;
 
 const FILE: &str = "./examples/textures.obj";
-const BSP_FILE: &str = "./examples/c1a0.bsp";
+const BSP_FILE: &str = "./examples/lightmap.bsp";
 
 const MAX_TEXTURES: u32 = 128;
 
@@ -42,6 +42,14 @@ struct RenderContext {
     depth_texture: wgpu::Texture,
     depth_view: wgpu::TextureView,
     texture_bind_group_layout: wgpu::BindGroupLayout,
+}
+
+impl Drop for RenderContext {
+    fn drop(&mut self) {
+        self.device.destroy();
+        self.cam_buffer.destroy();
+        self.depth_texture.destroy();
+    }
 }
 
 struct RenderState {
@@ -501,6 +509,8 @@ impl ApplicationHandler for App {
     ) {
         match event {
             WindowEvent::CloseRequested => {
+                drop(self.graphic_context.as_mut());
+
                 event_loop.exit();
             }
             WindowEvent::RedrawRequested => {

@@ -25,6 +25,13 @@ pub struct BspTextureBatchBuffer {
     pub texture_index: usize,
 }
 
+impl Drop for BspTextureBatchBuffer {
+    fn drop(&mut self) {
+        self.vertex_buffer.destroy();
+        self.index_buffer.destroy();
+    }
+}
+
 // world spawn can just render
 #[derive(Default)]
 pub struct BspWorldSpawnBuffer(pub Vec<BspTextureBatchBuffer>);
