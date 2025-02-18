@@ -31,6 +31,11 @@ fn vs_main(
 @group(2) @binding(0) var lightmap: texture_2d<f32>;
 @group(2) @binding(1) var lightmap_sampler: sampler;
 
+fn gamma_correct(color: vec3f) -> vec3f {
+    let gamma: f32 = 1.6;
+    return pow(color, vec3f(1.0 / gamma));
+}
+
 @fragment
 fn fs_main(
     @location(0) normal: vec3f, 
@@ -38,8 +43,10 @@ fn fs_main(
     @location(2) lightmap_coord: vec2f
     ) -> @location(0) vec4f {
     let albedo = textureSample(texture, linear_sampler, texCoord);
-    let light = textureSample(lightmap, lightmap_sampler, lightmap_coord);
+    let light = textureSample(lightmap, lightmap_sampler, lightmap_coord).rgb * (128.0 / 192.0);
+    let color = albedo.rgb * light.rgb * 2;
 
+    let gamma_corrected = vec4(gamma_correct(color.rgb), albedo.a);
 
-    return albedo * light;
+    return gamma_corrected;
 }

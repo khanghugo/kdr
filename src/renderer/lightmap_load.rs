@@ -14,6 +14,8 @@ pub struct LightMapAtlasAllocation {
     pub atlas_height: f32,
     pub min_x: f32,
     pub min_y: f32,
+    pub lightmap_width: f32,
+    pub lightmap_height: f32,
 }
 
 pub struct LightMapAtlasBuffer {
@@ -79,7 +81,7 @@ impl RenderContext {
         // let's do 4K
         // todo: multiple atlases
         const DIMENSION: u32 = 4096;
-        const PADDING: i32 = 4;
+        const PADDING: i32 = 1;
 
         let mut atlas = guillotiere::AtlasAllocator::new(guillotiere::size2(
             DIMENSION as i32,
@@ -122,6 +124,8 @@ impl RenderContext {
                 // min_uv belongs to texture coordinate of the current face, not the lightmap
                 min_x: lightmap_dimensions.min_u as f32,
                 min_y: lightmap_dimensions.min_v as f32,
+                lightmap_width: lightmap_dimensions.width as f32,
+                lightmap_height: lightmap_dimensions.height as f32,
             };
 
             allocations.insert(idx, atlas_allocation);

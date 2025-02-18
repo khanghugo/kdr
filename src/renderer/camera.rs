@@ -102,4 +102,15 @@ impl Camera {
         self.target += offset;
         self.pos += offset;
     }
+
+    pub fn set_yaw(&mut self, yaw: Deg<f32>) {
+        let (sin, cos) = yaw.0.to_radians().sin_cos();
+        // let z = self.target.z;
+
+        self.target = [
+            self.pos.x + cos,
+            self.pos.y + sin,
+            self.pos.z
+        ].into();
+    }
 }

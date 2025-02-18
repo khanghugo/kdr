@@ -2,28 +2,20 @@ use std::{io::BufReader, num::NonZeroU32, sync::Arc, time::Instant};
 
 use bsp_load::{BspBuffer, BspTextureBatchBuffer, BspVertex, BspWorldSpawnBuffer};
 use camera::{CAM_SPEED, CAM_TURN, Camera};
-use glam::Vec3;
-use image::{RgbaImage, imageops::grayscale};
 use lightmap_load::LightMapAtlasBuffer;
 use miptex_load::BspMipTex;
 use types::{BspFaceBuffer, MeshBuffer};
-use utils::{
-    convex_polygon_to_triangle_strip_indices, eightbpp_to_rgba8, face_to_tri_strip,
-    triangulate_convex_polygon,
-};
 use wgpu::{Extent3d, util::DeviceExt};
-use wgpu_profiler::{GpuProfiler, GpuProfilerSettings};
 use winit::{
     application::ApplicationHandler,
     dpi::LogicalSize,
     event::WindowEvent,
     event_loop::{ControlFlow, EventLoop},
     keyboard::KeyCode,
-    platform::x11::WindowAttributesExtX11,
     window::Window,
 };
 
-use cgmath::{Deg, EuclideanSpace, Matrix4, MetricSpace, Point3, Vector3, perspective};
+use cgmath::Deg;
 
 use bitflags::bitflags;
 
@@ -35,7 +27,7 @@ mod types;
 mod utils;
 
 const FILE: &str = "./examples/textures.obj";
-const BSP_FILE: &str = "./examples/chk_section.bsp";
+const BSP_FILE: &str = "./examples/c1a0.bsp";
 
 const MAX_TEXTURES: u32 = 128;
 
@@ -623,6 +615,7 @@ impl App {
         self.render_state
             .camera
             .move_along_view(-self.get_move_displacement());
+        // self.render_state.camera.set_yaw(Deg(90.));
     }
 
     fn moveleft(&mut self) {
