@@ -189,20 +189,16 @@ pub fn process_face(
 
     // lightmap
     let what = lightmap.allocations.get(&face_idx);
-    let texture = &bsp.textures[texinfo.texture_index as usize];
 
-    let (face_min_u, face_max_u, face_min_v, face_max_v) = get_face_uv_box(&vertices_texcoords);
+    // https://github.com/magcius/noclip.website/blob/66595465295720f8078a53d700988241b0adc2b0/src/GoldSrc/BSPFile.ts#L285
+    let (face_min_u, _face_max_u, face_min_v, _face_max_v) = get_face_uv_box(&vertices_texcoords);
 
-    // in here, we take the un-normalized coordinate then we normalize it on 0-1 so that number can sample the lightmap
     let lightmap_texcoords: Vec<[f32; 2]> = if let Some(allocation) = what {
-        let mid_u = (face_min_u + face_max_u) * 0.5;
-        let mid_v = (face_min_v + face_max_v) * 0.5;
-        let half_width = allocation.lightmap_width / 2.0;
-        let half_height = allocation.lightmap_height / 2.0;
-
         let lightmap_texcoords = vertices_texcoords.iter().map(|&[u, v, ..]| {
-            let lightmap_u = (half_width + (u - mid_u) / 16.0) / allocation.lightmap_width;
-            let lightmap_v = (half_height + (v - mid_v) / 16.0) / allocation.lightmap_height;
+            let lightmap_u =
+                ((u / 16.0) - (face_min_u / 16.0).floor() + 0.5) / allocation.lightmap_width;
+            let lightmap_v =
+                ((v / 16.0) - (face_min_v / 16.0).floor() + 0.5) / allocation.lightmap_height;
 
             [
                 allocation.atlas_x + lightmap_u * allocation.atlas_width,

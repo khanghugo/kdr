@@ -27,7 +27,7 @@ mod types;
 mod utils;
 
 const FILE: &str = "./examples/textures.obj";
-const BSP_FILE: &str = "./examples/lightmap.bsp";
+const BSP_FILE: &str = "./examples/chk_section.bsp";
 
 const MAX_TEXTURES: u32 = 128;
 
@@ -57,6 +57,9 @@ struct RenderState {
     bsp_miptexes: Vec<BspMipTex>,
 
     camera: Camera,
+
+    // debug
+    draw_call: usize,
 }
 
 impl Default for RenderState {
@@ -65,6 +68,7 @@ impl Default for RenderState {
             camera: Default::default(),
             bsp_buffer: Default::default(),
             bsp_miptexes: Default::default(),
+            draw_call: 0,
         }
     }
 }
@@ -251,7 +255,7 @@ impl RenderContext {
         }
     }
 
-    pub fn render(&self, state: &RenderState) {
+    pub fn render(&self, state: &mut RenderState) {
         let frame = self.surface.get_current_texture().unwrap();
         let view = frame
             .texture
@@ -329,6 +333,14 @@ impl RenderContext {
                     rpass.draw_indexed(0..batch.index_count as u32, 0, 0..1);
                 });
             });
+
+            state.draw_call = 0;
+            state.draw_call += world_spawn.0.len();
+            state
+                .bsp_buffer
+                .entities
+                .as_ref()
+                .map(|entities| state.draw_call += entities.0.len());
         }
 
         self.queue.submit(Some(encoder.finish()));
@@ -518,13 +530,13 @@ impl ApplicationHandler for App {
 
                 self.graphic_context
                     .as_mut()
-                    .map(|res| res.render(&self.render_state));
+                    .map(|res| res.render(&mut self.render_state));
 
                 self.window.as_mut().map(|window| {
                     let fps = (1.0 / self.frame_time).round();
 
                     // rename window based on fps
-                    window.set_title(format!("FPS: {}", fps).as_str());
+                    window.set_title(format!("FPS: {}. Draw calls: {}", fps, self.render_state.draw_call).as_str());
                     // update
                     window.request_redraw();
                 });

@@ -87,7 +87,7 @@ impl RenderContext {
         // let's do 4K
         // todo: multiple atlases
         const DIMENSION: u32 = 4096;
-        const PADDING: i32 = 1;
+        const PADDING: i32 = 0;
 
         let mut atlas = guillotiere::AtlasAllocator::new(guillotiere::size2(
             DIMENSION as i32,
