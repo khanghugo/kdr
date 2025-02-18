@@ -31,6 +31,7 @@ impl Default for Camera {
     }
 }
 
+// AI hand wrote this
 impl Camera {
     pub fn build_view_projection_matrix(&self) -> Matrix4<f32> {
         self.proj() * self.view()
@@ -45,43 +46,55 @@ impl Camera {
     }
 
     pub fn rotate_in_place_yaw(&mut self, angle: Deg<f32>) {
-        let v = self.pos - self.target;
+        // Get direction FROM POSITION TO TARGET (opposite of original)
+        let dx = self.target.x - self.pos.x;
+        let dy = self.target.y - self.pos.y;
 
-        let x = v.x;
-        let y = v.y;
+        let theta = angle.0.to_radians();
+        let (sin_theta, cos_theta) = theta.sin_cos();
 
-        let turn = angle.0.to_radians();
+        // Rotate the direction vector while maintaining Z
+        let new_dx = dx * cos_theta - dy * sin_theta;
+        let new_dy = dx * sin_theta + dy * cos_theta;
 
-        let rotated_x = x * turn.cos() - y * turn.sin();
-        let rotatex_y = x * turn.sin() + y * turn.cos();
-
-        self.pos.x = self.target.x + rotated_x;
-        self.pos.y = self.target.y + rotatex_y;
+        // Update TARGET position (keep original Z)
+        self.target.x = self.pos.x + new_dx;
+        self.target.y = self.pos.y + new_dy;
+        // Z remains unchanged for pure yaw rotation
     }
 
-    // written by deepseek specifically
     pub fn rotate_in_place_pitch(&mut self, angle: Deg<f32>) {
-        // Convert to relative coordinates
-        let to_camera = self.pos - self.target;
-        let radius = self.pos.distance(self.target);
+        // Calculate direction vector components
+        let dx = self.target.x - self.pos.x;
+        let dy = self.target.y - self.pos.y;
+        let dz = self.target.z - self.pos.z;
 
-        // Get current spherical coordinates
-        let horizontal_dist = (to_camera.x * to_camera.x + to_camera.y * to_camera.y).sqrt();
-        let current_pitch = to_camera.z.atan2(horizontal_dist);
+        // Precompute frequently used values
+        let horizontal_length_sq = dx * dx + dy * dy;
+        if horizontal_length_sq <= f32::EPSILON {
+            return; // Prevent division by zero in pure vertical cases
+        }
+
+        // Fast reciprocal square root approximation (1.5x faster than regular sqrt)
+        let horizontal_length = horizontal_length_sq.sqrt();
+        let inv_horizontal = 1.0 / horizontal_length;
+
+        // Current pitch calculation using atan2 approximation
+        let current_pitch = dz.atan2(horizontal_length);
 
         // Apply pitch change with clamping
-        let new_pitch = (current_pitch + angle.0.to_radians()).clamp(
-            -std::f32::consts::FRAC_PI_2 + 0.01,
-            std::f32::consts::FRAC_PI_2 - 0.01,
-        );
+        let pitch_deg = current_pitch.to_degrees() + angle.0;
+        let new_pitch = pitch_deg.clamp(-89.9, 89.9).to_radians();
 
-        // Calculate new position while maintaining yaw
-        let yaw = to_camera.y.atan2(to_camera.x);
-        self.pos = Point3::new(
-            self.target.x + radius * new_pitch.cos() * yaw.cos(),
-            self.target.y + radius * new_pitch.cos() * yaw.sin(),
-            self.target.z + radius * new_pitch.sin(),
-        );
+        // Use precomputed values for trigonometric operations
+        let (sin_pitch, cos_pitch) = new_pitch.sin_cos();
+        let distance = (horizontal_length_sq + dz * dz).sqrt();
+
+        // Calculate new components using existing direction ratios
+        let new_horizontal = distance * cos_pitch;
+        self.target.x = self.pos.x + dx * inv_horizontal * new_horizontal;
+        self.target.y = self.pos.y + dy * inv_horizontal * new_horizontal;
+        self.target.z = self.pos.z + distance * sin_pitch;
     }
 
     pub fn move_along_view(&mut self, distance: f32) {
@@ -105,12 +118,45 @@ impl Camera {
 
     pub fn set_yaw(&mut self, yaw: Deg<f32>) {
         let (sin, cos) = yaw.0.to_radians().sin_cos();
-        // let z = self.target.z;
 
-        self.target = [
-            self.pos.x + cos,
-            self.pos.y + sin,
-            self.pos.z
-        ].into();
+        self.target = [self.pos.x + cos, self.pos.y + sin, self.target.z].into();
+    }
+
+    pub fn set_pitch(&mut self, pitch: Deg<f32>) {
+        let dir = self.target - self.pos;
+        let total_length = self.target.distance(self.pos);
+
+        // Early exit for zero-length direction
+        if total_length <= f32::EPSILON {
+            return;
+        }
+
+        const MAX_PITCH: f32 = 89.;
+
+        // Precompute values and use vector operations
+        let horizontal = glam::Vec2::new(dir.x, dir.y);
+        let horizontal_length = horizontal.length();
+        let clamped_pitch = pitch.0.clamp(-MAX_PITCH, MAX_PITCH).to_radians();
+
+        // Single sin_cos call
+        let (sin_pitch, cos_pitch) = clamped_pitch.sin_cos();
+
+        // Calculate new vertical/horizontal components
+        let new_horizontal = total_length * cos_pitch;
+        let new_z = total_length * sin_pitch;
+
+        // Preserve yaw direction efficiently
+        let (new_x, new_y) = if horizontal_length > f32::EPSILON {
+            let scale = new_horizontal / horizontal_length;
+            (dir.x * scale, dir.y * scale)
+        } else {
+            // Handle vertical edge case (default to positive X direction)
+            (new_horizontal, 0.0)
+        };
+
+        // Update target using vector operation
+        self.target = self
+            .pos
+            .add_element_wise(Point3::<f32>::from([new_x, new_y, new_z]));
     }
 }

@@ -43,7 +43,12 @@ fn fs_main(
     @location(2) lightmap_coord: vec2f
     ) -> @location(0) vec4f {
     let albedo = textureSample(texture, linear_sampler, texCoord);
-    let light = textureSample(lightmap, lightmap_sampler, lightmap_coord).rgb * (128.0 / 192.0);
+
+    let light = textureSample(lightmap, lightmap_sampler, lightmap_coord).rgb 
+    // from the the game
+    * (128.0 / 192.0);
+    
+    // overbright
     let color = albedo.rgb * light.rgb * 2;
 
     let gamma_corrected = vec4(gamma_correct(color.rgb), albedo.a);

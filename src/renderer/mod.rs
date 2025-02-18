@@ -536,7 +536,10 @@ impl ApplicationHandler for App {
                     let fps = (1.0 / self.frame_time).round();
 
                     // rename window based on fps
-                    window.set_title(format!("FPS: {}. Draw calls: {}", fps, self.render_state.draw_call).as_str());
+                    window.set_title(
+                        format!("FPS: {}. Draw calls: {}", fps, self.render_state.draw_call)
+                            .as_str(),
+                    );
                     // update
                     window.request_redraw();
                 });
@@ -637,7 +640,6 @@ impl App {
         self.render_state
             .camera
             .move_along_view(-self.get_move_displacement());
-        // self.render_state.camera.set_yaw(Deg(90.));
     }
 
     fn moveleft(&mut self) {
@@ -655,13 +657,13 @@ impl App {
     fn up(&mut self) {
         self.render_state
             .camera
-            .rotate_in_place_pitch(-self.get_camera_displacement());
+            .rotate_in_place_pitch(self.get_camera_displacement());
     }
 
     fn down(&mut self) {
         self.render_state
             .camera
-            .rotate_in_place_pitch(self.get_camera_displacement());
+            .rotate_in_place_pitch(-self.get_camera_displacement());
     }
 
     fn left(&mut self) {

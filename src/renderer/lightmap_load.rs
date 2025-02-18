@@ -191,55 +191,6 @@ impl RenderContext {
                         }
                     }
                 }
-
-                // for x in 0..alloc_width {
-                //     // Top padding row (mirror first row)
-                //     let src_x = (x - PADDING).clamp(0, original_width - 1);
-                //     if let Some(pixel) = lightmap_run.get(src_x as usize) {
-                //         atlas_image.put_pixel(
-                //             (allocation.rectangle.min.x + x) as u32,
-                //             (allocation.rectangle.min.y + PADDING - 1) as u32,
-                //             image::Rgba([pixel[0], pixel[1], pixel[2], 255]),
-                //         );
-                //     }
-
-                //     // Bottom padding row (mirror last row)
-                //     let src_x = (x - PADDING).clamp(0, original_width - 1);
-                //     if let Some(pixel) = lightmap_run.get(
-                //         src_x as usize + (original_height - 1) as usize * original_width as usize,
-                //     ) {
-                //         atlas_image.put_pixel(
-                //             (allocation.rectangle.min.x + x) as u32,
-                //             (allocation.rectangle.min.y + PADDING + original_height) as u32,
-                //             image::Rgba([pixel[0], pixel[1], pixel[2], 255]),
-                //         );
-                //     }
-                // }
-
-                // // Left and right columns
-                // for y in 0..alloc_height {
-                //     // Left padding column (mirror first column)
-                //     let src_y = (y - PADDING).clamp(0, original_height - 1);
-                //     if let Some(pixel) = lightmap_run.get(src_y as usize * original_width as usize)
-                //     {
-                //         atlas_image.put_pixel(
-                //             (allocation.rectangle.min.x + PADDING - 1) as u32,
-                //             (allocation.rectangle.min.y + y) as u32,
-                //             image::Rgba([pixel[0], pixel[1], pixel[2], 255]),
-                //         );
-                //     }
-
-                //     // Right padding column (mirror last column)
-                //     if let Some(pixel) = lightmap_run.get(
-                //         (original_width - 1) as usize + src_y as usize * original_width as usize,
-                //     ) {
-                //         atlas_image.put_pixel(
-                //             (allocation.rectangle.min.x + PADDING + original_width) as u32,
-                //             (allocation.rectangle.min.y + y) as u32,
-                //             image::Rgba([pixel[0], pixel[1], pixel[2], 255]),
-                //         );
-                //     }
-                // }
             }
 
             // border
