@@ -1,18 +1,13 @@
 use std::collections::HashMap;
 
 use cgmath::{Point2, Point3};
-use wgpu::{naga::back, util::DeviceExt};
+use wgpu::util::DeviceExt;
 
-use super::{
-    BspFaceBuffer, RenderContext,
-    lightmap_load::LightMapAtlasBuffer,
-    utils::{process_face, triangulate_convex_polygon},
-};
+use super::{RenderContext, lightmap_load::LightMapAtlasBuffer, utils::process_face};
 
 #[repr(C)]
 pub struct BspVertex {
     pos: Point3<f32>,
-    norm: Point3<f32>,
     tex_coord: Point2<f32>,
     lightmap_coord: Point2<f32>,
 }
@@ -63,23 +58,17 @@ impl BspVertex {
                     offset: 0,
                     shader_location: 0,
                 },
-                // normal
-                wgpu::VertexAttribute {
-                    format: wgpu::VertexFormat::Float32x3,
-                    offset: 12,
-                    shader_location: 1,
-                },
                 // tex
                 wgpu::VertexAttribute {
                     format: wgpu::VertexFormat::Float32x2,
-                    offset: 24,
-                    shader_location: 2,
+                    offset: 12,
+                    shader_location: 1,
                 },
                 // lightmap
                 wgpu::VertexAttribute {
                     format: wgpu::VertexFormat::Float32x2,
-                    offset: 32,
-                    shader_location: 3,
+                    offset: 20,
+                    shader_location: 2,
                 },
             ],
         }
@@ -161,7 +150,11 @@ impl RenderContext {
         BspWorldSpawnBuffer(batches)
     }
 
-    fn load_entities(&self, bsp: &bsp::Bsp, lightmap: &LightMapAtlasBuffer) -> Option<BspEntitiesBuffer> {
+    fn load_entities(
+        &self,
+        bsp: &bsp::Bsp,
+        lightmap: &LightMapAtlasBuffer,
+    ) -> Option<BspEntitiesBuffer> {
         // TODO sort all of the vertices later
         let rest = &bsp.models[1..];
 
@@ -204,11 +197,4 @@ impl RenderContext {
             lightmap: lightmap.into(),
         }
     }
-}
-
-struct LightmapDimensions {
-    width: i32,
-    height: i32,
-    min_u: i32,
-    min_v: i32,
 }
