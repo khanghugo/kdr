@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use image::{GenericImage, RgbaImage};
+use image::RgbaImage;
 
 use crate::renderer::utils::{face_vertices, get_lightmap_dimensions, vertex_uv};
 
@@ -86,7 +86,7 @@ impl RenderContext {
     pub fn load_lightmap(&self, bsp: &bsp::Bsp) -> LightMapAtlasBuffer {
         // let's do 4K
         // todo: multiple atlases
-        const DIMENSION: u32 = 4096;
+        const DIMENSION: u32 = 1024;
         const PADDING: i32 = 0;
 
         let mut atlas = guillotiere::AtlasAllocator::new(guillotiere::size2(
@@ -119,7 +119,7 @@ impl RenderContext {
 
             let allocation = atlas
                 .allocate(guillotiere::size2(alloc_width, alloc_height))
-                .unwrap();
+                .expect("cannot allocate lightmap atlas");
 
             // very easy to get things wrong, dont touch too much
             let atlas_allocation = LightMapAtlasAllocation {
