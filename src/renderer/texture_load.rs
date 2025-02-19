@@ -1,4 +1,20 @@
+use image::RgbaImage;
+
 use super::{RenderContext, utils::eightbpp_to_rgba8};
+
+pub struct TextureBuffer {
+    pub texture: wgpu::Texture,
+    pub view: wgpu::TextureView,
+    pub bind_group: wgpu::BindGroup,
+}
+
+// impl drop will does some unholy shit
+// basically it is supposed to be RA so don't destroy it before RA
+// impl Drop for TextureBuffer {
+//     fn drop(&mut self) {
+//         self.texture.destroy();
+//     }
+// }
 
 pub struct BspMipTex {
     pub texture: wgpu::Texture,
@@ -44,16 +60,7 @@ impl BspMipTex {
 }
 
 impl RenderContext {
-    pub fn load_miptex(&self, miptex: &bsp::Texture) -> BspMipTex {
-        // TODO: maybe this needs checking??
-        let mip_image = &miptex.mip_images[0];
-        let img = eightbpp_to_rgba8(
-            mip_image.data.get_bytes(),
-            miptex.palette.get_bytes(),
-            miptex.width,
-            miptex.height,
-        );
-
+    pub fn load_rgba8(&self, img: &RgbaImage) -> TextureBuffer {
         let (width, height) = img.dimensions();
 
         let texture = self.device.create_texture(&wgpu::TextureDescriptor {
@@ -71,7 +78,7 @@ impl RenderContext {
             view_formats: &[],
         });
 
-        let texture_view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
 
         self.queue.write_texture(
             wgpu::TexelCopyTextureInfo {
@@ -110,7 +117,7 @@ impl RenderContext {
                 // texture
                 wgpu::BindGroupEntry {
                     binding: 0,
-                    resource: wgpu::BindingResource::TextureView(&texture_view),
+                    resource: wgpu::BindingResource::TextureView(&view),
                 },
                 // linear sampler
                 wgpu::BindGroupEntry {
@@ -120,9 +127,31 @@ impl RenderContext {
             ],
         });
 
+        TextureBuffer {
+            texture,
+            view,
+            bind_group,
+        }
+    }
+    pub fn load_miptex(&self, miptex: &bsp::Texture) -> BspMipTex {
+        // TODO: maybe this needs checking??
+        let mip_image = &miptex.mip_images[0];
+        let img = eightbpp_to_rgba8(
+            mip_image.data.get_bytes(),
+            miptex.palette.get_bytes(),
+            miptex.width,
+            miptex.height,
+        );
+
+        let TextureBuffer {
+            texture,
+            view,
+            bind_group,
+        } = self.load_rgba8(&img);
+
         BspMipTex {
             texture,
-            view: texture_view,
+            view,
             bind_group,
         }
     }

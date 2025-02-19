@@ -1,11 +1,10 @@
-use std::{io::BufReader, num::NonZeroU32, sync::Arc, time::Instant};
+use std::{sync::Arc, time::Instant};
 
-use bsp_load::{BspBuffer, BspTextureBatchBuffer, BspVertex, BspWorldSpawnBuffer};
+use bsp_load::{BspBuffer, BspVertex};
 use camera::{CAM_SPEED, CAM_TURN, Camera};
 use lightmap_load::LightMapAtlasBuffer;
-use miptex_load::BspMipTex;
-use types::{BspFaceBuffer, MeshBuffer};
-use wgpu::{Extent3d, util::DeviceExt};
+use texture_load::BspMipTex;
+use wgpu::Extent3d;
 use winit::{
     application::ApplicationHandler,
     dpi::LogicalSize,
@@ -22,12 +21,13 @@ use bitflags::bitflags;
 mod bsp_load;
 mod camera;
 mod lightmap_load;
-mod miptex_load;
+mod mdl_load;
+mod texture_load;
 mod types;
 mod utils;
 
 const FILE: &str = "./examples/textures.obj";
-const BSP_FILE: &str = "./examples/chk_section.bsp";
+const BSP_FILE: &str = "./examples/hb_MART.bsp";
 
 const MAX_TEXTURES: u32 = 128;
 
@@ -106,7 +106,8 @@ impl RenderContext {
             .await
             .unwrap();
 
-        let shader = device.create_shader_module(wgpu::include_wgsl!("./shader/main.wgsl"));
+        let bsp_shader = device.create_shader_module(wgpu::include_wgsl!("./shader/bsp.wgsl"));
+        let mdl_shader = device.create_shader_module(wgpu::include_wgsl!("./shader/mdl.wgsl"));
 
         // camera stuffs
         let cam_buffer = device.create_buffer(&wgpu::BufferDescriptor {
@@ -198,16 +199,16 @@ impl RenderContext {
         let bsp_vertex_buffer_layout = BspVertex::buffer_layout();
 
         let bsp_render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("main render pipeline"),
+            label: Some("bsp render pipeline"),
             layout: Some(&pipeline_layout),
             vertex: wgpu::VertexState {
-                module: &shader,
+                module: &bsp_shader,
                 entry_point: Some("vs_main"),
                 compilation_options: Default::default(),
                 buffers: &[bsp_vertex_buffer_layout],
             },
             fragment: Some(wgpu::FragmentState {
-                module: &shader,
+                module: &bsp_shader,
                 entry_point: Some("fs_main"),
                 compilation_options: Default::default(),
                 targets: &[Some(alpha_blending)],
@@ -307,13 +308,14 @@ impl RenderContext {
                 &[],
             );
 
-            // TODO: room for improvement
+            state.draw_call = 0;
 
+            // TODO: room for improvement
             // drawing worldspawn
             let world_spawn = &state.bsp_buffer.worldspawn;
 
+            state.draw_call += world_spawn.0.len();
             world_spawn.0.iter().for_each(|batch| {
-                // rpass.set_bind_group(1, &state.bsp_textures[batch.texture_index].bind_group, &[]);
                 rpass.set_bind_group(1, &state.bsp_miptexes[batch.texture_index].bind_group, &[]);
                 rpass.set_vertex_buffer(0, batch.vertex_buffer.slice(..));
                 rpass.set_index_buffer(batch.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
@@ -322,6 +324,8 @@ impl RenderContext {
 
             // drawing entities
             state.bsp_buffer.entities.as_ref().map(|entities| {
+                state.draw_call += entities.0.len();
+
                 entities.0.iter().for_each(|batch| {
                     rpass.set_bind_group(
                         1,
@@ -333,71 +337,11 @@ impl RenderContext {
                     rpass.draw_indexed(0..batch.index_count as u32, 0, 0..1);
                 });
             });
-
-            state.draw_call = 0;
-            state.draw_call += world_spawn.0.len();
-            state
-                .bsp_buffer
-                .entities
-                .as_ref()
-                .map(|entities| state.draw_call += entities.0.len());
         }
 
         self.queue.submit(Some(encoder.finish()));
         frame.present();
     }
-
-    fn load_obj(&self, model: tobj::Model) -> MeshBuffer {
-        let vertex_array = mesh_to_interleaved_data(&model.mesh);
-
-        let vertex_buffer = self
-            .device
-            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("loading .obj"),
-                contents: bytemuck::cast_slice(&vertex_array),
-                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
-            });
-
-        let vertex_index_array: Vec<u32> = (0..model.mesh.indices.len() as u32).collect();
-
-        let index_buffer = self
-            .device
-            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("loading .obj indices"),
-                contents: bytemuck::cast_slice(&vertex_index_array),
-                usage: wgpu::BufferUsages::INDEX | wgpu::BufferUsages::COPY_DST,
-            });
-
-        MeshBuffer {
-            vertex_buffer,
-            index_buffer,
-            index_length: vertex_index_array.len(),
-            material: model.mesh.material_id,
-        }
-    }
-}
-
-fn mesh_to_interleaved_data(mesh: &tobj::Mesh) -> Vec<f32> {
-    assert!(!mesh.positions.is_empty(), "Missing position data");
-    assert!(mesh.positions.len() % 3 == 0, "Invalid position data");
-    assert!(!mesh.normals.is_empty(), "Missing normals");
-    assert!(mesh.normals.len() % 3 == 0, "Invalid normal data");
-    assert!(!mesh.texcoords.is_empty(), "Missing texture coordinates");
-    assert!(mesh.texcoords.len() % 2 == 0, "Invalid texcoord data");
-
-    mesh.indices
-        .iter()
-        .flat_map(|&idx| {
-            let pos = &mesh.positions[(3 * idx as usize)..(3 * idx as usize + 3)];
-            // let pos = [mesh.positions[3 * idx as usize], mesh.positions[3 * idx as usize + 1], mesh.positions[3 * idx as usize + 2]];
-            // let pos = pos.as_slice();
-            let normal = &mesh.normals[(3 * idx as usize)..(3 * idx as usize + 3)];
-            let texcoord = &mesh.texcoords[(2 * idx as usize)..(2 * idx as usize + 2)];
-
-            [pos, normal, texcoord].into_iter().flatten()
-        })
-        .cloned()
-        .collect()
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -406,7 +350,6 @@ struct Key(u32);
 struct App {
     graphic_context: Option<RenderContext>,
     window: Option<Arc<Window>>,
-    objs: Vec<MeshBuffer>,
 
     // time
     last_time: Instant,
@@ -439,7 +382,6 @@ impl Default for App {
         Self {
             graphic_context: Default::default(),
             window: Default::default(),
-            objs: Default::default(),
             last_time: Instant::now(),
             frame_time: 1.,
             render_state: Default::default(),
