@@ -22,5 +22,7 @@ winit = "0.30.9"
 
 bsp = { path = "./bsp" }
 wad = { version = "0.1.0", path = "wad" }
+mdl = { path = "./mdl" }
 bitflags = "2.8.0"
 guillotiere = "0.6.2"
+eyre = "0.6.12"

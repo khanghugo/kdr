@@ -3,7 +3,9 @@ use std::{sync::Arc, time::Instant};
 use bsp_load::{BspBuffer, BspVertex};
 use camera::{CAM_SPEED, CAM_TURN, Camera};
 use lightmap_load::LightMapAtlasBuffer;
+use mdl_load::{MdlLoader, MdlVertexBuffer};
 use texture_load::BspMipTex;
+use types::{TextureArrayBuffer, TextureBuffer};
 use wgpu::Extent3d;
 use winit::{
     application::ApplicationHandler,
@@ -28,6 +30,9 @@ mod utils;
 
 const FILE: &str = "./examples/textures.obj";
 const BSP_FILE: &str = "./examples/hb_MART.bsp";
+const MDL_FILE: &str = "/home/khang/kdr/examples/ambeech1.mdl";
+// const MDL_FILE: &str = "/home/khang/kdr/examples/sekai3.mdl";
+// const BSP_FILE: &str = "/home/khang/map/arte_aerorun/slide_surfer.bsp";
 
 const MAX_TEXTURES: u32 = 128;
 
@@ -35,6 +40,7 @@ struct RenderContext {
     device: wgpu::Device,
     queue: wgpu::Queue,
     bsp_render_pipeline: wgpu::RenderPipeline,
+    mdl_render_pipeline: wgpu::RenderPipeline,
     swapchain_format: wgpu::TextureFormat,
     surface: wgpu::Surface<'static>,
     cam_buffer: wgpu::Buffer,
@@ -56,6 +62,9 @@ struct RenderState {
     bsp_buffer: BspBuffer,
     bsp_miptexes: Vec<BspMipTex>,
 
+    mdl_buffers: Vec<MdlVertexBuffer>,
+    mdl_textures: Vec<TextureArrayBuffer>,
+
     camera: Camera,
 
     // debug
@@ -69,6 +78,8 @@ impl Default for RenderState {
             bsp_buffer: Default::default(),
             bsp_miptexes: Default::default(),
             draw_call: 0,
+            mdl_buffers: vec![],
+            mdl_textures: vec![],
         }
     }
 }
@@ -107,7 +118,6 @@ impl RenderContext {
             .unwrap();
 
         let bsp_shader = device.create_shader_module(wgpu::include_wgsl!("./shader/bsp.wgsl"));
-        let mdl_shader = device.create_shader_module(wgpu::include_wgsl!("./shader/mdl.wgsl"));
 
         // camera stuffs
         let cam_buffer = device.create_buffer(&wgpu::BufferDescriptor {
@@ -196,6 +206,7 @@ impl RenderContext {
             write_mask: wgpu::ColorWrites::ALL,
         };
 
+        // bsp render pipeline
         let bsp_vertex_buffer_layout = BspVertex::buffer_layout();
 
         let bsp_render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
@@ -211,7 +222,7 @@ impl RenderContext {
                 module: &bsp_shader,
                 entry_point: Some("fs_main"),
                 compilation_options: Default::default(),
-                targets: &[Some(alpha_blending)],
+                targets: &[Some(alpha_blending.clone())], // same alpha_blending as mdl
             }),
             primitive: wgpu::PrimitiveState {
                 front_face: wgpu::FrontFace::Cw,
@@ -231,6 +242,12 @@ impl RenderContext {
             cache: None,
         });
 
+        // mdl render pipeline
+        let mdl_render_pipeline =
+            MdlLoader::create_render_pipeline(&device, &queue, &cam_bind_group_layout, vec![
+                alpha_blending,
+            ]);
+
         let config = surface
             .get_default_config(&adapter, size.width, size.height)
             .unwrap();
@@ -246,6 +263,7 @@ impl RenderContext {
             device,
             queue,
             bsp_render_pipeline,
+            mdl_render_pipeline,
             swapchain_format,
             surface,
             cam_bind_group,
@@ -300,43 +318,71 @@ impl RenderContext {
 
             let mut rpass = encoder.begin_render_pass(&pass_descriptor);
 
-            rpass.set_pipeline(&self.bsp_render_pipeline);
-            rpass.set_bind_group(0, &self.cam_bind_group, &[]);
-            rpass.set_bind_group(
-                2,
-                &state.bsp_buffer.lightmap.as_ref().unwrap().bind_group,
-                &[],
-            );
-
             state.draw_call = 0;
 
-            // TODO: room for improvement
-            // drawing worldspawn
-            let world_spawn = &state.bsp_buffer.worldspawn;
+            // drawing bsp
+            // {
+            //     rpass.set_pipeline(&self.bsp_render_pipeline);
+            //     rpass.set_bind_group(0, &self.cam_bind_group, &[]);
+            //     rpass.set_bind_group(
+            //         2,
+            //         &state.bsp_buffer.lightmap.as_ref().unwrap().bind_group,
+            //         &[],
+            //     );
 
-            state.draw_call += world_spawn.0.len();
-            world_spawn.0.iter().for_each(|batch| {
-                rpass.set_bind_group(1, &state.bsp_miptexes[batch.texture_index].bind_group, &[]);
-                rpass.set_vertex_buffer(0, batch.vertex_buffer.slice(..));
-                rpass.set_index_buffer(batch.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
-                rpass.draw_indexed(0..batch.index_count as u32, 0, 0..1);
-            });
+            //     // TODO: room for improvement
+            //     // drawing worldspawn
+            //     let world_spawn = &state.bsp_buffer.worldspawn;
 
-            // drawing entities
-            state.bsp_buffer.entities.as_ref().map(|entities| {
-                state.draw_call += entities.0.len();
+            //     state.draw_call += world_spawn.0.len();
+            //     world_spawn.0.iter().for_each(|batch| {
+            //         rpass.set_bind_group(
+            //             1,
+            //             &state.bsp_miptexes[batch.texture_index].bind_group,
+            //             &[],
+            //         );
+            //         rpass.set_vertex_buffer(0, batch.vertex_buffer.slice(..));
+            //         rpass.set_index_buffer(batch.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
+            //         rpass.draw_indexed(0..batch.index_count as u32, 0, 0..1);
+            //     });
 
-                entities.0.iter().for_each(|batch| {
+            //     // drawing entities
+            //     state.bsp_buffer.entities.as_ref().map(|entities| {
+            //         state.draw_call += entities.0.len();
+
+            //         entities.0.iter().for_each(|batch| {
+            //             rpass.set_bind_group(
+            //                 1,
+            //                 &state.bsp_miptexes[batch.texture_index].bind_group,
+            //                 &[],
+            //             );
+            //             rpass.set_vertex_buffer(0, batch.vertex_buffer.slice(..));
+            //             rpass.set_index_buffer(
+            //                 batch.index_buffer.slice(..),
+            //                 wgpu::IndexFormat::Uint32,
+            //             );
+            //             rpass.draw_indexed(0..batch.index_count as u32, 0, 0..1);
+            //         });
+            //     });
+            // }
+
+            // drawing mdl
+            {
+                rpass.set_pipeline(&self.mdl_render_pipeline);
+                rpass.set_bind_group(0, &self.cam_bind_group, &[]);
+
+                state.mdl_buffers.iter().for_each(|batch| {
                     rpass.set_bind_group(
                         1,
-                        &state.bsp_miptexes[batch.texture_index].bind_group,
+                        &state.mdl_textures[batch.texture_array_idx as usize].bind_group,
                         &[],
                     );
                     rpass.set_vertex_buffer(0, batch.vertex_buffer.slice(..));
-                    rpass.set_index_buffer(batch.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
-                    rpass.draw_indexed(0..batch.index_count as u32, 0, 0..1);
+                    rpass.draw(0..batch.vertex_count, 0..1);
+                    // rpass.set_index_buffer(batch.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
+                    // rpass.draw_indexed(0..batch.index_count as u32, 0, 0..1);
                 });
-            });
+            }
         }
 
         self.queue.submit(Some(encoder.finish()));
@@ -445,6 +491,13 @@ impl ApplicationHandler for App {
                 .iter()
                 .map(|miptex| render_context.load_miptex(miptex))
                 .collect();
+
+            let mdl = mdl::Mdl::open_from_file(MDL_FILE).unwrap();
+            let (a, b) =
+                MdlLoader::load_mdls(&render_context.device, &render_context.queue, &[mdl]);
+
+            self.render_state.mdl_buffers = a;
+            self.render_state.mdl_textures = b;
         }
 
         self.render_state.camera = Camera::default();

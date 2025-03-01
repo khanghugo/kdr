@@ -1,12 +1,8 @@
+use std::{collections::HashMap, num::NonZero};
+
 use image::RgbaImage;
 
-use super::{RenderContext, utils::eightbpp_to_rgba8};
-
-pub struct TextureBuffer {
-    pub texture: wgpu::Texture,
-    pub view: wgpu::TextureView,
-    pub bind_group: wgpu::BindGroup,
-}
+use super::{RenderContext, types::TextureBuffer, utils::eightbpp_to_rgba8};
 
 // impl drop will does some unholy shit
 // basically it is supposed to be RA so don't destroy it before RA
@@ -58,6 +54,54 @@ impl BspMipTex {
         }
     }
 }
+
+struct TextureBufferArray {
+    pub texture: wgpu::Texture,
+    pub view: wgpu::TextureView,
+    pub bind_group: wgpu::BindGroup,
+}
+
+impl TextureBufferArray {
+    pub fn bind_group_layout_descriptor(
+        texture_count: NonZero<u32>,
+    ) -> wgpu::BindGroupLayoutDescriptor<'static> {
+        wgpu::BindGroupLayoutDescriptor {
+            label: Some("texture array bind group layout descriptor"),
+            entries: &[
+                // texture
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2Array,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+                // linear sampler
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                    count: None,
+                },
+            ],
+        }
+    }
+
+    // loads all textures into
+    fn load_textures(device: &wgpu::Device, queue: &wgpu::Queue, imgs: &[RgbaImage]) {
+        // indexing the img index with its dimensions
+        let mut bucket: HashMap<(u32, u32), Vec<usize>> = HashMap::new();
+
+        imgs.iter().enumerate().for_each(|(idx, img)| {
+            bucket.entry(img.dimensions()).or_insert(vec![]).push(idx);
+        });
+    }
+}
+
+// fn load_rgba8(device: &wgpu::Device, queue: &wgpu::Queue, img: &RgbaImage) {}
 
 impl RenderContext {
     pub fn load_rgba8(&self, img: &RgbaImage) -> TextureBuffer {

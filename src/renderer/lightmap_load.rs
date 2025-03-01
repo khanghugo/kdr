@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use image::RgbaImage;
 
-use crate::renderer::utils::{face_vertices, get_lightmap_dimensions, vertex_uv};
+use crate::renderer::utils::{face_vertices, vertex_uv};
 
 use super::RenderContext;
 
@@ -285,4 +285,48 @@ impl RenderContext {
             bind_group,
         }
     }
+}
+
+#[derive(Debug)]
+struct LightmapDimension {
+    pub width: i32,
+    pub height: i32,
+    pub min_u: i32,
+    pub min_v: i32,
+}
+
+// minimum light map size is always 2x2
+// https://github.com/rein4ce/hlbsp/blob/1546eaff4e350a2329bc2b67378f042b09f0a0b7/js/hlbsp.js#L499
+fn get_lightmap_dimensions(uvs: &[[f32; 2]]) -> LightmapDimension {
+    let mut min_u = uvs[0][0].floor() as i32;
+    let mut min_v = uvs[0][1].floor() as i32;
+    let mut max_u = uvs[0][0].floor() as i32;
+    let mut max_v = uvs[0][1].floor() as i32;
+
+    for i in 1..uvs.len() {
+        let u = uvs[i][0].floor() as i32;
+        let v = uvs[i][1].floor() as i32;
+
+        if u < min_u {
+            min_u = u;
+        }
+        if v < min_v {
+            min_v = v;
+        }
+        if u > max_u {
+            max_u = u;
+        }
+        if v > max_v {
+            max_v = v;
+        }
+    }
+
+    // light map dimension is basically the face dimensions divided by 16
+    // because luxel is 1 per 16 texel
+    return LightmapDimension {
+        width: ((max_u as f32 / 16.0).ceil() as i32) - ((min_u as f32 / 16.0).floor() as i32) + 1,
+        height: ((max_v as f32 / 16.0).ceil() as i32) - ((min_v as f32 / 16.0).floor() as i32) + 1,
+        min_u,
+        min_v,
+    };
 }

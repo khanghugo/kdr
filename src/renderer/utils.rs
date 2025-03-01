@@ -50,21 +50,6 @@ pub fn eightbpp_to_rgba8(img: &[u8], palette: &[[u8; 3]], width: u32, height: u3
     .expect("cannot create rgba8 from 8pp")
 }
 
-// deepseek wrote this
-pub fn triangulate_convex_polygon(vertices: &[bsp::Vec3]) -> Vec<u32> {
-    // For convex polygons, we can simply fan-triangulate from the first vertex
-    // This creates triangle indices: 0-1-2, 0-2-3, 0-3-4, etc.
-    assert!(vertices.len() >= 3, "Polygon needs at least 3 vertices");
-
-    let mut indices = Vec::with_capacity((vertices.len() - 2) * 3);
-    for i in 1..vertices.len() - 1 {
-        indices.push(0);
-        indices.push(i as u32);
-        indices.push((i + 1) as u32);
-    }
-    indices
-}
-
 pub fn face_vertices(face: &bsp::Face, bsp: &bsp::Bsp) -> Vec<bsp::Vec3> {
     let mut face_vertices = vec![];
 
@@ -90,158 +75,23 @@ pub fn vertex_uv(pos: &bsp::Vec3, texinfo: &bsp::TexInfo) -> [f32; 2] {
     ]
 }
 
-pub fn process_face(
-    face: &bsp::Face,
-    bsp: &bsp::Bsp,
-    lightmap: &LightMapAtlasBuffer,
-    face_idx: usize,
-) -> (Vec<f32>, Vec<u32>) {
-    let face_vertices = face_vertices(face, bsp);
-
-    let indices = triangulate_convex_polygon(&face_vertices);
-
-    // very inefficient right now
-    // becuase all vertices here have the same normal
-    let normal = bsp.planes[face.plane as usize].normal;
-    let texinfo = &bsp.texinfo[face.texinfo as usize];
-
-    // uv
-    let miptex = &bsp.textures[texinfo.texture_index as usize];
-
-    let vertices_texcoords: Vec<[f32; 2]> = face_vertices
-        .iter()
-        .map(|pos| vertex_uv(pos, &texinfo))
-        .collect();
-
-    let vertices_normalized_texcoords: Vec<[f32; 2]> = vertices_texcoords
-        .iter()
-        .map(|uv| [uv[0] / miptex.width as f32, uv[1] / miptex.height as f32])
-        .collect();
-
-    // lightmap
-    let what = lightmap.allocations.get(&face_idx);
-
-    // https://github.com/magcius/noclip.website/blob/66595465295720f8078a53d700988241b0adc2b0/src/GoldSrc/BSPFile.ts#L285
-    let (face_min_u, _face_max_u, face_min_v, _face_max_v) = get_face_uv_box(&vertices_texcoords);
-
-    let lightmap_texcoords: Vec<[f32; 2]> = if let Some(allocation) = what {
-        let lightmap_texcoords = vertices_texcoords.iter().map(|&[u, v, ..]| {
-            let lightmap_u =
-                ((u / 16.0) - (face_min_u / 16.0).floor() + 0.5) / allocation.lightmap_width;
-            let lightmap_v =
-                ((v / 16.0) - (face_min_v / 16.0).floor() + 0.5) / allocation.lightmap_height;
-
-            [
-                allocation.atlas_x + lightmap_u * allocation.atlas_width,
-                allocation.atlas_y + lightmap_v * allocation.atlas_height,
-            ]
-        });
-
-        lightmap_texcoords.collect()
-    } else {
-        vertices_normalized_texcoords
-            .iter()
-            .map(|_| [0., 0.])
-            .collect()
-    };
-
-    // collect to buffer
-    let interleaved: Vec<f32> = face_vertices
-        .into_iter()
-        .zip(vertices_normalized_texcoords.into_iter())
-        .zip(lightmap_texcoords.into_iter())
-        .flat_map(|((pos, texcoord), lightmap_coord)| {
-            [
-                // no need to flip any of the geometry
-                // we will do that to the camera
-                // -pos.x,
-                // pos.z, // flip y and z because the game is z up
-                // pos.y,
-                pos.x,
-                pos.y,
-                pos.z,
-                // normal.x,
-                // normal.y,
-                // normal.z,
-                texcoord[0],
-                texcoord[1],
-                lightmap_coord[0],
-                lightmap_coord[1],
-            ]
-        })
-        .collect();
-
-    (interleaved, indices)
-}
-
-// the dimension of the face on texture coordinate
-fn get_face_uv_box(uvs: &[[f32; 2]]) -> (f32, f32, f32, f32) {
-    let mut min_u = uvs[0][0];
-    let mut min_v = uvs[0][1];
-    let mut max_u = uvs[0][0];
-    let mut max_v = uvs[0][1];
-
-    for i in 1..uvs.len() {
-        let u = uvs[i][0];
-        let v = uvs[i][1];
-
-        if u < min_u {
-            min_u = u;
-        }
-        if v < min_v {
-            min_v = v;
-        }
-        if u > max_u {
-            max_u = u;
-        }
-        if v > max_v {
-            max_v = v;
+// written by deepseek
+pub fn triangle_strip_to_triangle_list(strip_vertices: &[mdl::Trivert]) -> Vec<mdl::Trivert> {
+    let mut triangles = Vec::new();
+    for i in 0..strip_vertices.len().saturating_sub(2) {
+        if i % 2 == 0 {
+            triangles.extend_from_slice(&[
+                strip_vertices[i],
+                strip_vertices[i + 1],
+                strip_vertices[i + 2],
+            ]);
+        } else {
+            triangles.extend_from_slice(&[
+                strip_vertices[i + 1],
+                strip_vertices[i],
+                strip_vertices[i + 2],
+            ]);
         }
     }
-
-    return (min_u, max_u, min_v, max_v);
-}
-
-#[derive(Debug)]
-pub struct LightmapDimension {
-    pub width: i32,
-    pub height: i32,
-    pub min_u: i32,
-    pub min_v: i32,
-}
-
-// minimum light map size is always 2x2
-// https://github.com/rein4ce/hlbsp/blob/1546eaff4e350a2329bc2b67378f042b09f0a0b7/js/hlbsp.js#L499
-pub fn get_lightmap_dimensions(uvs: &[[f32; 2]]) -> LightmapDimension {
-    let mut min_u = uvs[0][0].floor() as i32;
-    let mut min_v = uvs[0][1].floor() as i32;
-    let mut max_u = uvs[0][0].floor() as i32;
-    let mut max_v = uvs[0][1].floor() as i32;
-
-    for i in 1..uvs.len() {
-        let u = uvs[i][0].floor() as i32;
-        let v = uvs[i][1].floor() as i32;
-
-        if u < min_u {
-            min_u = u;
-        }
-        if v < min_v {
-            min_v = v;
-        }
-        if u > max_u {
-            max_u = u;
-        }
-        if v > max_v {
-            max_v = v;
-        }
-    }
-
-    // light map dimension is basically the face dimensions divided by 16
-    // because luxel is 1 per 16 texel
-    return LightmapDimension {
-        width: ((max_u as f32 / 16.0).ceil() as i32) - ((min_u as f32 / 16.0).floor() as i32) + 1,
-        height: ((max_v as f32 / 16.0).ceil() as i32) - ((min_v as f32 / 16.0).floor() as i32) + 1,
-        min_u,
-        min_v,
-    };
+    triangles
 }
