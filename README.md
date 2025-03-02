@@ -12,18 +12,19 @@ Currently work in progress, check back later
     - [ ] Weird math lightmap in the case of older compiled HL maps
     - [ ] Light styles (unplanned) 
     - [X] Transparency 
-    - [ ] Named entities. Some entities aren't properly displaced
+    - [X] Named entities. Some entities aren't properly displaced
     - [X] Samey shader as the game
   - MDL
-    - [ ] Face
+    - [X] Face
     - [X] Texture
   - [ ] Skybox
   - Optimization
     - [X] Lightmap atlas
     - [X] Batch rendering based on texture
-    - [ ] Array of texture
+    - [X] Array of texture
     - [ ] Transparency sorting
     - [ ] Visibility. At the moment it renders everything
+  - [X] Mipmapping
 - Navigation
   - [X] Noclip movement
   - [X] Pitch and Yaw
