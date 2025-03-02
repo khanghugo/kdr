@@ -1,3 +1,4 @@
+mod app;
 mod renderer;
 
 pub fn main() {
@@ -26,5 +27,5 @@ pub fn main() {
 
     // hello_triangles::triangle();
     // obj_render::obj();
-    renderer::bsp();
+    app::bsp();
 }
