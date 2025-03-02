@@ -563,11 +563,14 @@ impl ApplicationHandler for App {
         let render_context = pollster::block_on(ObjRenderer::new(window.clone()));
 
         // loading obj
-        let (models, materials) = tobj::load_obj(FILE, &tobj::LoadOptions {
-            triangulate: true,
-            single_index: true,
-            ..Default::default()
-        })
+        let (models, materials) = tobj::load_obj(
+            FILE,
+            &tobj::LoadOptions {
+                triangulate: true,
+                single_index: true,
+                ..Default::default()
+            },
+        )
         .unwrap();
 
         println!("{:#?}", models);

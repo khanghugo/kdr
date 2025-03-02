@@ -243,10 +243,12 @@ impl RenderContext {
         });
 
         // mdl render pipeline
-        let mdl_render_pipeline =
-            MdlLoader::create_render_pipeline(&device, &queue, &cam_bind_group_layout, vec![
-                alpha_blending,
-            ]);
+        let mdl_render_pipeline = MdlLoader::create_render_pipeline(
+            &device,
+            &queue,
+            &cam_bind_group_layout,
+            vec![alpha_blending],
+        );
 
         let config = surface
             .get_default_config(&adapter, size.width, size.height)
@@ -372,13 +374,16 @@ impl RenderContext {
                 rpass.set_bind_group(0, &self.cam_bind_group, &[]);
 
                 state.mdl_buffers.iter().for_each(|batch| {
+                    state.draw_call += 1;
+
                     rpass.set_bind_group(
                         1,
                         &state.mdl_textures[batch.texture_array_idx as usize].bind_group,
                         &[],
                     );
                     rpass.set_vertex_buffer(0, batch.vertex_buffer.slice(..));
-                    rpass.draw(0..batch.vertex_count, 0..1);
+                    rpass.set_index_buffer(batch.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
+                    rpass.draw_indexed(0..batch.index_count as u32, 0, 0..1);
                     // rpass.set_index_buffer(batch.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
                     // rpass.draw_indexed(0..batch.index_count as u32, 0, 0..1);
                 });

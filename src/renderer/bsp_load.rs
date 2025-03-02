@@ -321,6 +321,9 @@ fn get_face_uv_box(uvs: &[[f32; 2]]) -> (f32, f32, f32, f32) {
 }
 
 // deepseek wrote this
+// input is a winding order polygon
+// the output is the vertex index
+// so there is no need to do anythign to the vertex buffer, only play around with the index buffer
 fn triangulate_convex_polygon(vertices: &[bsp::Vec3]) -> Vec<u32> {
     // For convex polygons, we can simply fan-triangulate from the first vertex
     // This creates triangle indices: 0-1-2, 0-2-3, 0-3-4, etc.

@@ -85,7 +85,8 @@ impl MdlMipTex {
 // will create 1 atlas for every model
 pub struct MdlVertexBuffer {
     pub vertex_buffer: wgpu::Buffer,
-    pub vertex_count: u32,
+    pub index_buffer: wgpu::Buffer,
+    pub index_count: u32,
     pub texture_array_idx: usize,
 }
 
@@ -133,7 +134,7 @@ impl MdlLoader {
             primitive: wgpu::PrimitiveState {
                 front_face: wgpu::FrontFace::Cw,
                 cull_mode: Some(wgpu::Face::Back),
-                topology: wgpu::PrimitiveTopology::TriangleStrip,
+                topology: wgpu::PrimitiveTopology::TriangleList,
                 ..Default::default()
             },
             depth_stencil: Some(wgpu::DepthStencilState {
@@ -167,47 +168,89 @@ impl MdlLoader {
         // (texture array idx, interleaved vertex data)
         // no need for indices data because ~~we are rendering strip~~
         // we are rendering all triangles
-        let mut batches = HashMap::<usize, Vec<f32>>::new();
+        let mut batches = HashMap::<usize, (Vec<f32>, Vec<u32>)>::new();
 
         mdls.iter().enumerate().for_each(|(mdl_index, mdl)| {
             mdl.bodyparts.iter().for_each(|bodypart| {
                 bodypart.models.iter().for_each(|model| {
                     model.meshes.iter().for_each(|mesh| {
-                        if mesh.is_fan() {
-                            println!("does not support fan triangle");
-                            return;
-                        }
-
                         // one mesh has the same texture everything
                         let texture_idx = mesh.header.skin_ref as usize;
                         let texture = &mdl.textures[texture_idx];
                         let (width, height) = texture.dimensions();
 
-                        let triangle_list = triangle_strip_to_triangle_list(&mesh.vertices);
+                        // let triangle_list = triangle_strip_to_triangle_list(&mesh.vertices);
 
-                        let triangles = triangle_list;
-                        let triangles = &mesh.vertices;
+                        mesh.triangles.iter().for_each(|triangles| {
+                            // it is possible for a mesh to have both fan and strip run
+                            let (is_strip, triverts) = match triangles {
+                                mdl::MeshTriangles::Strip(triverts) => (true, triverts),
+                                mdl::MeshTriangles::Fan(triverts) => (false, triverts),
+                            };
 
-                        triangles.iter().for_each(|vertex| {
-                            let [u, v] = [
-                                vertex.header.s as f32 / width as f32,
-                                vertex.header.t as f32 / height as f32,
-                            ];
+                            // now just convert triverts into mdl vertex data
+                            // then do some clever stuff with index buffer to make it triangle list
 
                             let (array_idx, layer_idx) = lookup_table[mdl_index][texture_idx];
+                            let batch = batches.entry(array_idx).or_insert((vec![], vec![]));
 
-                            let data = [
-                                vertex.vertex.x,
-                                vertex.vertex.y,
-                                vertex.vertex.z,
-                                u,
-                                v,
-                                layer_idx as f32,
-                            ];
+                            let new_vertices_offset = batch.0.len() / MdlVertex::f32_count();
 
-                            let batch = batches.entry(array_idx).or_insert(vec![]);
+                            // create vertex buffer here
+                            triverts.iter().for_each(|trivert| {
+                                let [u, v] = [
+                                    trivert.header.s as f32 / width as f32,
+                                    trivert.header.t as f32 / height as f32,
+                                ];
 
-                            batch.extend(data);
+                                let vertices = [
+                                    trivert.vertex.x,
+                                    trivert.vertex.y,
+                                    trivert.vertex.z,
+                                    u,
+                                    v,
+                                    layer_idx as f32,
+                                ];
+
+                                batch.0.extend(vertices);
+                                // batch.1.extend(
+                                //     indices.into_iter().map(|i| i + new_vertices_offset as u32),
+                                // );
+                            });
+
+                            let mut index_buffer: Vec<u32> = vec![];
+
+                            // create index buffer here
+                            // here we will create triangle list
+                            // deepseek v3 zero shot this one
+                            if is_strip {
+                                for i in 0..triverts.len().saturating_sub(2) {
+                                    if i % 2 == 0 {
+                                        // Even-indexed triangles
+                                        index_buffer.push(new_vertices_offset as u32 + i as u32);
+                                        index_buffer
+                                            .push(new_vertices_offset as u32 + (i + 1) as u32);
+                                        index_buffer
+                                            .push(new_vertices_offset as u32 + (i + 2) as u32);
+                                    } else {
+                                        // Odd-indexed triangles (flip winding order)
+                                        index_buffer
+                                            .push(new_vertices_offset as u32 + (i + 1) as u32);
+                                        index_buffer.push(new_vertices_offset as u32 + i as u32);
+                                        index_buffer
+                                            .push(new_vertices_offset as u32 + (i + 2) as u32);
+                                    }
+                                }
+                            } else {
+                                let first_index = new_vertices_offset as u32;
+                                for i in 1..triverts.len().saturating_sub(1) {
+                                    index_buffer.push(first_index);
+                                    index_buffer.push(new_vertices_offset as u32 + i as u32);
+                                    index_buffer.push(new_vertices_offset as u32 + (i + 1) as u32);
+                                }
+                            }
+
+                            batch.1.extend(index_buffer);
                         });
                     });
                 });
@@ -216,16 +259,23 @@ impl MdlLoader {
 
         let vertex_buffers: Vec<MdlVertexBuffer> = batches
             .into_iter()
-            .map(|(texture_array_idx, vertices)| {
+            .map(|(texture_array_idx, (vertices, indices))| {
                 let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                    label: Some("loading a mdl vertex"),
+                    label: Some("loading a mdl vertex buffer"),
                     contents: bytemuck::cast_slice(&vertices),
                     usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
                 });
 
+                let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                    label: Some("loading a mdl vertex index buffer"),
+                    contents: bytemuck::cast_slice(&indices),
+                    usage: wgpu::BufferUsages::INDEX | wgpu::BufferUsages::COPY_DST,
+                });
+
                 MdlVertexBuffer {
                     vertex_buffer,
-                    vertex_count: (vertices.len() / MdlVertex::f32_count()) as u32,
+                    index_buffer,
+                    index_count: (vertices.len() / MdlVertex::f32_count()) as u32,
                     texture_array_idx,
                 }
             })
