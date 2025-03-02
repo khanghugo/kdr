@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use bytemuck::{Pod, Zeroable};
 use cgmath::{Point2, Point3};
 use image::RgbaImage;
 
@@ -7,16 +8,22 @@ use eyre::eyre;
 use wgpu::util::DeviceExt;
 
 use super::{
-    RenderContext,
-    types::{TextureArrayBuffer, TextureBuffer},
-    utils::{eightbpp_to_rgba8, triangle_strip_to_triangle_list},
+    camera::Camera,
+    texture_load::texture_array::{TextureArrayBuffer, create_texture_array},
+    utils::eightbpp_to_rgba8,
 };
 
+pub struct MdlBuffer {
+    pub vertices: Vec<MdlVertexBuffer>,
+    pub textures: Vec<TextureArrayBuffer>,
+}
+
 #[repr(C)]
+#[derive(Pod, Zeroable, Clone, Copy)]
 pub struct MdlVertex {
-    pos: Point3<f32>,
-    uv: Point2<f32>,
-    layer: u32, // texture idx from bucket
+    pos: [f32; 3],
+    uv: [f32; 2],
+    layer: u32, // texture idx from texture array
 }
 
 impl MdlVertex {
@@ -46,43 +53,8 @@ impl MdlVertex {
             ],
         }
     }
-
-    fn f32_count() -> usize {
-        std::mem::size_of::<Self>() / 4
-    }
 }
 
-struct MdlMipTex;
-
-impl MdlMipTex {
-    pub fn bind_group_layout_descriptor() -> wgpu::BindGroupLayoutDescriptor<'static> {
-        wgpu::BindGroupLayoutDescriptor {
-            label: Some("miptex bind group layout descriptor"),
-            entries: &[
-                // texture
-                wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Texture {
-                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                        view_dimension: wgpu::TextureViewDimension::D2Array,
-                        multisampled: false,
-                    },
-                    count: None,
-                },
-                // linear sampler
-                wgpu::BindGroupLayoutEntry {
-                    binding: 1,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                    count: None,
-                },
-            ],
-        }
-    }
-}
-
-// will create 1 atlas for every model
 pub struct MdlVertexBuffer {
     pub vertex_buffer: wgpu::Buffer,
     pub index_buffer: wgpu::Buffer,
@@ -93,19 +65,17 @@ pub struct MdlVertexBuffer {
 pub struct MdlLoader;
 
 impl MdlLoader {
-    // load one model into 1 vertex buffer
-    pub fn load_mdl(device: &wgpu::Device, queue: &wgpu::Queue, mdls: mdl::Mdl) {}
-
     pub fn create_render_pipeline(
         device: &wgpu::Device,
-        queue: &wgpu::Queue,
-        camera_bind_group_layout: &wgpu::BindGroupLayout,
         fragment_targets: Vec<wgpu::ColorTargetState>,
     ) -> wgpu::RenderPipeline {
         let mdl_shader = device.create_shader_module(wgpu::include_wgsl!("./shader/mdl.wgsl"));
 
         let texture_array_bind_group_layout =
             device.create_bind_group_layout(&TextureArrayBuffer::bind_group_layout_descriptor());
+
+        let camera_bind_group_layout =
+            device.create_bind_group_layout(&Camera::bind_group_layout_descriptor());
 
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: None,
@@ -154,11 +124,7 @@ impl MdlLoader {
 
     // load multiple models into 1 vertex buffer
     // can be used for loading 1 model
-    pub fn load_mdls(
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-        mdls: &[mdl::Mdl],
-    ) -> (Vec<MdlVertexBuffer>, Vec<TextureArrayBuffer>) {
+    pub fn load_mdls(device: &wgpu::Device, queue: &wgpu::Queue, mdls: &[mdl::Mdl]) -> MdlBuffer {
         // textures
         // load texures first so we can do everything in 1 bind and 1 draw call
         let (lookup_table, texture_arrays) = Self::load_textures(device, queue, &mdls);
@@ -168,7 +134,7 @@ impl MdlLoader {
         // (texture array idx, interleaved vertex data)
         // no need for indices data because ~~we are rendering strip~~
         // we are rendering all triangles
-        let mut batches = HashMap::<usize, (Vec<f32>, Vec<u32>)>::new();
+        let mut batches = HashMap::<usize, (Vec<MdlVertex>, Vec<u32>)>::new();
 
         mdls.iter().enumerate().for_each(|(mdl_index, mdl)| {
             mdl.bodyparts.iter().for_each(|bodypart| {
@@ -194,29 +160,23 @@ impl MdlLoader {
                             let (array_idx, layer_idx) = lookup_table[mdl_index][texture_idx];
                             let batch = batches.entry(array_idx).or_insert((vec![], vec![]));
 
-                            let new_vertices_offset = batch.0.len() / MdlVertex::f32_count();
+                            let new_vertices_offset = batch.0.len();
 
                             // create vertex buffer here
-                            triverts.iter().for_each(|trivert| {
+                            let vertices = triverts.iter().map(|trivert| {
                                 let [u, v] = [
                                     trivert.header.s as f32 / width as f32,
                                     trivert.header.t as f32 / height as f32,
                                 ];
 
-                                let vertices = [
-                                    trivert.vertex.x,
-                                    trivert.vertex.y,
-                                    trivert.vertex.z,
-                                    u,
-                                    v,
-                                    layer_idx as f32,
-                                ];
-
-                                batch.0.extend(vertices);
-                                // batch.1.extend(
-                                //     indices.into_iter().map(|i| i + new_vertices_offset as u32),
-                                // );
+                                MdlVertex {
+                                    pos: trivert.vertex.to_array(),
+                                    uv: [u, v],
+                                    layer: layer_idx as u32,
+                                }
                             });
+
+                            batch.0.extend(vertices);
 
                             let mut index_buffer: Vec<u32> = vec![];
 
@@ -261,13 +221,13 @@ impl MdlLoader {
             .into_iter()
             .map(|(texture_array_idx, (vertices, indices))| {
                 let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                    label: Some("loading a mdl vertex buffer"),
+                    label: Some("mdl vertex buffer"),
                     contents: bytemuck::cast_slice(&vertices),
                     usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
                 });
 
                 let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                    label: Some("loading a mdl vertex index buffer"),
+                    label: Some("mdl index buffer"),
                     contents: bytemuck::cast_slice(&indices),
                     usage: wgpu::BufferUsages::INDEX | wgpu::BufferUsages::COPY_DST,
                 });
@@ -275,13 +235,16 @@ impl MdlLoader {
                 MdlVertexBuffer {
                     vertex_buffer,
                     index_buffer,
-                    index_count: (vertices.len() / MdlVertex::f32_count()) as u32,
+                    index_count: vertices.len() as u32,
                     texture_array_idx,
                 }
             })
             .collect();
 
-        (vertex_buffers, texture_arrays)
+        MdlBuffer {
+            vertices: vertex_buffers,
+            textures: texture_arrays,
+        }
     }
 
     fn load_textures(
@@ -358,121 +321,4 @@ impl MdlLoader {
 
         (lookup_table, texture_arrays)
     }
-}
-
-// this is assuming that they all have the same dimensions
-fn create_texture_array(
-    device: &wgpu::Device,
-    queue: &wgpu::Queue,
-    textures: &[&RgbaImage],
-) -> eyre::Result<TextureArrayBuffer> {
-    // some checks just to make sure
-    if textures.is_empty() {
-        return Err(eyre!("texture array length is 0"));
-    }
-
-    let tex0 = &textures[0];
-    let (width, height) = tex0.dimensions();
-
-    if !textures
-        .iter()
-        .all(|texture| tex0.dimensions() == texture.dimensions())
-    {
-        return Err(eyre!("not all textures have the same length"));
-    }
-
-    let texture_descriptor = wgpu::TextureDescriptor {
-        label: Some("texture array"),
-        size: wgpu::Extent3d {
-            width,
-            height,
-            depth_or_array_layers: textures.len() as u32,
-        },
-        mip_level_count: 1,
-        sample_count: 1,
-        dimension: wgpu::TextureDimension::D2,
-        format: wgpu::TextureFormat::Rgba8UnormSrgb,
-        usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-        view_formats: &[],
-    };
-
-    let texture_array = device.create_texture(&texture_descriptor);
-
-    textures
-        .iter()
-        .enumerate()
-        .for_each(|(layer_idx, texture)| {
-            queue.write_texture(
-                wgpu::TexelCopyTextureInfo {
-                    texture: &texture_array,
-                    mip_level: 0,
-                    origin: wgpu::Origin3d {
-                        x: 0,
-                        y: 0,
-                        z: layer_idx as u32,
-                    },
-                    aspect: wgpu::TextureAspect::All,
-                },
-                &texture,
-                wgpu::TexelCopyBufferLayout {
-                    offset: 0,
-                    bytes_per_row: Some(4 * width),
-                    rows_per_image: Some(height),
-                },
-                wgpu::Extent3d {
-                    width,
-                    height,
-                    depth_or_array_layers: 1,
-                },
-            );
-        });
-
-    // bind layout
-    let linear_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-        label: Some("texture array sampler"),
-        address_mode_u: wgpu::AddressMode::Repeat,
-        address_mode_v: wgpu::AddressMode::Repeat,
-        address_mode_w: wgpu::AddressMode::Repeat,
-        mag_filter: wgpu::FilterMode::Linear,
-        min_filter: wgpu::FilterMode::Linear,
-        ..Default::default()
-    });
-
-    let view = texture_array.create_view(&wgpu::TextureViewDescriptor {
-        label: Some("texture array view"),
-        format: None,
-        dimension: Some(wgpu::TextureViewDimension::D2Array),
-        aspect: wgpu::TextureAspect::All,
-        base_mip_level: 0,
-        mip_level_count: None,
-        base_array_layer: 0,
-        array_layer_count: None,
-        usage: None,
-    });
-
-    let bind_group_layout =
-        device.create_bind_group_layout(&MdlMipTex::bind_group_layout_descriptor());
-
-    let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-        label: Some("texture bind group"),
-        layout: &bind_group_layout,
-        entries: &[
-            // texture
-            wgpu::BindGroupEntry {
-                binding: 0,
-                resource: wgpu::BindingResource::TextureView(&view),
-            },
-            // linear sampler
-            wgpu::BindGroupEntry {
-                binding: 1,
-                resource: wgpu::BindingResource::Sampler(&linear_sampler),
-            },
-        ],
-    });
-
-    Ok(TextureArrayBuffer {
-        texture: texture_array,
-        view,
-        bind_group,
-    })
 }

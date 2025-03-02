@@ -2,8 +2,6 @@ use std::collections::{HashMap, VecDeque};
 
 use image::RgbaImage;
 
-use super::lightmap_load::LightMapAtlasBuffer;
-
 fn most_repeating_number<T>(a: &[T]) -> T
 where
     T: std::hash::Hash + Eq + Copy,

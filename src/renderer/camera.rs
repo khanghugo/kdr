@@ -34,6 +34,22 @@ impl Default for Camera {
 
 // AI hand wrote this
 impl Camera {
+    pub fn bind_group_layout_descriptor() -> wgpu::BindGroupLayoutDescriptor<'static> {
+        wgpu::BindGroupLayoutDescriptor {
+            label: Some("camera bind group layout"),
+            entries: &[wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::VERTEX,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            }],
+        }
+    }
+
     pub fn build_view_projection_matrix(&self) -> Matrix4<f32> {
         self.proj() * self.view()
     }
