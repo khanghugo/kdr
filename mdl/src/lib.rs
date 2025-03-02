@@ -34,13 +34,4 @@ mod test {
         assert_eq!(mem::size_of::<Hitbox>(), 32);
         assert_eq!(mem::size_of::<SequenceGroup>(), 104);
     }
-
-    #[test]
-    fn what() {
-        let bytes = "/home/khang/kdr/examples/p_shield_deagle.mdl";
-
-        let mdl = crate::Mdl::open_from_file(bytes).unwrap();
-
-        println!("{}", mdl.bodyparts[0].models[0].meshes[0].is_fan());
-    }
 }
