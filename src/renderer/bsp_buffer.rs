@@ -4,11 +4,11 @@ use bytemuck::{Pod, Zeroable};
 use image::RgbaImage;
 use wgpu::util::DeviceExt;
 
-use crate::renderer::texture_load::texture::TextureBuffer;
+use crate::renderer::texture_buffer::texture::TextureBuffer;
 
 use super::{
     camera::Camera,
-    texture_load::texture_array::{TextureArrayBuffer, create_texture_array},
+    texture_buffer::texture_array::{TextureArrayBuffer, create_texture_array},
     utils::{eightbpp_to_rgba8, face_vertices, vertex_uv},
 };
 

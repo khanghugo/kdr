@@ -1,15 +1,15 @@
 use std::sync::Arc;
 
-use bsp_load::{BspBuffer, BspLoader};
+use bsp_buffer::{BspBuffer, BspLoader};
 use camera::Camera;
-use mdl_load::{MdlBuffer, MdlLoader};
+use mdl_buffer::{MdlBuffer, MdlLoader};
 use wgpu::Extent3d;
 use winit::window::Window;
 
-pub mod bsp_load;
+pub mod bsp_buffer;
 pub mod camera;
-pub mod mdl_load;
-pub mod texture_load;
+pub mod mdl_buffer;
+pub mod texture_buffer;
 pub mod utils;
 
 pub struct RenderContext {
@@ -189,8 +189,11 @@ impl RenderContext {
             .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
 
         // camera projection
+        // there is no need to do model-view projection for bsp
+        // so we save the number here and we will do the matrix for the model
+        let view_proj = state.camera.build_view_projection_matrix();
+
         {
-            let view_proj = state.camera.build_view_projection_matrix();
             let view_proj_cast: &[f32; 16] = view_proj.as_ref();
             let view_proj_bytes: &[u8] = bytemuck::cast_slice(view_proj_cast);
             self.queue
@@ -282,6 +285,14 @@ impl RenderContext {
                 rpass.set_bind_group(0, &self.cam_bind_group, &[]);
 
                 state.mdl_buffers.iter().for_each(|mdl_buffer| {
+                    // build mvp
+                    {
+                        // let model_matrix =
+                        let mvp_cast: &[f32; 16] = view_proj.as_ref();
+                        let mvp_cast_bytes: &[u8] = bytemuck::cast_slice(mvp_cast);
+                        self.queue.write_buffer(&self.cam_buffer, 0, mvp_cast_bytes);
+                    }
+
                     mdl_buffer.vertices.iter().for_each(|batch| {
                         state.draw_call += 1;
 

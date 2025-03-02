@@ -12,10 +12,11 @@ fn vs_main(
     @location(0) pos: vec3f,
     @location(1) texCoord: vec2f,
     @location(2) layer_idx: u32,
+    @location(3) model_proj: mat4x4f,
 ) -> VertexOut {
     var output: VertexOut;
 
-    output.position = camera * vec4f(pos, 1.0);
+    output.position = camera * model_proj * vec4f(pos, 1.0);
     output.texCoord = texCoord;
     output.layer_idx = layer_idx;
 

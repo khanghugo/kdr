@@ -1,17 +1,57 @@
 use std::collections::HashMap;
 
 use bytemuck::{Pod, Zeroable};
+use cgmath::Point3;
 use wgpu::util::DeviceExt;
 
 use super::{
     camera::Camera,
-    texture_load::texture_array::{TextureArrayBuffer, create_texture_array},
+    texture_buffer::texture_array::{TextureArrayBuffer, create_texture_array},
     utils::eightbpp_to_rgba8,
 };
 
 pub struct MdlBuffer {
     pub vertices: Vec<MdlVertexBuffer>,
     pub textures: Vec<TextureArrayBuffer>,
+    pub instance_buffer: wgpu::Buffer,
+}
+
+#[repr(C)]
+#[derive(Pod, Zeroable, Clone, Copy)]
+struct MdlInstance {
+    model: [[f32; 4]; 4], // 4x4 matrix
+}
+
+impl MdlInstance {
+    fn buffer_layout() -> wgpu::VertexBufferLayout<'static> {
+        wgpu::VertexBufferLayout {
+            array_stride: std::mem::size_of::<Self>() as u64,
+            step_mode: wgpu::VertexStepMode::Instance,
+            attributes: &[
+                // Model matrix (4 columns)
+                wgpu::VertexAttribute {
+                    format: wgpu::VertexFormat::Float32x4,
+                    offset: 0,
+                    shader_location: 3,
+                },
+                wgpu::VertexAttribute {
+                    format: wgpu::VertexFormat::Float32x4,
+                    offset: 16,
+                    shader_location: 4,
+                },
+                wgpu::VertexAttribute {
+                    format: wgpu::VertexFormat::Float32x4,
+                    offset: 32,
+                    shader_location: 5,
+                },
+                wgpu::VertexAttribute {
+                    format: wgpu::VertexFormat::Float32x4,
+                    offset: 48,
+                    shader_location: 6,
+                },
+            ],
+        }
+    }
 }
 
 #[repr(C)]
@@ -86,7 +126,7 @@ impl MdlLoader {
                 module: &mdl_shader,
                 entry_point: Some("vs_main"),
                 compilation_options: Default::default(),
-                buffers: &[MdlVertex::buffer_layout()],
+                buffers: &[MdlVertex::buffer_layout(), MdlInstance::buffer_layout()],
             },
             fragment: Some(wgpu::FragmentState {
                 module: &mdl_shader,
@@ -237,9 +277,23 @@ impl MdlLoader {
             })
             .collect();
 
+        // dummy data
+        let instance_data = vec![0;
+            4 * 4 // dimensions
+            * 4 // f32
+            * mdls.len() // for every model
+        ];
+
+        let instance_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("instance buffer"),
+            contents: bytemuck::cast_slice(&instance_data),
+            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+        });
+
         MdlBuffer {
             vertices: vertex_buffers,
             textures: texture_arrays,
+            instance_buffer,
         }
     }
 

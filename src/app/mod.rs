@@ -11,7 +11,7 @@ use winit::{
 };
 
 use crate::renderer::{
-    RenderContext, RenderState, bsp_load::BspLoader, camera::Camera, mdl_load::MdlLoader,
+    RenderContext, RenderState, bsp_buffer::BspLoader, camera::Camera, mdl_buffer::MdlLoader,
 };
 
 pub const CAM_SPEED: f32 = 1000.;
