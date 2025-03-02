@@ -1,4 +1,4 @@
-use std::collections::{HashMap, VecDeque};
+use std::collections::HashMap;
 
 use image::RgbaImage;
 
@@ -71,25 +71,4 @@ pub fn vertex_uv(pos: &bsp::Vec3, texinfo: &bsp::TexInfo) -> [f32; 2] {
         (pos.dot(texinfo.u) + texinfo.u_offset),
         (pos.dot(texinfo.v) + texinfo.v_offset),
     ]
-}
-
-// written by deepseek
-pub fn triangle_strip_to_triangle_list(strip_vertices: &[mdl::Trivert]) -> Vec<mdl::Trivert> {
-    let mut triangles = Vec::new();
-    for i in 0..strip_vertices.len().saturating_sub(2) {
-        if i % 2 == 0 {
-            triangles.extend_from_slice(&[
-                strip_vertices[i],
-                strip_vertices[i + 1],
-                strip_vertices[i + 2],
-            ]);
-        } else {
-            triangles.extend_from_slice(&[
-                strip_vertices[i + 1],
-                strip_vertices[i],
-                strip_vertices[i + 2],
-            ]);
-        }
-    }
-    triangles
 }

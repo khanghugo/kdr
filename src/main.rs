@@ -1,8 +1,3 @@
-use winit::event_loop::{ControlFlow, EventLoop};
-
-mod hello_triangles;
-mod main_old;
-mod obj_render;
 mod renderer;
 
 pub fn main() {

@@ -1,10 +1,6 @@
 use std::collections::HashMap;
 
 use bytemuck::{Pod, Zeroable};
-use cgmath::{Point2, Point3};
-use image::RgbaImage;
-
-use eyre::eyre;
 use wgpu::util::DeviceExt;
 
 use super::{

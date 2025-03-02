@@ -1,9 +1,8 @@
 use std::{sync::Arc, time::Instant};
 
-use bsp_load::{BspBuffer, BspLoader, BspVertex};
+use bsp_load::{BspBuffer, BspLoader};
 use camera::{CAM_SPEED, CAM_TURN, Camera};
-use mdl_load::{MdlBuffer, MdlLoader, MdlVertexBuffer};
-use texture_load::BspMipTex;
+use mdl_load::{MdlBuffer, MdlLoader};
 use wgpu::Extent3d;
 use winit::{
     application::ApplicationHandler,
@@ -25,12 +24,10 @@ mod texture_load;
 mod utils;
 
 const FILE: &str = "./examples/textures.obj";
-const BSP_FILE: &str = "./examples/hb_MART.bsp";
+const BSP_FILE: &str = "./examples/chk_section.bsp";
 const MDL_FILE: &str = "/home/khang/kdr/examples/ambeech1.mdl";
 // const MDL_FILE: &str = "/home/khang/kdr/examples/sekai3.mdl";
 // const BSP_FILE: &str = "/home/khang/map/arte_aerorun/slide_surfer.bsp";
-
-const MAX_TEXTURES: u32 = 128;
 
 struct RenderContext {
     device: wgpu::Device,
@@ -107,8 +104,6 @@ impl RenderContext {
             )
             .await
             .unwrap();
-
-        let bsp_shader = device.create_shader_module(wgpu::include_wgsl!("./shader/bsp.wgsl"));
 
         // camera stuffs
         let cam_buffer = device.create_buffer(&wgpu::BufferDescriptor {
