@@ -10,8 +10,9 @@ use nom::{
 };
 
 use crate::{
-    Attachment, Bodypart, BodypartHeader, Bone, BoneController, Hitbox, Mesh, MeshHeader, Model,
-    ModelHeader, PALETTE_COUNT, SequenceGroup, SkinFamilies, Trivert, TrivertHeader, VEC3_T_SIZE,
+    Attachment, Bodypart, BodypartHeader, Bone, BoneController, Hitbox, Mesh, MeshHeader,
+    MeshTriangles, Model, ModelHeader, PALETTE_COUNT, SequenceGroup, SkinFamilies, Trivert,
+    TrivertHeader, VEC3_T_SIZE,
     nom_helpers::{IResult, vec3},
     types::{Header, Mdl, SequenceHeader, Texture, TextureFlag, TextureHeader},
 };
@@ -59,18 +60,21 @@ fn parse_mdl(i: &[u8]) -> IResult<Mdl> {
 
     let (_, attachments) = parse_attachments(start, &mdl_header)?;
 
-    Ok((i, Mdl {
-        header: mdl_header,
-        sequences: sequence_descriptions,
-        textures,
-        bodyparts,
-        bones,
-        bone_controllers,
-        hitboxes,
-        sequence_groups,
-        skin_families,
-        attachments,
-    }))
+    Ok((
+        i,
+        Mdl {
+            header: mdl_header,
+            sequences: sequence_descriptions,
+            textures,
+            bodyparts,
+            bones,
+            bone_controllers,
+            hitboxes,
+            sequence_groups,
+            skin_families,
+            attachments,
+        },
+    ))
 }
 
 fn parse_header(i: &[u8]) -> IResult<Header> {
@@ -290,11 +294,14 @@ fn parse_texture<'a>(i: &'a [u8], start: &'a [u8]) -> IResult<'a, Texture> {
             .collect::<Vec<[u8; 3]>>()[i]
     });
 
-    Ok((end_of_header, Texture {
-        header: texture_header,
-        image: texture_bytes.to_vec(),
-        palette,
-    }))
+    Ok((
+        end_of_header,
+        Texture {
+            header: texture_header,
+            image: texture_bytes.to_vec(),
+            palette,
+        },
+    ))
 }
 
 fn parse_textures<'a>(start: &'a [u8], mdl_header: &Header) -> IResult<'a, Vec<Texture>> {
@@ -328,45 +335,49 @@ fn parse_trivert<'a>(
     let (_, vertex) = vec3(&start[(model_header.vert_index as usize + vert_offset)..])?;
     let (_, normal) = vec3(&start[(model_header.norm_index as usize + norm_offset)..])?;
 
-    Ok((end_of_header, Trivert {
-        header: trivert_header,
-        vertex,
-        normal,
-    }))
+    Ok((
+        end_of_header,
+        Trivert {
+            header: trivert_header,
+            vertex,
+            normal,
+        },
+    ))
 }
 
-fn parse_triverts<'a>(
+fn parse_mesh_triangles<'a>(
     start: &'a [u8],
     model_header: &ModelHeader,
     mesh_header: &MeshHeader,
-    end_of_mesh_header: &'a [u8],
-) -> IResult<'a, Vec<Trivert>> {
-    let mut res = vec![];
+) -> IResult<'a, Vec<MeshTriangles>> {
+    let mut res: Vec<MeshTriangles> = vec![];
 
     let parser = |i| parse_trivert(i, start, model_header);
 
-    let mut ss = &start[mesh_header.tri_index as usize..];
-
-    // while let (i, trivert_count) = le_i32(end_of_mesh_header).unwrap() {
-
-    // }
+    let mut trivert_run_start = &start[mesh_header.tri_index as usize..];
 
     loop {
-        let (i, trivert_count) = le_i16(ss)?;
-        println!("coount is {}", trivert_count);
-        let trivert_count = trivert_count.abs();
+        let (i, trivert_count) = le_i16(trivert_run_start)?;
+        let trivert_count_abs = trivert_count.abs();
 
-        if trivert_count == 0 {
+        if trivert_count_abs == 0 {
             break;
         }
 
-        let (i, mut trivert) = count(parser, trivert_count as usize)(i)?;
+        let (i, triverts) = count(parser, trivert_count_abs as usize)(i)?;
 
-        res.append(&mut trivert);
-        ss = i;
+        let triangles = if trivert_count.is_positive() {
+            MeshTriangles::Strip(triverts)
+        } else {
+            MeshTriangles::Fan(triverts)
+        };
+
+        res.push(triangles);
+
+        trivert_run_start = i;
     }
 
-    Ok((ss, res))
+    Ok((trivert_run_start, res))
 }
 
 fn parse_mesh_header(i: &[u8]) -> IResult<MeshHeader> {
@@ -384,13 +395,15 @@ fn parse_mesh_header(i: &[u8]) -> IResult<MeshHeader> {
 
 fn parse_mesh<'a>(i: &'a [u8], start: &'a [u8], model_header: &ModelHeader) -> IResult<'a, Mesh> {
     let (end_of_header, mesh_header) = parse_mesh_header(i)?;
-    let (_end_of_triverts, vertices) =
-        parse_triverts(start, model_header, &mesh_header, end_of_header)?;
+    let (_end_of_triverts, triangles) = parse_mesh_triangles(start, model_header, &mesh_header)?;
 
-    Ok((end_of_header, Mesh {
-        header: mesh_header,
-        vertices,
-    }))
+    Ok((
+        end_of_header,
+        Mesh {
+            header: mesh_header,
+            triangles,
+        },
+    ))
 }
 
 fn parse_meshes<'a>(start: &'a [u8], model_header: &ModelHeader) -> IResult<'a, Vec<Mesh>> {
@@ -452,10 +465,13 @@ fn parse_model<'a>(i: &'a [u8], start: &'a [u8]) -> IResult<'a, Model> {
     let (end_of_header, model_header) = parse_model_header(i)?;
     let (_end_of_meshes, meshes) = parse_meshes(start, &model_header)?;
 
-    Ok((end_of_header, Model {
-        header: model_header,
-        meshes,
-    }))
+    Ok((
+        end_of_header,
+        Model {
+            header: model_header,
+            meshes,
+        },
+    ))
 }
 
 fn parse_models<'a>(start: &'a [u8], bodypart_header: &BodypartHeader) -> IResult<'a, Vec<Model>> {
@@ -482,10 +498,13 @@ fn parse_bodypart<'a>(i: &'a [u8], start: &'a [u8]) -> IResult<'a, Bodypart> {
     let (end_of_header, bodypart_header) = parse_bodypart_header(i)?;
     let (_end_of_models, models) = parse_models(start, &bodypart_header)?;
 
-    Ok((end_of_header, Bodypart {
-        header: bodypart_header,
-        models,
-    }))
+    Ok((
+        end_of_header,
+        Bodypart {
+            header: bodypart_header,
+            models,
+        },
+    ))
 }
 
 fn parse_bodyparts<'a>(start: &'a [u8], mdl_header: &Header) -> IResult<'a, Vec<Bodypart>> {

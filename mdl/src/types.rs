@@ -170,31 +170,34 @@ pub struct MeshHeader {
 
 pub struct Mesh {
     pub header: MeshHeader,
-    pub vertices: Vec<Trivert>,
+    /// Each [`MeshTriangles`] could be multiple triangles.
+    ///
+    /// So, this `triangle` field stores arrays of triangles.
+    pub triangles: Vec<MeshTriangles>,
 }
 
-pub enum TrivertStoreOrder {
-    Strip,
-    Fan,
+pub enum MeshTriangles {
+    Strip(Vec<Trivert>),
+    Fan(Vec<Trivert>),
 }
 
-impl Mesh {
-    pub fn store_order(&self) -> TrivertStoreOrder {
-        if self.header.num_tris.is_positive() {
-            TrivertStoreOrder::Strip
-        } else {
-            TrivertStoreOrder::Fan
-        }
-    }
+// impl Mesh {
+//     pub fn store_order(&self) -> TrivertStoreOrder {
+//         if self.header.num_tris.is_positive() {
+//             TrivertStoreOrder::Strip
+//         } else {
+//             TrivertStoreOrder::Fan
+//         }
+//     }
 
-    pub fn is_fan(&self) -> bool {
-        matches!(self.store_order(), TrivertStoreOrder::Fan)
-    }
+//     pub fn is_fan(&self) -> bool {
+//         matches!(self.store_order(), TrivertStoreOrder::Fan)
+//     }
 
-    pub fn is_strip(&self) -> bool {
-        matches!(self.store_order(), TrivertStoreOrder::Strip)
-    }
-}
+//     pub fn is_strip(&self) -> bool {
+//         matches!(self.store_order(), TrivertStoreOrder::Strip)
+//     }
+// }
 
 #[derive(Debug, Clone, Copy)]
 pub struct TrivertHeader {
