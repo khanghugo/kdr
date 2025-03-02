@@ -24,7 +24,7 @@ mod texture_load;
 mod utils;
 
 const FILE: &str = "./examples/textures.obj";
-const BSP_FILE: &str = "./examples/chk_section.bsp";
+const BSP_FILE: &str = "./examples/hb_MART.bsp";
 const MDL_FILE: &str = "/home/khang/kdr/examples/ambeech1.mdl";
 // const MDL_FILE: &str = "/home/khang/kdr/examples/sekai3.mdl";
 // const BSP_FILE: &str = "/home/khang/map/arte_aerorun/slide_surfer.bsp";

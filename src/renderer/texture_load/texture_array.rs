@@ -35,6 +35,8 @@ impl TextureArrayBuffer {
 use eyre::eyre;
 use image::RgbaImage;
 
+use super::mipmap::{MipMapGenerator, calculate_mipmap_count};
+
 // this is assuming that they all have the same dimensions
 pub fn create_texture_array(
     device: &wgpu::Device,
@@ -56,18 +58,24 @@ pub fn create_texture_array(
         return Err(eyre!("not all textures have the same length"));
     }
 
+    let mip_level_count = calculate_mipmap_count(width, height);
+    let texture_format = wgpu::TextureFormat::Rgba8UnormSrgb;
+    let mipmap_generator = MipMapGenerator::create_render_pipeline(device, queue, texture_format);
+
     let texture_descriptor = wgpu::TextureDescriptor {
-        label: Some("texture array"),
+        label: Some("texture array descriptor"),
         size: wgpu::Extent3d {
             width,
             height,
             depth_or_array_layers: textures.len() as u32,
         },
-        mip_level_count: 1,
+        mip_level_count,
         sample_count: 1,
         dimension: wgpu::TextureDimension::D2,
-        format: wgpu::TextureFormat::Rgba8UnormSrgb,
-        usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+        format: texture_format,
+        usage: wgpu::TextureUsages::TEXTURE_BINDING
+            | wgpu::TextureUsages::COPY_DST
+            | wgpu::TextureUsages::RENDER_ATTACHMENT, // to generate mipmap
         view_formats: &[],
     };
 
@@ -101,6 +109,12 @@ pub fn create_texture_array(
                 },
             );
         });
+
+    mipmap_generator.generate_mipmaps_texture_array(
+        &texture_array,
+        mip_level_count,
+        textures.len() as u32,
+    );
 
     // bind layout
     let linear_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
