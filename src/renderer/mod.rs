@@ -280,6 +280,8 @@ impl RenderContext {
                     // drawing entities
                     entities.iter().for_each(|entity| {
                         entity.iter().for_each(|batch| {
+                            state.draw_call += 1;
+
                             rpass.set_bind_group(
                                 1,
                                 &bsp_buffer.textures[batch.texture_array_index].bind_group,

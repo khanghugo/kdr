@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 
 use bytemuck::{Pod, Zeroable};
-use cgmath::{Point2, Point3};
 use image::RgbaImage;
 use wgpu::util::DeviceExt;
 
@@ -226,9 +225,12 @@ impl BspLoader {
         let (texture_lookup_table, texture_arrays) = Self::load_textures(device, queue, &bsp);
         let worldspawn = Self::load_worldspawn(device, bsp, &lightmap, &texture_lookup_table);
 
+        // TODO make it array of entities as it should be
+        let entities = Self::load_entities(device, bsp, &lightmap, &texture_lookup_table);
+
         BspBuffer {
             worldspawn,
-            entities: vec![],
+            entities: vec![entities],
             textures: texture_arrays,
             lightmap,
         }
@@ -248,6 +250,44 @@ impl BspLoader {
             device,
             bsp,
             faces.iter().enumerate(),
+            lightmap,
+            texture_lookup_table,
+        )
+    }
+
+    fn load_entities(
+        device: &wgpu::Device,
+        bsp: &bsp::Bsp,
+        lightmap: &LightMapAtlasBuffer,
+        texture_lookup_table: &[(usize, usize)],
+    ) -> Vec<BspVertexBuffer> {
+        // TODO sort all of the vertices later
+        let rest = &bsp.models[1..];
+
+        if rest.is_empty() {
+            return vec![];
+        }
+
+        let entity_faces: Vec<bsp::Face> = rest
+            .iter()
+            .flat_map(|model| {
+                let current_faces = &bsp.faces[model.first_face as usize
+                    ..(model.first_face as usize + model.face_count as usize)];
+
+                current_faces
+            })
+            .cloned() // i cri everytime
+            .collect();
+
+        let first_entity_face = rest[0].first_face;
+
+        Self::load_polygons(
+            device,
+            bsp,
+            entity_faces
+                .iter()
+                .enumerate()
+                .map(|(idx, e)| (idx + first_entity_face as usize, e)),
             lightmap,
             texture_lookup_table,
         )
