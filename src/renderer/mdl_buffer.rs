@@ -1,8 +1,9 @@
 use std::collections::HashMap;
 
 use bytemuck::{Pod, Zeroable};
-use cgmath::Point3;
 use wgpu::util::DeviceExt;
+
+use crate::bsp_loader::MdlEntityInfo;
 
 use super::{
     camera::Camera,
@@ -13,45 +14,7 @@ use super::{
 pub struct MdlBuffer {
     pub vertices: Vec<MdlVertexBuffer>,
     pub textures: Vec<TextureArrayBuffer>,
-    pub instance_buffer: wgpu::Buffer,
-}
-
-#[repr(C)]
-#[derive(Pod, Zeroable, Clone, Copy)]
-struct MdlInstance {
-    model: [[f32; 4]; 4], // 4x4 matrix
-}
-
-impl MdlInstance {
-    fn buffer_layout() -> wgpu::VertexBufferLayout<'static> {
-        wgpu::VertexBufferLayout {
-            array_stride: std::mem::size_of::<Self>() as u64,
-            step_mode: wgpu::VertexStepMode::Instance,
-            attributes: &[
-                // Model matrix (4 columns)
-                wgpu::VertexAttribute {
-                    format: wgpu::VertexFormat::Float32x4,
-                    offset: 0,
-                    shader_location: 3,
-                },
-                wgpu::VertexAttribute {
-                    format: wgpu::VertexFormat::Float32x4,
-                    offset: 16,
-                    shader_location: 4,
-                },
-                wgpu::VertexAttribute {
-                    format: wgpu::VertexFormat::Float32x4,
-                    offset: 32,
-                    shader_location: 5,
-                },
-                wgpu::VertexAttribute {
-                    format: wgpu::VertexFormat::Float32x4,
-                    offset: 48,
-                    shader_location: 6,
-                },
-            ],
-        }
-    }
+    pub mvps: MdlMvp,
 }
 
 #[repr(C)]
@@ -59,7 +22,8 @@ impl MdlInstance {
 pub struct MdlVertex {
     pos: [f32; 3],
     uv: [f32; 2],
-    layer: u32, // texture idx from texture array
+    layer: u32,     // texture idx from texture array
+    model_idx: u32, // index of the model because a buffer might contain lots of models
 }
 
 impl MdlVertex {
@@ -86,6 +50,12 @@ impl MdlVertex {
                     offset: 20,
                     shader_location: 2,
                 },
+                // model idx
+                wgpu::VertexAttribute {
+                    format: wgpu::VertexFormat::Uint32,
+                    offset: 24,
+                    shader_location: 3,
+                },
             ],
         }
     }
@@ -96,6 +66,68 @@ pub struct MdlVertexBuffer {
     pub index_buffer: wgpu::Buffer,
     pub index_count: u32,
     pub texture_array_idx: usize,
+}
+
+pub struct MdlMvp {
+    pub bind_group: wgpu::BindGroup,
+    pub buffer: wgpu::Buffer,
+    pub entity_infos: Vec<MdlEntityInfo>,
+}
+
+impl MdlMvp {
+    fn bind_group_layout_descriptor() -> wgpu::BindGroupLayoutDescriptor<'static> {
+        wgpu::BindGroupLayoutDescriptor {
+            label: Some("model view projection bind group layout"),
+            entries: &[wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::VERTEX,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Storage { read_only: true },
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            }],
+        }
+    }
+
+    fn create_mvp(device: &wgpu::Device, entity_infos: &[&MdlEntityInfo]) -> Self {
+        let matrices: Vec<[[f32; 4]; 4]> = entity_infos
+            .iter()
+            .map(|info| info.model_view_projection.into())
+            .collect();
+
+        let mvp_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("model view projection array buffer"),
+            contents: bytemuck::cast_slice(&matrices),
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+        });
+
+        let mvp_bind_group_layout =
+            device.create_bind_group_layout(&MdlMvp::bind_group_layout_descriptor());
+
+        let mvp_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("model view projection array bind group"),
+            layout: &mvp_bind_group_layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: mvp_buffer.as_entire_binding(),
+            }],
+        });
+
+        MdlMvp {
+            bind_group: mvp_bind_group,
+            buffer: mvp_buffer,
+            entity_infos: entity_infos
+                .iter()
+                .map(|s| {
+                    // the fuck?
+                    let what = s.to_owned().to_owned();
+                    what
+                })
+                .collect(),
+        }
+    }
 }
 
 pub struct MdlLoader;
@@ -113,9 +145,16 @@ impl MdlLoader {
         let camera_bind_group_layout =
             device.create_bind_group_layout(&Camera::bind_group_layout_descriptor());
 
+        let mvp_bind_group_layout =
+            device.create_bind_group_layout(&MdlMvp::bind_group_layout_descriptor());
+
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: None,
-            bind_group_layouts: &[&camera_bind_group_layout, &texture_array_bind_group_layout],
+            bind_group_layouts: &[
+                &camera_bind_group_layout,
+                &texture_array_bind_group_layout,
+                &mvp_bind_group_layout,
+            ],
             push_constant_ranges: &[],
         });
 
@@ -126,7 +165,7 @@ impl MdlLoader {
                 module: &mdl_shader,
                 entry_point: Some("vs_main"),
                 compilation_options: Default::default(),
-                buffers: &[MdlVertex::buffer_layout(), MdlInstance::buffer_layout()],
+                buffers: &[MdlVertex::buffer_layout()],
             },
             fragment: Some(wgpu::FragmentState {
                 module: &mdl_shader,
@@ -160,10 +199,15 @@ impl MdlLoader {
 
     // load multiple models into 1 vertex buffer
     // can be used for loading 1 model
-    pub fn load_mdls(device: &wgpu::Device, queue: &wgpu::Queue, mdls: &[mdl::Mdl]) -> MdlBuffer {
+    pub fn load_mdls(
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        mdls: &[&mdl::Mdl],
+        mdl_entity_infos: &[&MdlEntityInfo],
+    ) -> MdlBuffer {
         // textures
         // load texures first so we can do everything in 1 bind and 1 draw call
-        let (lookup_table, texture_arrays) = Self::load_textures(device, queue, &mdls);
+        let (lookup_table, texture_arrays) = Self::load_textures(device, queue, mdls);
 
         // process the model faces
         // create a new pipe line because mdl uses triangle strip
@@ -209,6 +253,7 @@ impl MdlLoader {
                                     pos: trivert.vertex.to_array(),
                                     uv: [u, v],
                                     layer: layer_idx as u32,
+                                    model_idx: mdl_index as u32,
                                 }
                             });
 
@@ -277,30 +322,17 @@ impl MdlLoader {
             })
             .collect();
 
-        // dummy data
-        let instance_data = vec![0;
-            4 * 4 // dimensions
-            * 4 // f32
-            * mdls.len() // for every model
-        ];
-
-        let instance_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("instance buffer"),
-            contents: bytemuck::cast_slice(&instance_data),
-            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
-        });
-
         MdlBuffer {
             vertices: vertex_buffers,
             textures: texture_arrays,
-            instance_buffer,
+            mvps: MdlMvp::create_mvp(device, mdl_entity_infos),
         }
     }
 
     fn load_textures(
         device: &wgpu::Device,
         queue: &wgpu::Queue,
-        mdls: &[mdl::Mdl],
+        mdls: &[&mdl::Mdl],
     ) -> (Vec<Vec<(usize, usize)>>, Vec<TextureArrayBuffer>) {
         let model_textures: Vec<Vec<_>> = mdls
             .iter()

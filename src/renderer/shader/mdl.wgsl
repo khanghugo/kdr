@@ -7,16 +7,23 @@ struct VertexOut {
 @group(0) @binding(0)
 var<uniform> camera: mat4x4f;
 
+@group(2) @binding(0)
+var<storage> model_view_array: array<mat4x4f>;
+
 @vertex
 fn vs_main(
     @location(0) pos: vec3f,
     @location(1) texCoord: vec2f,
     @location(2) layer_idx: u32,
-    @location(3) model_proj: mat4x4f,
+    @location(3) model_idx: u32,
 ) -> VertexOut {
     var output: VertexOut;
 
-    output.position = camera * model_proj * vec4f(pos, 1.0);
+    let model = model_view_array[model_idx];
+
+    output.position = camera 
+    * model 
+    * vec4f(pos, 1.0);
     output.texCoord = texCoord;
     output.layer_idx = layer_idx;
 

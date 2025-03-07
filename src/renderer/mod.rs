@@ -34,7 +34,7 @@ impl Drop for RenderContext {
 }
 
 pub struct RenderState {
-    // plural but there is only 1 bsp
+    // can load multiple bsp
     pub bsp_buffers: Vec<BspBuffer>,
     pub mdl_buffers: Vec<MdlBuffer>,
 
@@ -71,8 +71,11 @@ impl RenderContext {
             .unwrap();
 
         // edit limits
-        let limits = wgpu::Limits::downlevel_webgl2_defaults().using_resolution(adapter.limits());
-        // limits.max_sampled_textures_per_shader_stage = MAX_TEXTURES;
+        let mut limits =
+            wgpu::Limits::downlevel_webgl2_defaults().using_resolution(adapter.limits());
+        limits.max_texture_array_layers = 1024;
+        limits.max_storage_buffers_per_shader_stage = 4;
+        limits.max_storage_buffer_binding_size = 4096 * 4;
         // end limits
 
         let (device, queue) = adapter
@@ -285,12 +288,10 @@ impl RenderContext {
                 rpass.set_bind_group(0, &self.cam_bind_group, &[]);
 
                 state.mdl_buffers.iter().for_each(|mdl_buffer| {
-                    // build mvp
+                    // model projection
                     {
-                        // let model_matrix =
-                        let mvp_cast: &[f32; 16] = view_proj.as_ref();
-                        let mvp_cast_bytes: &[u8] = bytemuck::cast_slice(mvp_cast);
-                        self.queue.write_buffer(&self.cam_buffer, 0, mvp_cast_bytes);
+                        rpass.set_bind_group(2, &mdl_buffer.mvps.bind_group, &[]);
+                        // let buf = mdl_buffer.mvps.entity_infos.
                     }
 
                     mdl_buffer.vertices.iter().for_each(|batch| {

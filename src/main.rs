@@ -1,4 +1,5 @@
 mod app;
+mod bsp_loader;
 mod renderer;
 
 pub fn main() {

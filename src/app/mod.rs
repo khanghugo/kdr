@@ -1,4 +1,4 @@
-use std::{sync::Arc, time::Instant};
+use std::{path::Path, sync::Arc, time::Instant};
 
 use cgmath::Deg;
 use winit::{
@@ -10,16 +10,20 @@ use winit::{
     window::Window,
 };
 
-use crate::renderer::{
-    RenderContext, RenderState, bsp_buffer::BspLoader, camera::Camera, mdl_buffer::MdlLoader,
+use crate::{
+    bsp_loader::{BspResource, MdlEntityInfo, get_bsp_resources},
+    renderer::{
+        RenderContext, RenderState, bsp_buffer::BspLoader, camera::Camera, mdl_buffer::MdlLoader,
+    },
 };
 
 pub const CAM_SPEED: f32 = 1000.;
 pub const CAM_TURN: f32 = 150.; // degrees
 
 const FILE: &str = "./examples/textures.obj";
-const BSP_FILE: &str = "./examples/hb_MART.bsp";
+// const BSP_FILE: &str = "./examples/hb_MART.bsp";
 const MDL_FILE: &str = "/home/khang/kdr/examples/ambeech1.mdl";
+const BSP_FILE: &str = "/home/khang/bxt/game_isolated/cstrike_downloads/maps/surf_cyberwave.bsp";
 // const MDL_FILE: &str = "/home/khang/kdr/examples/sekai3.mdl";
 // const BSP_FILE: &str = "/home/khang/map/arte_aerorun/slide_surfer.bsp";
 
@@ -86,13 +90,31 @@ impl ApplicationHandler for App {
         // load bsp
         {
             let bsp = bsp::Bsp::from_file(BSP_FILE).unwrap();
+            let BspResource {
+                bsp,
+                model_entities,
+            } = get_bsp_resources(bsp, Path::new(BSP_FILE));
+
             let bsp_buffer =
                 BspLoader::load_bsp(&render_context.device, &render_context.queue, &bsp);
             self.render_state.bsp_buffers = vec![bsp_buffer];
 
-            let mdl = mdl::Mdl::open_from_file(MDL_FILE).unwrap();
-            let mdl_buffer =
-                MdlLoader::load_mdls(&render_context.device, &render_context.queue, &[mdl]);
+            let mdls: Vec<_> = model_entities
+                .iter()
+                .map(|model_entity| &model_entity.mdl)
+                .collect();
+
+            let mdl_entity_infos: Vec<&MdlEntityInfo> = model_entities
+                .iter()
+                .map(|model_entity| &model_entity.info)
+                .collect();
+
+            let mdl_buffer = MdlLoader::load_mdls(
+                &render_context.device,
+                &render_context.queue,
+                &mdls,
+                &mdl_entity_infos,
+            );
 
             self.render_state.mdl_buffers = vec![mdl_buffer];
         }
