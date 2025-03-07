@@ -124,6 +124,10 @@ pub fn create_texture_array(
         address_mode_w: wgpu::AddressMode::Repeat,
         mag_filter: wgpu::FilterMode::Linear,
         min_filter: wgpu::FilterMode::Linear,
+        mipmap_filter: wgpu::FilterMode::Linear,
+        anisotropy_clamp: 16,
+        // lod_min_clamp: 0.0,
+        // lod_max_clamp: (mip_level_count - 1).max(0) as f32,
         ..Default::default()
     });
 
@@ -133,7 +137,7 @@ pub fn create_texture_array(
         dimension: Some(wgpu::TextureViewDimension::D2Array),
         aspect: wgpu::TextureAspect::All,
         base_mip_level: 0,
-        mip_level_count: None,
+        mip_level_count: Some(mip_level_count),
         base_array_layer: 0,
         array_layer_count: None,
         usage: None,
