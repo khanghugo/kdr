@@ -3,24 +3,18 @@ struct VertexOutput {
     @location(0) uv: vec2<f32>,
 };
 
-// https://github.com/gfx-rs/wgpu/blob/trunk/examples/features/src/mipmap/blit.wgsl
+// ~~https://github.com/gfx-rs/wgpu/blob/trunk/examples/features/src/mipmap/blit.wgsl~~
+// https://maierfelix.github.io/2020-01-13-webgpu-ray-tracing/
 @vertex
 fn vs_main(@builtin(vertex_index) vertex_index: u32) -> VertexOutput {
     var result: VertexOutput;
 
-    let x = f32(vertex_index >> 1);
-    let y = f32(vertex_index & 1);
+    let x = f32((vertex_index << 1) & 2);
+    let y = f32(vertex_index & 2);
 
-    let xy = vec2<f32>(
-        x, y
-    ) * 2.0;
+    let xy = vec2<f32>(x, y);
 
-    result.position = vec4<f32>(
-        xy.x * 2.0 - 1.0,
-        1.0 - xy.y * 2.0,
-        0.0, 1.0
-    );
-
+    result.position = vec4(xy * 2.0 - 1.0, 0.0, 1.0);
     result.uv = xy;
 
     return result;
