@@ -270,7 +270,10 @@ fn parse_texture_header(i: &[u8]) -> IResult<TextureHeader> {
         tuple((count(le_u8, 64), le_i32, le_i32, le_i32, le_i32)),
         |(name, flags, width, height, index)| TextureHeader {
             name: from_fn(|i| name[i]),
-            flags: TextureFlag::from_bits(flags).unwrap(),
+            flags: TextureFlag::from_bits(flags).unwrap_or_else(|| {
+                println!("unknown texture flag {flags}");
+                TextureFlag::empty()
+            }),
             width,
             height,
             index,
