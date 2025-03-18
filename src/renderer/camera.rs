@@ -24,7 +24,7 @@ impl Default for Camera {
             aspect: 640 as f32 / 480 as f32,
             fovy: Deg(90.0),
             znear: 1.0,
-            zfar: 100000.0,
+            zfar: 1000000.0,
         }
     }
 }

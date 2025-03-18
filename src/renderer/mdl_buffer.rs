@@ -24,6 +24,7 @@ pub struct MdlVertex {
     uv: [f32; 2],
     layer: u32,     // texture idx from texture array
     model_idx: u32, // index of the model because a buffer might contain lots of models
+    normal: [f32; 3],
 }
 
 impl MdlVertex {
@@ -55,6 +56,12 @@ impl MdlVertex {
                     format: wgpu::VertexFormat::Uint32,
                     offset: 24,
                     shader_location: 3,
+                },
+                // normal
+                wgpu::VertexAttribute {
+                    format: wgpu::VertexFormat::Float32x3,
+                    offset: 28,
+                    shader_location: 4,
                 },
             ],
         }
@@ -254,6 +261,7 @@ impl MdlLoader {
                                     uv: [u, v],
                                     layer: layer_idx as u32,
                                     model_idx: mdl_index as u32,
+                                    normal: trivert.normal.to_array(),
                                 }
                             });
 
@@ -345,6 +353,7 @@ impl MdlLoader {
                             &texture.palette,
                             texture.dimensions().0,
                             texture.dimensions().1,
+                            None,
                         )
                     })
                     .collect()

@@ -44,6 +44,11 @@ fn fs_main(
     ) -> @location(0) vec4f {
     let albedo = textureSample(texture, linear_sampler, texCoord, layer_idx);
 
+    // alpha testing
+    if albedo.a < 0.01 {
+        discard;
+    }
+
     let light = textureSample(lightmap, lightmap_sampler, lightmap_coord).rgb 
     // from the the game
     * (128.0 / 192.0);

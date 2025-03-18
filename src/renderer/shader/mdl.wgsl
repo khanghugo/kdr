@@ -2,6 +2,7 @@ struct VertexOut {
     @builtin(position) position: vec4f,
     @location(0) texCoord: vec2f,
     @location(1) layer_idx: u32,
+    @location(2) normal: vec3f,
 };
 
 @group(0) @binding(0)
@@ -16,6 +17,7 @@ fn vs_main(
     @location(1) texCoord: vec2f,
     @location(2) layer_idx: u32,
     @location(3) model_idx: u32,
+    @location(4) normal: vec3f,
 ) -> VertexOut {
     var output: VertexOut;
 
@@ -24,8 +26,10 @@ fn vs_main(
     output.position = camera 
     * model 
     * vec4f(pos, 1.0);
+
     output.texCoord = texCoord;
     output.layer_idx = layer_idx;
+    output.normal = normal;
 
     return output;
 }
@@ -43,8 +47,14 @@ fn gamma_correct(color: vec3f) -> vec3f {
 fn fs_main(
     @location(0) texCoord: vec2f,
     @location(1) layer_idx: u32,
+    @location(2) normal: vec3f,
     ) -> @location(0) vec4f {
     let albedo = textureSample(texture, linear_sampler, texCoord, layer_idx);
+
+    // alpha testing
+    if albedo.a < 0.01 {
+        discard;
+    }
 
     // let light = textureSample(lightmap, lightmap_sampler, lightmap_coord).rgb 
     // // from the the game
@@ -53,7 +63,10 @@ fn fs_main(
     // // overbright
     // let color = albedo.rgb * light.rgb * 2;
 
-    let gamma_corrected = vec4(gamma_correct(albedo.rgb), albedo.a);
+    // light is always pointing down
+    let normal_z = (normal.z + 1.0) / 2.0;
+
+    let gamma_corrected = vec4(gamma_correct(albedo.rgb * normal_z), albedo.a);
 
     return gamma_corrected;
 }

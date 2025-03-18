@@ -361,11 +361,19 @@ impl BspLoader {
             .textures
             .iter()
             .map(|texture| {
+                let texture_name = texture.texture_name.get_string_standard();
+                let override_alpha = if texture_name == "SKY" {
+                    16.into()
+                } else {
+                    None
+                };
+
                 eightbpp_to_rgba8(
                     texture.mip_images[0].data.get_bytes(),
                     texture.palette.get_bytes(),
                     texture.width,
                     texture.height,
+                    override_alpha,
                 )
             })
             .collect();

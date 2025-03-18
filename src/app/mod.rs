@@ -23,7 +23,8 @@ pub const CAM_TURN: f32 = 150.; // degrees
 const FILE: &str = "./examples/textures.obj";
 // const BSP_FILE: &str = "./examples/hb_MART.bsp";
 const MDL_FILE: &str = "/home/khang/kdr/examples/ambeech1.mdl";
-const BSP_FILE: &str = "/home/khang/bxt/game_isolated/cstrike_downloads/maps/surf_cyberwave.bsp";
+const BSP_FILE: &str = "/home/khang/bxt/game_isolated/cstrike_downloads/maps/chk_section.bsp";
+// const BSP_FILE: &str = "/home/khang/bxt/_game_native/cstrike_downloads/maps/kz_hb_Hopez.bsp";
 // const MDL_FILE: &str = "/home/khang/kdr/examples/sekai3.mdl";
 // const BSP_FILE: &str = "/home/khang/map/arte_aerorun/slide_surfer.bsp";
 

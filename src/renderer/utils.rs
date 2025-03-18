@@ -22,7 +22,13 @@ where
 }
 
 /// This does some tricks to render masked texture, read the code
-pub fn eightbpp_to_rgba8(img: &[u8], palette: &[[u8; 3]], width: u32, height: u32) -> RgbaImage {
+pub fn eightbpp_to_rgba8(
+    img: &[u8],
+    palette: &[[u8; 3]],
+    width: u32,
+    height: u32,
+    override_alpha: Option<u8>,
+) -> RgbaImage {
     // very dumb hack, but what can i do
     // the alternative way i can think of is to do two textures, 1 for index, 1 for palette
     // but with that, it will be very hard to do simple thing such as texture filtering
@@ -40,7 +46,7 @@ pub fn eightbpp_to_rgba8(img: &[u8], palette: &[[u8; 3]], width: u32, height: u3
                 if is_probably_masked_image && idx == 255 {
                     [0, 0, 0, 0]
                 } else {
-                    [color[0], color[1], color[2], 255]
+                    [color[0], color[1], color[2], override_alpha.unwrap_or(255)]
                 }
             })
             .collect(),
