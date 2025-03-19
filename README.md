@@ -11,19 +11,26 @@ Currently work in progress, check back later
     - [X] Lightmap
     - [ ] Weird math lightmap in the case of older compiled HL maps
     - [ ] Light styles (unplanned) 
-    - [X] Transparency 
+    - Transparency 
+      - [X] Alpha test ("rendermode" = 4)
+      - [ ] "rendermode"
+      - [ ] "renderamt"
     - [X] Named entities. Some entities aren't properly displaced
     - [X] Samey shader as the game
+    - [ ] "rendermode"
   - MDL
     - [X] Face
     - [X] Texture
+    - [X] Model view projection
+    - [ ] Bone based vertex transformation
+    - [X] Shading  
   - [ ] Skybox
   - Optimization
     - [X] Lightmap atlas
     - [X] Batch rendering based on texture
     - [X] Array of texture
-    - [ ] Transparency sorting
-    - [ ] Visibility. At the moment it renders everything
+    - [ ] Transparency sorting. Order independent transparency. Need to get WBOIT at the very least.
+    - [ ] Visibility. At the moment it renders everything. Or does it?
   - [X] Mipmapping
 - Navigation
   - [X] Noclip movement
