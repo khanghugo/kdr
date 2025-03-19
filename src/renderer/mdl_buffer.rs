@@ -104,6 +104,13 @@ impl MdlMvp {
             .map(|info| info.model_view_projection.into())
             .collect();
 
+        // fix empty matrix in case there are zero models
+        let matrices = if matrices.is_empty() {
+            vec![[[0f32; 4]; 4]]
+        } else {
+            matrices
+        };
+
         let mvp_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("model view projection array buffer"),
             contents: bytemuck::cast_slice(&matrices),
