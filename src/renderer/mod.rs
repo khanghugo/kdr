@@ -9,6 +9,7 @@ use winit::window::Window;
 pub mod bsp_buffer;
 pub mod camera;
 pub mod mdl_buffer;
+pub mod oit;
 pub mod texture_buffer;
 pub mod utils;
 
@@ -241,9 +242,9 @@ impl RenderContext {
 
                     // TODO: room for improvement
                     // drawing worldspawn
-                    let worldspawn = &bsp_buffer.worldspawn;
+                    let opaque_buffer = &bsp_buffer.opaque;
 
-                    worldspawn.iter().for_each(|batch| {
+                    opaque_buffer.iter().for_each(|batch| {
                         state.draw_call += 1;
 
                         rpass.set_bind_group(
@@ -259,25 +260,23 @@ impl RenderContext {
                         rpass.draw_indexed(0..batch.index_count as u32, 0, 0..1);
                     });
 
-                    let entities = &bsp_buffer.entities;
+                    let transparent_buffer = &bsp_buffer.transparent;
 
                     // drawing entities
-                    entities.iter().for_each(|entity| {
-                        entity.iter().for_each(|batch| {
-                            state.draw_call += 1;
+                    transparent_buffer.iter().for_each(|batch| {
+                        state.draw_call += 1;
 
-                            rpass.set_bind_group(
-                                1,
-                                &bsp_buffer.textures[batch.texture_array_index].bind_group,
-                                &[],
-                            );
-                            rpass.set_vertex_buffer(0, batch.vertex_buffer.slice(..));
-                            rpass.set_index_buffer(
-                                batch.index_buffer.slice(..),
-                                wgpu::IndexFormat::Uint32,
-                            );
-                            rpass.draw_indexed(0..batch.index_count as u32, 0, 0..1);
-                        });
+                        rpass.set_bind_group(
+                            1,
+                            &bsp_buffer.textures[batch.texture_array_index].bind_group,
+                            &[],
+                        );
+                        rpass.set_vertex_buffer(0, batch.vertex_buffer.slice(..));
+                        rpass.set_index_buffer(
+                            batch.index_buffer.slice(..),
+                            wgpu::IndexFormat::Uint32,
+                        );
+                        rpass.draw_indexed(0..batch.index_count as u32, 0, 0..1);
                     });
                 });
             }

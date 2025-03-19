@@ -48,8 +48,9 @@ impl BspVertex {
 }
 
 pub struct BspBuffer {
-    pub worldspawn: Vec<BspVertexBuffer>,
-    pub entities: Vec<Vec<BspVertexBuffer>>,
+    pub opaque: Vec<BspVertexBuffer>,
+    // only 1 buffer because we don't need to sort for transparency
+    pub transparent: Vec<BspVertexBuffer>,
     pub textures: Vec<TextureArrayBuffer>,
     pub lightmap: LightMapAtlasBuffer,
 }
@@ -223,95 +224,194 @@ impl BspLoader {
     pub fn load_bsp(device: &wgpu::Device, queue: &wgpu::Queue, bsp: &bsp::Bsp) -> BspBuffer {
         let lightmap = Self::load_lightmap(device, queue, bsp);
         let (texture_lookup_table, texture_arrays) = Self::load_textures(device, queue, &bsp);
-        let worldspawn = Self::load_worldspawn(device, bsp, &lightmap, &texture_lookup_table);
 
-        // TODO make it array of entities as it should be
-        let entities = Self::load_entities(device, bsp, &lightmap, &texture_lookup_table);
+        // get opaque and transparent entities
+        let (opaque_entities, transparent_entities): (Vec<_>, _) = bsp
+            .entities
+            .iter()
+            // first need to filter out non-brush entities
+            .filter(|entity| {
+                // manually add worldspawn because it doesnt have "model" key
+                if let Some(classname) = entity.get("classname") {
+                    if classname == "worldspawn" {
+                        return true;
+                    }
+                }
+
+                if let Some(model) = entity.get("model") {
+                    // only brush models have "*" prefix
+                    if model.starts_with("*") {
+                        return true;
+                    }
+                }
+
+                // if an entity doesnt have a model, it is probably something not important
+                false
+            })
+            // now partition the entities
+            .partition(|entity| {
+                if let Some(rendermode) = entity
+                    .get("rendermode")
+                    .and_then(|rendermode| rendermode.parse::<i32>().ok())
+                {
+                    // rendermode 0 = normal
+                    // rendermode 4 = solid aka alpha test
+                    let is_solid = [0, 4].contains(&rendermode);
+
+                    if is_solid {
+                        return true;
+                    }
+
+                    // check for renderamt
+                    if let Some(renderamt) = entity
+                        .get("renderamt")
+                        .and_then(|renderamt| renderamt.parse::<f32>().ok())
+                    {
+                        let is_255 = renderamt >= 255.;
+
+                        // 255 means no need to bother blending
+                        if is_255 {
+                            return true;
+                        }
+                    }
+
+                    // renderamt is defaulted to be 0 when entity is spawned
+                    return false;
+                }
+
+                // no rendermode, could be world brush
+                true
+            });
+
+        // now load the faces from the models
+        // need to add worldspawn manually into list of opaque entities
+        let opaque_entities_faces = opaque_entities.iter().flat_map(|entity| {
+            let is_worldspawn = entity
+                .get("classname")
+                .is_some_and(|classname| classname == "worldspawn");
+
+            let model_idx = if is_worldspawn {
+                0
+            } else {
+                entity.get("model")
+            // we know for sure that this is a brush
+            .unwrap()
+            // remove the asterisk
+            [1..]
+                    .parse::<u32>()
+                    .expect("cannot find entity model")
+            };
+
+            let model = &bsp.models[model_idx as usize];
+
+            let first_face = model.first_face as usize;
+            let face_count = model.face_count as usize;
+
+            let faces = &bsp.faces[first_face..(first_face + face_count)];
+
+            faces
+                .into_iter()
+                .enumerate()
+                .map(|(offset, face)| ProcessFaceData {
+                    index: first_face + offset,
+                    face,
+                    custom_render: None,
+                })
+                // constraints? what gives
+                .collect::<Vec<ProcessFaceData>>()
+        });
+
+        let opaque_entities_buffer = Self::load_polygons(
+            device,
+            bsp,
+            opaque_entities_faces,
+            &lightmap,
+            &texture_lookup_table,
+        );
+
+        let transparent_entities_faces = transparent_entities.iter().flat_map(|entity| {
+            let model_idx = entity.get("model")
+            // we know for sure that this is a brush
+            .unwrap()
+            // remove the asterisk
+            [1..]
+                .parse::<u32>()
+                .expect("cannot find entity model");
+
+            let model = &bsp.models[model_idx as usize];
+
+            let first_face = model.first_face as usize;
+            let face_count = model.face_count as usize;
+
+            let faces = &bsp.faces[first_face..(first_face + face_count)];
+
+            // the value is guaranteed to be there
+            let rendermode = entity
+                .get("rendermode")
+                .and_then(|v| v.parse::<i32>().ok())
+                .unwrap();
+            let renderamt = entity
+                .get("renderamt")
+                .and_then(|v| v.parse::<f32>().ok())
+                .unwrap_or(0.0);
+            let renderfx = entity
+                .get("renderfx")
+                .and_then(|v| v.parse::<i32>().ok())
+                .unwrap_or(0);
+
+            faces
+                .into_iter()
+                .enumerate()
+                .map(|(offset, face)| ProcessFaceData {
+                    index: first_face + offset,
+                    face,
+                    custom_render: Some(CustomRender {
+                        rendermode,
+                        renderamt,
+                        renderfx,
+                    }),
+                })
+                // constraints? what gives
+                .collect::<Vec<ProcessFaceData>>()
+        });
+
+        let transparent_entities_buffer = Self::load_polygons(
+            device,
+            bsp,
+            transparent_entities_faces,
+            &lightmap,
+            &texture_lookup_table,
+        );
 
         BspBuffer {
-            worldspawn,
-            entities: vec![entities],
+            opaque: opaque_entities_buffer,
+            transparent: transparent_entities_buffer,
             textures: texture_arrays,
             lightmap,
         }
     }
 
-    fn load_worldspawn(
-        device: &wgpu::Device,
-        bsp: &bsp::Bsp,
-        lightmap: &LightMapAtlasBuffer,
-        texture_lookup_table: &[(usize, usize)],
-    ) -> Vec<BspVertexBuffer> {
-        let worldspawn = &bsp.models[0];
-        let faces = &bsp.faces[worldspawn.first_face as usize
-            ..(worldspawn.first_face as usize + worldspawn.face_count as usize)];
-
-        Self::load_polygons(
-            device,
-            bsp,
-            faces.iter().enumerate(),
-            lightmap,
-            texture_lookup_table,
-        )
-    }
-
-    fn load_entities(
-        device: &wgpu::Device,
-        bsp: &bsp::Bsp,
-        lightmap: &LightMapAtlasBuffer,
-        texture_lookup_table: &[(usize, usize)],
-    ) -> Vec<BspVertexBuffer> {
-        // TODO sort all of the vertices later
-        let rest = &bsp.models[1..];
-
-        if rest.is_empty() {
-            return vec![];
-        }
-
-        let entity_faces: Vec<bsp::Face> = rest
-            .iter()
-            .flat_map(|model| {
-                let current_faces = &bsp.faces[model.first_face as usize
-                    ..(model.first_face as usize + model.face_count as usize)];
-
-                current_faces
-            })
-            .cloned() // i cri everytime
-            .collect();
-
-        let first_entity_face = rest[0].first_face;
-
-        Self::load_polygons(
-            device,
-            bsp,
-            entity_faces
-                .iter()
-                .enumerate()
-                .map(|(idx, e)| (idx + first_entity_face as usize, e)),
-            lightmap,
-            texture_lookup_table,
-        )
-    }
-
     fn load_polygons<'a, T>(
         device: &wgpu::Device,
-        bsp: &bsp::Bsp,
-        faces: T,
+        bsp: &'a bsp::Bsp,
+        faces_data: T,
         lightmap: &LightMapAtlasBuffer,
         texture_lookup_table: &[(usize, usize)],
     ) -> Vec<BspVertexBuffer>
     where
-        T: Iterator<Item = (usize, &'a bsp::Face)>,
+        T: Iterator<Item = ProcessFaceData<'a>>,
     {
         // (array index, (interleaved vertex data, vertex indices))
         // layer index is inside interleaved data
         let mut batches = HashMap::<usize, (Vec<BspVertex>, Vec<u32>)>::new();
 
-        for (face_idx, face) in faces {
+        for face_data in faces_data {
+            let face = face_data.face;
+
             let texinfo = &bsp.texinfo[face.texinfo as usize];
             let (array_idx, layer_idx) = texture_lookup_table[texinfo.texture_index as usize];
 
-            let (vertices, indices) = process_face(face, bsp, lightmap, face_idx, layer_idx);
+            let (vertices, indices) = process_face(&face_data, bsp, lightmap, layer_idx);
 
             let batch = batches.entry(array_idx).or_insert((Vec::new(), Vec::new()));
 
@@ -634,14 +734,31 @@ impl BspLoader {
     }
 }
 
+struct ProcessFaceData<'a> {
+    index: usize,
+    face: &'a bsp::Face,
+    custom_render: Option<CustomRender>,
+}
+
+struct CustomRender {
+    rendermode: i32,
+    renderamt: f32,
+    renderfx: i32,
+}
+
 /// Returns (interleaved vertex data, vertex indices)
 fn process_face(
-    face: &bsp::Face,
+    face_data: &ProcessFaceData,
     bsp: &bsp::Bsp,
     lightmap: &LightMapAtlasBuffer,
-    face_idx: usize,
     texture_layer_idx: usize,
 ) -> (Vec<BspVertex>, Vec<u32>) {
+    let ProcessFaceData {
+        index: face_idx,
+        face,
+        custom_render,
+    } = face_data;
+
     let face_vertices = face_vertices(face, bsp);
 
     let indices = triangulate_convex_polygon(&face_vertices);
