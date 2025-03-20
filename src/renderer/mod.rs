@@ -7,11 +7,13 @@ use wgpu::Extent3d;
 use winit::window::Window;
 
 pub mod bsp_buffer;
+pub mod bsp_lightmap;
 pub mod camera;
 pub mod mdl_buffer;
 pub mod oit;
 pub mod texture_buffer;
 pub mod utils;
+pub mod vertex_buffer;
 
 pub struct RenderContext {
     pub device: wgpu::Device,
@@ -153,7 +155,7 @@ impl RenderContext {
 
         // bsp render pipeline
         let bsp_render_pipeline =
-            BspLoader::create_render_pipeline(&device, fragment_targets.clone());
+            BspLoader::create_render_pipeline_opaque(&device, fragment_targets.clone());
 
         // mdl render pipeline
         let mdl_render_pipeline = MdlLoader::create_render_pipeline(&device, fragment_targets);
@@ -240,8 +242,6 @@ impl RenderContext {
                 state.bsp_buffers.iter().for_each(|bsp_buffer| {
                     rpass.set_bind_group(2, &bsp_buffer.lightmap.bind_group, &[]);
 
-                    // TODO: room for improvement
-                    // drawing worldspawn
                     let opaque_buffer = &bsp_buffer.opaque;
 
                     opaque_buffer.iter().for_each(|batch| {
