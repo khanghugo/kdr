@@ -10,10 +10,11 @@ pub mod bsp_buffer;
 pub mod bsp_lightmap;
 pub mod camera;
 pub mod mdl_buffer;
+pub mod mvp_buffer;
 pub mod oit;
 pub mod texture_buffer;
 pub mod utils;
-pub mod vertex_buffer;
+pub mod world_buffer;
 
 pub struct RenderContext {
     pub device: wgpu::Device,
