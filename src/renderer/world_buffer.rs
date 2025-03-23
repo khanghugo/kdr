@@ -23,14 +23,15 @@ pub struct WorldVertex {
     normal: [f32; 3],
     layer: u32,
     model_idx: u32,
-    // for bsp: [lightmap_u, lightmap_v, renderamt]
-    // for mdl: unused
-    data_a: [f32; 3],
     // type of the vertex, bsp vertex or mdl vertex
     // 0: bsp, 1: mdl
     type_: u32,
-    // 56 + 8 = 64
-    _padding: [u32; 2],
+    // for bsp: [lightmap_u, lightmap_v, renderamt]
+    // for mdl: unused
+    data_a: [f32; 3],
+    // for bsp: [rendermode, unused]
+    // for mdl: unused
+    data_b: [u32; 2],
 }
 
 impl WorldVertex {
@@ -69,19 +70,19 @@ impl WorldVertex {
                     offset: 36,
                     shader_location: 4,
                 },
-                // data_a
-                wgpu::VertexAttribute {
-                    format: wgpu::VertexFormat::Float32x3,
-                    offset: 40,
-                    shader_location: 5,
-                },
                 // vertex type
                 wgpu::VertexAttribute {
                     format: wgpu::VertexFormat::Uint32,
-                    offset: 52,
+                    offset: 40,
+                    shader_location: 5,
+                },
+                // data_a
+                wgpu::VertexAttribute {
+                    format: wgpu::VertexFormat::Float32x3,
+                    offset: 44,
                     shader_location: 6,
                 },
-                // padding
+                // data_b
                 wgpu::VertexAttribute {
                     format: wgpu::VertexFormat::Uint32x2,
                     offset: 56,
@@ -637,6 +638,13 @@ fn process_bsp_face(
             .collect()
     };
 
+    let rendermode = custom_render
+        .as_ref()
+        .map(|v| v.rendermode)
+        // amount 1 = 255 = full aka opaque
+        // transparent objects have their own default so this won't be a problem
+        .unwrap_or(0);
+
     let renderamt = custom_render
         .as_ref()
         .map(|v| v.renderamt / 255.0)
@@ -655,9 +663,9 @@ fn process_bsp_face(
             normal: normal.to_array().into(),
             layer: texture_layer_idx as u32,
             model_idx: 0, // hardcoded for now
-            data_a: [lightmap_coord[0], lightmap_coord[1], renderamt],
             type_: 0,
-            _padding: [0u32; 2],
+            data_a: [lightmap_coord[0], lightmap_coord[1], renderamt],
+            data_b: [rendermode as u32, 0],
         })
         .collect();
 
@@ -759,9 +767,9 @@ fn create_mdl_batch_lookup(
                                 // actual model index is different
                                 // because 0 is worldspawn
                                 model_idx: (mdl_index + 1) as u32,
-                                data_a: [0f32; 3],
                                 type_: 1,
-                                _padding: [0u32; 2],
+                                data_a: [0f32; 3],
+                                data_b: [0u32; 2],
                             }
                         });
 

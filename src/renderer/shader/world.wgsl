@@ -5,8 +5,9 @@ struct VertexOut {
     @location(2) normal: vec3f,
     @location(3) layer_idx: u32,
     @location(4) model_idx: u32,
-    @location(5) data_a: vec3f,
-    @location(6) type_: u32,
+    @location(5) type_: u32,
+    @location(6) data_a: vec3f,
+    @location(7) data_b: vec2u,
 };
 
 @group(0) @binding(0)
@@ -25,8 +26,9 @@ fn vs_main(
     @location(2) normal: vec3f,
     @location(3) layer_idx: u32,
     @location(4) model_idx: u32,
-    @location(5) data_a: vec3f,
-    @location(6) type_: u32,
+    @location(5) type_: u32,
+    @location(6) data_a: vec3f,
+    @location(7) data_b: vec2u,
 ) -> VertexOut {
     var output: VertexOut;
 
@@ -39,8 +41,9 @@ fn vs_main(
     output.normal = normal;
     output.layer_idx = layer_idx;
     output.model_idx = model_idx;
-    output.data_a = data_a;
     output.type_ = type_;
+    output.data_a = data_a;
+    output.data_b = data_b;
 
     return output;
 }
@@ -61,8 +64,9 @@ fn calculate_base_color(
     normal: vec3f,
     layer_idx: u32,
     model_idx: u32,
-    data_a: vec3f,
     type_: u32,
+    data_a: vec3f,
+    data_b: vec2u,
 ) -> vec4f {
     let albedo = textureSample(texture, linear_sampler, tex_coord, layer_idx);
 
@@ -77,14 +81,20 @@ fn calculate_base_color(
         // from the the game
         * (128.0 / 192.0);
 
+        let rendermode = data_b[0];
         let renderamt = data_a[2];
         let alpha = min(albedo.a, renderamt);
 
-        // pre multiply alpha, overbright, and light
-        let pre_multiply = albedo.rgb * alpha * light * 2.0;
+        // pre multiply alpha and overbright
+        var final_color = albedo.rgb * alpha * 2.0;
+
+        // some render mode don't have lightmap
+        if rendermode != 2 {
+            final_color *= light;
+        }
 
         // gamma
-        let gamma_corrected = gamma_correct(pre_multiply);
+        let gamma_corrected = gamma_correct(final_color);
 
         return vec4(gamma_corrected, alpha);
     }
@@ -101,10 +111,11 @@ fn fs_opaque(
     @location(2) normal: vec3f,
     @location(3) layer_idx: u32,
     @location(4) model_idx: u32,
-    @location(5) data_a: vec3f,
-    @location(6) type_: u32,
+    @location(5) type_: u32,
+    @location(6) data_a: vec3f,
+    @location(7) data_b: vec2u,
 ) -> @location(0) vec4f {
-    let color = calculate_base_color(tex_coord, normal, layer_idx, model_idx, data_a, type_);
+    let color = calculate_base_color(tex_coord, normal, layer_idx, model_idx, type_, data_a, data_b);
 
     return color;
 }
@@ -123,8 +134,9 @@ fn fs_transparent(
     @location(2) normal: vec3f,
     @location(3) layer_idx: u32,
     @location(4) model_idx: u32,
-    @location(5) data_a: vec3f,
-    @location(6) type_: u32,
+    @location(5) type_: u32,
+    @location(6) data_a: vec3f,
+    @location(7) data_b: vec2u,
 ) -> FragOutput {
     // let is_opposite = dot(normal, normalize(world_position - camera_pos)) > 0.0;
 
@@ -132,7 +144,7 @@ fn fs_transparent(
     //     discard;
     // }
 
-    let color = calculate_base_color(tex_coord, normal, layer_idx, model_idx, data_a, type_);
+    let color = calculate_base_color(tex_coord, normal, layer_idx, model_idx, type_, data_a, data_b);
 
     // -position.z goes like from 0 to 2
     // *100.0 because that is what the world looks like
