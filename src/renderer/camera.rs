@@ -1,5 +1,110 @@
 use cgmath::{Deg, ElementWise, InnerSpace, Matrix4, MetricSpace, Point3, Vector3, perspective};
 
+pub struct CameraBuffer {
+    pub view: wgpu::Buffer,
+    pub projection: wgpu::Buffer,
+    pub position: wgpu::Buffer,
+    pub bind_group: wgpu::BindGroup,
+}
+
+impl CameraBuffer {
+    pub fn bind_group_layout_descriptor() -> wgpu::BindGroupLayoutDescriptor<'static> {
+        wgpu::BindGroupLayoutDescriptor {
+            label: Some("camera bind group layout"),
+            entries: &[
+                // view
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::VERTEX,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+                // projection
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::VERTEX,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+                // position
+                wgpu::BindGroupLayoutEntry {
+                    binding: 2,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+            ],
+        }
+    }
+
+    pub fn create(device: &wgpu::Device) -> Self {
+        let view_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("camera view buffer"),
+            size: 4 * 4 * 4, // 4x4 matrix
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false, // empty buffer
+        });
+
+        let proj_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("camera projection buffer"),
+            size: 4 * 4 * 4, // 4x4 matrix
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false, // empty buffer
+        });
+
+        let position_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("camera position buffer"),
+            size: 4 * 3, // [f32; 3]
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false, // empty buffer
+        });
+
+        let bind_group_layout =
+            device.create_bind_group_layout(&Self::bind_group_layout_descriptor());
+
+        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("camera bind group"),
+            layout: &bind_group_layout,
+            entries: &[
+                // view
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: view_buffer.as_entire_binding(),
+                },
+                // projection
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: proj_buffer.as_entire_binding(),
+                },
+                // position
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: position_buffer.as_entire_binding(),
+                },
+            ],
+        });
+
+        Self {
+            view: view_buffer,
+            projection: proj_buffer,
+            bind_group,
+            position: position_buffer,
+        }
+    }
+}
+
 pub struct Camera {
     pub pos: Point3<f32>,
     pub target: Point3<f32>,
@@ -23,7 +128,7 @@ impl Default for Camera {
             up: Vector3::unit_z(), // using the game up vector
             aspect: 640 as f32 / 480 as f32,
             fovy: Deg(90.0),
-            znear: 1.0,
+            znear: 0.1,
             zfar: 1000000.0,
         }
     }
@@ -31,26 +136,6 @@ impl Default for Camera {
 
 // AI hand wrote this
 impl Camera {
-    pub fn bind_group_layout_descriptor() -> wgpu::BindGroupLayoutDescriptor<'static> {
-        wgpu::BindGroupLayoutDescriptor {
-            label: Some("camera bind group layout"),
-            entries: &[wgpu::BindGroupLayoutEntry {
-                binding: 0,
-                visibility: wgpu::ShaderStages::VERTEX,
-                ty: wgpu::BindingType::Buffer {
-                    ty: wgpu::BufferBindingType::Uniform,
-                    has_dynamic_offset: false,
-                    min_binding_size: None,
-                },
-                count: None,
-            }],
-        }
-    }
-
-    pub fn build_view_projection_matrix(&self) -> Matrix4<f32> {
-        self.proj() * self.view()
-    }
-
     pub fn view(&self) -> Matrix4<f32> {
         Matrix4::look_at_rh(self.pos, self.target, self.up)
     }

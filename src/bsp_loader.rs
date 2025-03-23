@@ -6,7 +6,7 @@ pub struct BspResource {
 }
 
 #[derive(Clone, Copy)]
-pub struct MdlEntityInfo {
+pub struct WorldEntityInfo {
     pub origin: [f32; 3],
     pub angles: [f32; 3],
     pub model_view_projection: cgmath::Matrix4<f32>,
@@ -14,7 +14,7 @@ pub struct MdlEntityInfo {
 
 pub struct MdlEntity {
     pub mdl: mdl::Mdl,
-    pub info: MdlEntityInfo,
+    pub info: WorldEntityInfo,
 }
 
 const MODEL_ENTITIES: &[&str] = &["cycler_sprite", "env_sprite"];
@@ -72,7 +72,7 @@ pub fn get_bsp_resources(bsp: bsp::Bsp, bsp_path: &Path) -> BspResource {
                     * cgmath::Matrix4::from_angle_y(cgmath::Deg(angles[1]))
                     * cgmath::Matrix4::from_angle_z(cgmath::Deg(angles[2]));
 
-                let model_info = MdlEntityInfo {
+                let model_info = WorldEntityInfo {
                     origin,
                     angles,
                     model_view_projection: transformation_matrix,

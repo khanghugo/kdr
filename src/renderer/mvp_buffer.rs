@@ -1,15 +1,15 @@
 use wgpu::util::DeviceExt;
 
-use crate::bsp_loader::MdlEntityInfo;
+use crate::bsp_loader::WorldEntityInfo;
 
 // this should work for bsp as well because we will have func_rotating_door and whatever
-pub struct MdlMvp {
+pub struct MvpBuffer {
     pub bind_group: wgpu::BindGroup,
     pub buffer: wgpu::Buffer,
-    pub entity_infos: Vec<MdlEntityInfo>,
+    pub entity_infos: Vec<WorldEntityInfo>,
 }
 
-impl MdlMvp {
+impl MvpBuffer {
     pub fn bind_group_layout_descriptor() -> wgpu::BindGroupLayoutDescriptor<'static> {
         wgpu::BindGroupLayoutDescriptor {
             label: Some("model view projection bind group layout"),
@@ -26,7 +26,7 @@ impl MdlMvp {
         }
     }
 
-    pub fn create_mvp(device: &wgpu::Device, entity_infos: &[&MdlEntityInfo]) -> Self {
+    pub fn create_mvp(device: &wgpu::Device, entity_infos: &[&WorldEntityInfo]) -> Self {
         let matrices: Vec<[[f32; 4]; 4]> = entity_infos
             .iter()
             .map(|info| info.model_view_projection.into())
@@ -46,7 +46,7 @@ impl MdlMvp {
         });
 
         let mvp_bind_group_layout =
-            device.create_bind_group_layout(&MdlMvp::bind_group_layout_descriptor());
+            device.create_bind_group_layout(&MvpBuffer::bind_group_layout_descriptor());
 
         let mvp_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("model view projection array bind group"),
@@ -57,7 +57,7 @@ impl MdlMvp {
             }],
         });
 
-        MdlMvp {
+        MvpBuffer {
             bind_group: mvp_bind_group,
             buffer: mvp_buffer,
             entity_infos: entity_infos

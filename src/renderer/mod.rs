@@ -1,15 +1,13 @@
 use std::sync::Arc;
 
-use bsp_buffer::{BspBuffer, BspLoader};
-use camera::Camera;
-use mdl_buffer::{MdlBuffer, MdlLoader};
+use camera::{Camera, CameraBuffer};
+use oit::{OITRenderTarget, OITResolver};
 use wgpu::Extent3d;
 use winit::window::Window;
+use world_buffer::{WorldBuffer, WorldLoader};
 
-pub mod bsp_buffer;
 pub mod bsp_lightmap;
 pub mod camera;
-pub mod mdl_buffer;
 pub mod mvp_buffer;
 pub mod oit;
 pub mod texture_buffer;
@@ -19,28 +17,25 @@ pub mod world_buffer;
 pub struct RenderContext {
     pub device: wgpu::Device,
     pub queue: wgpu::Queue,
-    pub bsp_render_pipeline: wgpu::RenderPipeline,
-    pub mdl_render_pipeline: wgpu::RenderPipeline,
+    pub world_opaque_render_pipeline: wgpu::RenderPipeline,
+    pub world_transparent_render_pipeline: wgpu::RenderPipeline,
     pub swapchain_format: wgpu::TextureFormat,
     pub surface: wgpu::Surface<'static>,
-    pub cam_buffer: wgpu::Buffer,
-    pub cam_bind_group: wgpu::BindGroup,
     pub depth_texture: wgpu::Texture,
     pub depth_view: wgpu::TextureView,
+    pub oit_resolver: OITResolver,
+    pub camera_buffer: CameraBuffer,
 }
 
 impl Drop for RenderContext {
     fn drop(&mut self) {
         self.device.destroy();
-        self.cam_buffer.destroy();
         self.depth_texture.destroy();
     }
 }
 
 pub struct RenderState {
-    // can load multiple bsp
-    pub bsp_buffers: Vec<BspBuffer>,
-    pub mdl_buffers: Vec<MdlBuffer>,
+    pub world_buffer: Vec<WorldBuffer>,
 
     pub camera: Camera,
 
@@ -52,9 +47,8 @@ impl Default for RenderState {
     fn default() -> Self {
         Self {
             camera: Default::default(),
-            bsp_buffers: vec![],
-            mdl_buffers: vec![],
             draw_call: 0,
+            world_buffer: vec![],
         }
     }
 }
@@ -95,26 +89,8 @@ impl RenderContext {
             .await
             .unwrap();
 
-        // camera stuffs
-        let cam_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("camera buffer"),
-            size: 4 * 4 * 4, // 4x4 matrix
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false, // we will update it
-        });
-
-        let cam_bind_group_layout =
-            device.create_bind_group_layout(&Camera::bind_group_layout_descriptor());
-
-        // should go into the camera function
-        let cam_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("camera bind group"),
-            layout: &cam_bind_group_layout,
-            entries: &[wgpu::BindGroupEntry {
-                binding: 0,
-                resource: cam_buffer.as_entire_binding(),
-            }],
-        });
+        // camera buffer
+        let camera_buffer = CameraBuffer::create(&device);
 
         // depth stuffs
         let depth_texture = device.create_texture(&wgpu::TextureDescriptor {
@@ -128,7 +104,7 @@ impl RenderContext {
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
             format: wgpu::TextureFormat::Depth32Float,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
             view_formats: &[],
         });
 
@@ -138,28 +114,19 @@ impl RenderContext {
         let swapchain_capabilities = surface.get_capabilities(&adapter);
         let swapchain_format = swapchain_capabilities.formats[0];
 
-        // enable alpha blending
-        let alpha_blending = wgpu::ColorTargetState {
+        // opaque pass and then transparent passs
+        let opaque_blending = wgpu::ColorTargetState {
             format: swapchain_format,
-            blend: Some(wgpu::BlendState {
-                color: wgpu::BlendComponent {
-                    src_factor: wgpu::BlendFactor::SrcAlpha,
-                    dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
-                    operation: wgpu::BlendOperation::Add,
-                },
-                alpha: wgpu::BlendComponent::OVER,
-            }),
+            blend: None,
             write_mask: wgpu::ColorWrites::ALL,
         };
 
-        let fragment_targets = vec![alpha_blending];
+        let transparent_blending = OITRenderTarget::targets();
 
-        // bsp render pipeline
-        let bsp_render_pipeline =
-            BspLoader::create_render_pipeline_opaque(&device, fragment_targets.clone());
-
-        // mdl render pipeline
-        let mdl_render_pipeline = MdlLoader::create_render_pipeline(&device, fragment_targets);
+        let world_opaque_render_pipeline =
+            WorldLoader::create_render_pipeline(&device, vec![opaque_blending], true);
+        let world_transparent_render_pipeline =
+            WorldLoader::create_render_pipeline(&device, transparent_blending.into(), false);
 
         let config = surface
             .get_default_config(&adapter, size.width, size.height)
@@ -170,49 +137,63 @@ impl RenderContext {
             ..config
         };
 
+        let oit_resolver = OITResolver::new(&device, &config);
+
         surface.configure(&device, &config);
 
         Self {
             device,
             queue,
-            bsp_render_pipeline,
-            mdl_render_pipeline,
             swapchain_format,
             surface,
-            cam_bind_group,
-            cam_buffer,
             depth_texture,
             depth_view,
+            world_opaque_render_pipeline,
+            world_transparent_render_pipeline,
+            oit_resolver,
+            camera_buffer,
         }
     }
 
     pub fn render(&self, state: &mut RenderState) {
         let frame = self.surface.get_current_texture().unwrap();
-        let view = frame
+        let surface_view = frame
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
         let mut encoder = self
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
 
-        // camera projection
-        // there is no need to do model-view projection for bsp
-        // so we save the number here and we will do the matrix for the model
-        let view_proj = state.camera.build_view_projection_matrix();
-
+        // update camera buffer
         {
-            let view_proj_cast: &[f32; 16] = view_proj.as_ref();
-            let view_proj_bytes: &[u8] = bytemuck::cast_slice(view_proj_cast);
+            let view = state.camera.view();
+            let view_cast: &[f32; 16] = view.as_ref();
+            let view_bytes: &[u8] = bytemuck::cast_slice(view_cast);
+
+            let proj = state.camera.proj();
+            let proj_cast: &[f32; 16] = proj.as_ref();
+            let proj_bytes: &[u8] = bytemuck::cast_slice(proj_cast);
+
+            let pos = state.camera.pos;
+            let pos_cast: &[f32; 3] = pos.as_ref();
+            let pos_bytes: &[u8] = bytemuck::cast_slice(pos_cast);
+
             self.queue
-                .write_buffer(&self.cam_buffer, 0, view_proj_bytes);
+                .write_buffer(&self.camera_buffer.view, 0, view_bytes);
+            self.queue
+                .write_buffer(&self.camera_buffer.projection, 0, proj_bytes);
+            self.queue
+                .write_buffer(&self.camera_buffer.position, 0, pos_bytes);
         }
 
-        // render bsp
-        {
-            let pass_descriptor = wgpu::RenderPassDescriptor {
-                label: None,
+        state.draw_call = 0;
+
+        // world opaque pass
+        if true {
+            let opaque_pass_descriptor = wgpu::RenderPassDescriptor {
+                label: Some("world opaque pass descriptor"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &view,
+                    view: &surface_view,
                     resolve_target: None,
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
@@ -231,86 +212,90 @@ impl RenderContext {
                 occlusion_query_set: None,
             };
 
-            let mut rpass = encoder.begin_render_pass(&pass_descriptor);
+            let mut opaque_pass = encoder.begin_render_pass(&opaque_pass_descriptor);
 
-            state.draw_call = 0;
+            opaque_pass.set_pipeline(&self.world_opaque_render_pipeline);
+            opaque_pass.set_bind_group(0, &self.camera_buffer.bind_group, &[]);
 
-            // drawing bsp
-            {
-                rpass.set_pipeline(&self.bsp_render_pipeline);
-                rpass.set_bind_group(0, &self.cam_bind_group, &[]);
+            state.world_buffer.iter().for_each(|world_buffer| {
+                // lightmap
+                opaque_pass.set_bind_group(3, &world_buffer.bsp_lightmap.bind_group, &[]);
 
-                state.bsp_buffers.iter().for_each(|bsp_buffer| {
-                    rpass.set_bind_group(2, &bsp_buffer.lightmap.bind_group, &[]);
+                // model projection
+                {
+                    opaque_pass.set_bind_group(1, &world_buffer.mvp_buffer.bind_group, &[]);
+                }
 
-                    let opaque_buffer = &bsp_buffer.opaque;
+                world_buffer.opaque.iter().for_each(|batch| {
+                    state.draw_call += 1;
 
-                    opaque_buffer.iter().for_each(|batch| {
-                        state.draw_call += 1;
+                    // texture array
+                    opaque_pass.set_bind_group(
+                        2,
+                        &world_buffer.textures[batch.texture_array_index].bind_group,
+                        &[],
+                    );
 
-                        rpass.set_bind_group(
-                            1,
-                            &bsp_buffer.textures[batch.texture_array_index].bind_group,
-                            &[],
-                        );
-                        rpass.set_vertex_buffer(0, batch.vertex_buffer.slice(..));
-                        rpass.set_index_buffer(
-                            batch.index_buffer.slice(..),
-                            wgpu::IndexFormat::Uint32,
-                        );
-                        rpass.draw_indexed(0..batch.index_count as u32, 0, 0..1);
-                    });
-
-                    let transparent_buffer = &bsp_buffer.transparent;
-
-                    // drawing entities
-                    transparent_buffer.iter().for_each(|batch| {
-                        state.draw_call += 1;
-
-                        rpass.set_bind_group(
-                            1,
-                            &bsp_buffer.textures[batch.texture_array_index].bind_group,
-                            &[],
-                        );
-                        rpass.set_vertex_buffer(0, batch.vertex_buffer.slice(..));
-                        rpass.set_index_buffer(
-                            batch.index_buffer.slice(..),
-                            wgpu::IndexFormat::Uint32,
-                        );
-                        rpass.draw_indexed(0..batch.index_count as u32, 0, 0..1);
-                    });
+                    opaque_pass.set_vertex_buffer(0, batch.vertex_buffer.slice(..));
+                    opaque_pass
+                        .set_index_buffer(batch.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
+                    opaque_pass.draw_indexed(0..batch.index_count as u32, 0, 0..1);
                 });
-            }
+            });
+        }
 
-            // drawing mdl
-            {
-                rpass.set_pipeline(&self.mdl_render_pipeline);
-                rpass.set_bind_group(0, &self.cam_bind_group, &[]);
+        // world transparent pass
+        if true {
+            let transparent_pass_descriptor = wgpu::RenderPassDescriptor {
+                label: Some("world transparent pass descriptor"),
+                color_attachments: &self.oit_resolver.render_pass_color_attachments(),
+                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                    view: &self.depth_view,
+                    depth_ops: Some(wgpu::Operations {
+                        load: wgpu::LoadOp::Load,
+                        store: wgpu::StoreOp::Store,
+                    }),
+                    stencil_ops: None,
+                }),
+                timestamp_writes: None,
+                occlusion_query_set: None,
+            };
 
-                state.mdl_buffers.iter().for_each(|mdl_buffer| {
-                    // model projection
-                    {
-                        rpass.set_bind_group(2, &mdl_buffer.mvps.bind_group, &[]);
-                        // let buf = mdl_buffer.mvps.entity_infos.
-                    }
+            let mut transparent_pass = encoder.begin_render_pass(&transparent_pass_descriptor);
 
-                    mdl_buffer.vertices.iter().for_each(|batch| {
-                        state.draw_call += 1;
+            transparent_pass.set_pipeline(&self.world_transparent_render_pipeline);
+            transparent_pass.set_bind_group(0, &self.camera_buffer.bind_group, &[]);
 
-                        rpass.set_bind_group(
-                            1,
-                            &mdl_buffer.textures[batch.texture_array_idx as usize].bind_group,
-                            &[],
-                        );
-                        rpass.set_vertex_buffer(0, batch.vertex_buffer.slice(..));
-                        rpass.set_index_buffer(
-                            batch.index_buffer.slice(..),
-                            wgpu::IndexFormat::Uint32,
-                        );
-                        rpass.draw_indexed(0..batch.index_count as u32, 0, 0..1);
-                    });
+            state.world_buffer.iter().for_each(|world_buffer| {
+                // lightmap
+                transparent_pass.set_bind_group(3, &world_buffer.bsp_lightmap.bind_group, &[]);
+
+                // model projection
+                {
+                    transparent_pass.set_bind_group(1, &world_buffer.mvp_buffer.bind_group, &[]);
+                }
+
+                world_buffer.transparent.iter().for_each(|batch| {
+                    state.draw_call += 1;
+
+                    // texture array
+                    transparent_pass.set_bind_group(
+                        2,
+                        &world_buffer.textures[batch.texture_array_index].bind_group,
+                        &[],
+                    );
+
+                    transparent_pass.set_vertex_buffer(0, batch.vertex_buffer.slice(..));
+                    transparent_pass
+                        .set_index_buffer(batch.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
+                    transparent_pass.draw_indexed(0..batch.index_count as u32, 0, 0..1);
                 });
-            }
+            });
+        }
+
+        // resolve pass
+        if true {
+            self.oit_resolver.resolve(&mut encoder, &surface_view);
         }
 
         self.queue.submit(Some(encoder.finish()));
