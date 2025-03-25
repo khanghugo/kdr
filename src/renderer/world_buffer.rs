@@ -361,8 +361,6 @@ fn create_batch_lookups(
                     _ => unreachable!(),
                 };
 
-                println!("bsp model idx {}", bsp_model_index);
-
                 let model = &bsp.models[bsp_model_index as usize];
 
                 let first_face = model.first_face as usize;
