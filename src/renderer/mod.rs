@@ -73,7 +73,10 @@ impl RenderContext {
             wgpu::Limits::downlevel_webgl2_defaults().using_resolution(adapter.limits());
         limits.max_texture_array_layers = 1024;
         limits.max_storage_buffers_per_shader_stage = 4;
-        limits.max_storage_buffer_binding_size = 4096 * 4;
+        // this is for mvp matrices
+        limits.max_storage_buffer_binding_size = (4 * 4 * 4) // 1 matrix4x4f
+            * 1024 // 1000 entities
+        ;
         // end limits
 
         let (device, queue) = adapter
@@ -218,13 +221,8 @@ impl RenderContext {
             opaque_pass.set_bind_group(0, &self.camera_buffer.bind_group, &[]);
 
             state.world_buffer.iter().for_each(|world_buffer| {
-                // lightmap
                 opaque_pass.set_bind_group(3, &world_buffer.bsp_lightmap.bind_group, &[]);
-
-                // model projection
-                {
-                    opaque_pass.set_bind_group(1, &world_buffer.mvp_buffer.bind_group, &[]);
-                }
+                opaque_pass.set_bind_group(1, &world_buffer.mvp_buffer.bind_group, &[]);
 
                 world_buffer.opaque.iter().for_each(|batch| {
                     state.draw_call += 1;
@@ -267,13 +265,8 @@ impl RenderContext {
             transparent_pass.set_bind_group(0, &self.camera_buffer.bind_group, &[]);
 
             state.world_buffer.iter().for_each(|world_buffer| {
-                // lightmap
                 transparent_pass.set_bind_group(3, &world_buffer.bsp_lightmap.bind_group, &[]);
-
-                // model projection
-                {
-                    transparent_pass.set_bind_group(1, &world_buffer.mvp_buffer.bind_group, &[]);
-                }
+                transparent_pass.set_bind_group(1, &world_buffer.mvp_buffer.bind_group, &[]);
 
                 world_buffer.transparent.iter().for_each(|batch| {
                     state.draw_call += 1;

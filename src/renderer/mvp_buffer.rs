@@ -1,12 +1,11 @@
 use wgpu::util::DeviceExt;
 
-use crate::bsp_loader::WorldEntityInfo;
+use crate::bsp_loader::WorldEntity;
 
 // this should work for bsp as well because we will have func_rotating_door and whatever
 pub struct MvpBuffer {
     pub bind_group: wgpu::BindGroup,
     pub buffer: wgpu::Buffer,
-    pub entity_infos: Vec<WorldEntityInfo>,
 }
 
 impl MvpBuffer {
@@ -26,7 +25,7 @@ impl MvpBuffer {
         }
     }
 
-    pub fn create_mvp(device: &wgpu::Device, entity_infos: &[&WorldEntityInfo]) -> Self {
+    pub fn create_mvp(device: &wgpu::Device, entity_infos: &[&WorldEntity]) -> Self {
         let matrices: Vec<[[f32; 4]; 4]> = entity_infos
             .iter()
             .map(|info| info.model_view_projection.into())
@@ -60,14 +59,6 @@ impl MvpBuffer {
         MvpBuffer {
             bind_group: mvp_bind_group,
             buffer: mvp_buffer,
-            entity_infos: entity_infos
-                .iter()
-                .map(|s| {
-                    // the fuck?
-                    let what = s.to_owned().to_owned();
-                    what
-                })
-                .collect(),
         }
     }
 }

@@ -4,15 +4,24 @@ use bytemuck::{Pod, Zeroable};
 use image::RgbaImage;
 use wgpu::util::DeviceExt;
 
-use crate::bsp_loader::BspResource;
+use crate::bsp_loader::{BspResource, CustomRender, EntityModel, WorldEntity};
 
 use super::{
     bsp_lightmap::LightMapAtlasBuffer,
     camera::CameraBuffer,
     mvp_buffer::MvpBuffer,
     texture_buffer::texture_array::{TextureArrayBuffer, create_texture_array},
-    utils::{eightbpp_to_rgba8, face_vertices, vertex_uv},
+    utils::{face_vertices, get_bsp_textures, get_mdl_textures, vertex_uv},
 };
+
+/// Key: (Entity Index, Texture Index)
+///
+/// Value: (Texture Array Index, Texture Index)
+type WorldTextureLookupTable = HashMap<(usize, usize), (usize, usize)>;
+
+/// Key: Batch Index aka Texture Array Index
+/// Value: (World Vertex Array, Index Array)
+type BatchLookup = HashMap<usize, (Vec<WorldVertex>, Vec<u32>)>;
 
 #[repr(C)]
 #[derive(Pod, Zeroable, Clone, Copy)]
@@ -199,63 +208,17 @@ impl WorldLoader {
     ) -> WorldBuffer {
         let lightmap = LightMapAtlasBuffer::load_lightmap(device, queue, &resource.bsp);
         let (lookup_table, texture_arrays) = Self::load_textures(device, queue, resource);
+        let (opaque_batch, transparent_batch) =
+            create_batch_lookups(resource, &lookup_table, &lightmap);
+        let opaque_vertex_buffer = create_world_vertex_buffer(device, opaque_batch);
+        let transparent_vertex_buffer = create_world_vertex_buffer(device, transparent_batch);
 
-        // at the moment, we're assuming all mdls are static
-        let [opaque_entities_faces, transparent_entities_faces] =
-            partition_bsp_renderable_entities_faces(&resource.bsp);
-
-        let opaque_bsp_batch_lookup = create_bsp_batch_lookup(
-            &resource.bsp,
-            opaque_entities_faces,
-            &lightmap,
-            // 0 is worldspawn so jsut hardcode it
-            &lookup_table[0],
-        );
-
-        let mdl_vec: Vec<&mdl::Mdl> = resource
-            .model_entities
+        let entity_infos: Vec<&WorldEntity> = resource
+            .entity_dictionary
             .iter()
-            .map(|entity| &entity.mdl)
+            .map(|(_, entity)| entity)
             .collect();
-
-        // ignore the first model aka world spawn
-        let mdl_batch_lookup = create_mdl_batch_lookup(&mdl_vec, &lookup_table[1..]);
-
-        let mut opaque_batch_lookup = opaque_bsp_batch_lookup;
-
-        // join opaque bsp and mdl
-        for (array_idx, (vertices, indices)) in mdl_batch_lookup {
-            let batch = opaque_batch_lookup
-                .entry(array_idx)
-                .or_insert((vec![], vec![]));
-
-            let new_vertices_offset = batch.0.len();
-
-            batch.0.extend(vertices);
-            batch.1.extend(
-                indices
-                    .into_iter()
-                    .map(|index| index + new_vertices_offset as u32),
-            );
-        }
-
-        let transparent_batch_lookup = create_bsp_batch_lookup(
-            &resource.bsp,
-            transparent_entities_faces,
-            &lightmap,
-            &lookup_table[0],
-        );
-
-        let opaque_vertex_buffer = create_world_vertex_buffer(device, opaque_batch_lookup);
-        let transparent_vertex_buffer =
-            create_world_vertex_buffer(device, transparent_batch_lookup);
-
-        let mdl_entities: Vec<_> = resource
-            .model_entities
-            .iter()
-            .map(|model_entity| &model_entity.info)
-            .collect();
-        let mvp_buffer = MvpBuffer::create_mvp(device, &mdl_entities);
+        let mvp_buffer = MvpBuffer::create_mvp(device, &entity_infos);
 
         WorldBuffer {
             opaque: opaque_vertex_buffer,
@@ -270,105 +233,76 @@ impl WorldLoader {
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         resource: &BspResource,
-    ) -> (Vec<Vec<(usize, usize)>>, Vec<TextureArrayBuffer>) {
-        let bsp_textures: Vec<RgbaImage> = resource
-            .bsp
-            .textures
+    ) -> (WorldTextureLookupTable, Vec<TextureArrayBuffer>) {
+        // key is entity index based on entity dictionary
+        let mut entity_textures: HashMap<usize, Vec<RgbaImage>> = HashMap::new();
+
+        // insert textures
+        resource
+            .entity_dictionary
             .iter()
-            .map(|texture| {
-                let texture_name = texture.texture_name.get_string_standard();
-                let override_alpha = if texture_name == "SKY" {
-                    // 16.into()
-                    None
-                } else {
-                    None
-                };
+            .for_each(|(&entity_index, entity)| match entity.model {
+                EntityModel::Bsp => {
+                    // hardcoded for all bsp brushes to use textures from worldspawn
+                    entity_textures.insert(0, get_bsp_textures(&resource.bsp));
+                }
+                EntityModel::Mdl(ref mdl) => {
+                    entity_textures.insert(entity_index, get_mdl_textures(&mdl));
+                }
+                EntityModel::Sprite => {
+                    todo!("cannot load sprite at the moment")
+                }
+                // for all other bsp brushes, they don't need to load their own textures
+                _ => (),
+            });
 
-                eightbpp_to_rgba8(
-                    texture.mip_images[0].data.get_bytes(),
-                    texture.palette.get_bytes(),
-                    texture.width,
-                    texture.height,
-                    override_alpha,
-                )
-            })
-            .collect();
-
-        let mut mdl_textures: Vec<Vec<_>> = resource
-            .model_entities
-            .iter()
-            .map(|mdl_entity| {
-                mdl_entity
-                    .mdl
-                    .textures
-                    .iter()
-                    .map(|texture| {
-                        eightbpp_to_rgba8(
-                            &texture.image,
-                            &texture.palette,
-                            texture.dimensions().0,
-                            texture.dimensions().1,
-                            None,
-                        )
-                    })
-                    .collect()
-            })
-            .collect();
-
-        mdl_textures.insert(0, bsp_textures);
-
-        let textures = mdl_textures;
-
+        // looking up which texture array to use from dimensions
         // key is dimensions
-        // value is Vec<(model index, texture indices)>
-        // model index = 0 is all bsp
-        // so, for every models after that, must offset the vertex by 1
-        let mut buckets: HashMap<(u32, u32), Vec<(usize, usize)>> = HashMap::new();
+        // value is Vec<(entity index, texture indices)>
+        let mut texture_arrays_look_up: HashMap<(u32, u32), Vec<(usize, usize)>> = HashMap::new();
 
         // here we build the first look up table
         // we still don't know what the bucket idx is but we do know bucket texture idx
         // to fix that, we just have to iterate through the hashmap and do some comparisons (hopefully cheap)
-        textures.iter().enumerate().for_each(|(model_idx, model)| {
-            model.iter().enumerate().for_each(|(texture_idx, texture)| {
-                buckets
-                    .entry(texture.dimensions())
-                    .or_insert(vec![])
-                    .push((model_idx, texture_idx));
-            });
-        });
-
-        // second look up table is a vector of vectors
-        // first index is the model index
-        // second index is the texture index
-        // the result is the texture array buffer and the index of the texture
-        let mut lookup_table: Vec<Vec<(usize, usize)>> = resource
-            .model_entities
+        entity_textures
             .iter()
-            .map(|entity| vec![(0, 0); entity.mdl.textures.len()])
-            .collect();
+            .for_each(|(&entity_index, textures)| {
+                textures
+                    .iter()
+                    .enumerate()
+                    .for_each(|(texture_idx, texture)| {
+                        texture_arrays_look_up
+                            .entry(texture.dimensions())
+                            .or_insert(vec![])
+                            .push((entity_index, texture_idx));
+                    });
+            });
 
-        // append worldspawn to the first entry
-        lookup_table.insert(0, vec![(0, 0); resource.bsp.textures.len()]);
+        // result look up table
+        // look up the texture array buffer and the texture index from the entity index and its texture
+        // key is (entity index, texture index)
+        // value is (texture array buffer index, index of the texture in the texture array buffer)
+        let mut lookup_table: WorldTextureLookupTable = HashMap::new();
 
-        let mut lookup_table = lookup_table;
-
-        let texture_arrays: Vec<TextureArrayBuffer> = buckets
+        let texture_arrays: Vec<TextureArrayBuffer> = texture_arrays_look_up
             .iter()
             .enumerate()
             .map(|(bucket_idx, (_, texture_indices))| {
                 // add the texture indices into our lookup table
                 texture_indices.iter().enumerate().for_each(
-                    |(layer_idx, &(model_idx, texture_idx))| {
-                        lookup_table[model_idx][texture_idx] = (bucket_idx, layer_idx);
+                    |(layer_idx, &(entity_idx, texture_idx))| {
+                        lookup_table.insert((entity_idx, texture_idx), (bucket_idx, layer_idx));
                     },
                 );
 
                 let ref_vec = texture_indices
                     .iter()
-                    .map(|&(model_idx, texture_idx)| &textures[model_idx][texture_idx])
+                    .map(|(entity_idx, texture_idx)| {
+                        &entity_textures.get(entity_idx).expect("cannot find entity")[*texture_idx]
+                    })
                     .collect::<Vec<_>>();
 
-                create_texture_array(device, queue, &ref_vec).unwrap()
+                create_texture_array(device, queue, &ref_vec).expect("cannot make texture array")
             })
             .collect();
 
@@ -377,218 +311,225 @@ impl WorldLoader {
 }
 
 struct ProcessBspFaceData<'a> {
-    index: usize,
+    face_index: usize,
+    entity_index: usize,
+    texture_layer_index: usize,
     face: &'a bsp::Face,
-    custom_render: Option<CustomRender>,
+    custom_render: Option<&'a CustomRender>,
 }
 
-struct CustomRender {
-    rendermode: i32,
-    renderamt: f32,
-    renderfx: i32,
-}
+// Returns (opaque batch lookup, transparent batch lookup)
+fn create_batch_lookups(
+    resource: &BspResource,
+    world_texture_lookup: &WorldTextureLookupTable,
+    lightmap: &LightMapAtlasBuffer,
+) -> (BatchLookup, BatchLookup) {
+    let mut opaque_lookup = BatchLookup::new();
+    let mut transparent_lookup = BatchLookup::new();
+    let bsp = &resource.bsp;
 
-fn partition_bsp_renderable_entities_faces<'a>(
-    bsp: &'a bsp::Bsp,
-) -> [Vec<ProcessBspFaceData<'a>>; 2] {
-    let (opaque_entities, transparent_entities): (Vec<_>, _) = bsp
-        .entities
+    resource
+        .entity_dictionary
         .iter()
-        // first need to filter out non-brush entities
-        .filter(|entity| {
-            // manually add worldspawn because it doesnt have "model" key
-            if let Some(classname) = entity.get("classname") {
-                if classname == "worldspawn" {
-                    return true;
-                }
-            }
+        .for_each(|(&entity_index, entity)| {
+            let is_transparent = matches!(
+                entity.model,
+                EntityModel::TransparentEntityBrush(_) | EntityModel::Sprite
+            );
 
-            if let Some(model) = entity.get("model") {
-                // only brush models have "*" prefix
-                if model.starts_with("*") {
-                    return true;
-                }
-            }
-
-            // if an entity doesnt have a model, it is probably something not important
-            false
-        })
-        // now partition the entities
-        .partition(|entity| {
-            if let Some(rendermode) = entity
-                .get("rendermode")
-                .and_then(|rendermode| rendermode.parse::<i32>().ok())
-            {
-                // rendermode 0 = normal
-                // rendermode 4 = solid aka alpha test
-                let is_solid = [0, 4].contains(&rendermode);
-
-                if is_solid {
-                    return true;
-                }
-
-                // check for renderamt
-                if let Some(renderamt) = entity
-                    .get("renderamt")
-                    .and_then(|renderamt| renderamt.parse::<f32>().ok())
-                {
-                    let is_255 = renderamt >= 255.;
-
-                    // 255 means no need to bother blending
-                    if is_255 {
-                        return true;
-                    }
-                }
-
-                // renderamt is defaulted to be 0 when entity is spawned
-                return false;
-            }
-
-            // no rendermode, could be world brush
-            true
-        });
-
-    // now load the faces from the models
-    // need to add worldspawn manually into list of opaque entities
-    let opaque_entities_faces = opaque_entities
-        .iter()
-        .flat_map(|entity| {
-            let is_worldspawn = entity
-                .get("classname")
-                .is_some_and(|classname| classname == "worldspawn");
-
-            let model_idx = if is_worldspawn {
-                0
+            let assigned_lookup = if is_transparent {
+                &mut transparent_lookup
             } else {
-                entity.get("model")
-        // we know for sure that this is a brush
-        .unwrap()
-        // remove the asterisk
-        [1..]
-                    .parse::<u32>()
-                    .expect("cannot find entity model")
+                &mut opaque_lookup
             };
 
-            let model = &bsp.models[model_idx as usize];
+            // add the world vertex based on the entity type
+            match &entity.model {
+                EntityModel::Bsp
+                | EntityModel::OpaqueEntityBrush(_)
+                | EntityModel::TransparentEntityBrush(_) => {
+                    let bsp_model_index = match &entity.model {
+                        EntityModel::Bsp => 0,
+                        EntityModel::OpaqueEntityBrush(x) => *x,
+                        EntityModel::TransparentEntityBrush((x, _)) => *x,
+                        _ => unreachable!(),
+                    };
 
-            let first_face = model.first_face as usize;
-            let face_count = model.face_count as usize;
+                    let model = &bsp.models[bsp_model_index as usize];
 
-            let faces = &bsp.faces[first_face..(first_face + face_count)];
+                    let first_face = model.first_face as usize;
+                    let face_count = model.face_count as usize;
 
-            faces
-                .into_iter()
-                .enumerate()
-                .map(|(offset, face)| ProcessBspFaceData {
-                    index: first_face + offset,
-                    face,
-                    custom_render: None,
-                })
-                // constraints? what gives
-                .collect::<Vec<ProcessBspFaceData>>()
-        })
-        .collect();
+                    let faces = &bsp.faces[first_face..(first_face + face_count)];
 
-    let transparent_entities_faces = transparent_entities
-        .iter()
-        .flat_map(|entity| {
-            let model_idx = entity.get("model")
-        // we know for sure that this is a brush
-        .unwrap()
-        // remove the asterisk
-        [1..]
-                .parse::<u32>()
-                .expect("cannot find entity model");
+                    // TODO: custom render for sprite and model, just pull this out of this scope
+                    let custom_render = if is_transparent {
+                        if let EntityModel::TransparentEntityBrush((_, custom_render)) =
+                            &entity.model
+                        {
+                            Some(custom_render)
+                        } else {
+                            unreachable!()
+                        }
+                    } else {
+                        None
+                    };
 
-            let model = &bsp.models[model_idx as usize];
+                    faces
+                        .iter()
+                        .enumerate()
+                        .for_each(|(face_index_offset, face)| {
+                            let face_index = first_face + face_index_offset;
 
-            let first_face = model.first_face as usize;
-            let face_count = model.face_count as usize;
+                            let texinfo = &bsp.texinfo[face.texinfo as usize];
+                            let (array_idx, layer_idx) = world_texture_lookup
+                                // hardcoded entity 0 because all bsp brushes use the same textures from worldspawn
+                                .get(&(0, texinfo.texture_index as usize))
+                                .expect("cannot get world texture");
 
-            let faces = &bsp.faces[first_face..(first_face + face_count)];
+                            let face_data = ProcessBspFaceData {
+                                face_index,
+                                entity_index,
+                                texture_layer_index: *layer_idx,
+                                face,
+                                custom_render,
+                            };
 
-            // the value is guaranteed to be there
-            let rendermode = entity
-                .get("rendermode")
-                .and_then(|v| v.parse::<i32>().ok())
-                .unwrap();
-            let renderamt = entity
-                .get("renderamt")
-                .and_then(|v| v.parse::<f32>().ok())
-                .unwrap_or(0.0);
-            let renderfx = entity
-                .get("renderfx")
-                .and_then(|v| v.parse::<i32>().ok())
-                .unwrap_or(0);
+                            let (vertices, indices) = process_bsp_face(face_data, bsp, lightmap);
 
-            faces
-                .into_iter()
-                .enumerate()
-                .map(|(offset, face)| ProcessBspFaceData {
-                    index: first_face + offset,
-                    face,
-                    custom_render: Some(CustomRender {
-                        rendermode,
-                        renderamt,
-                        renderfx,
-                    }),
-                })
-                // constraints? what gives
-                .collect::<Vec<ProcessBspFaceData>>()
-        })
-        .collect();
+                            let batch = assigned_lookup
+                                .entry(*array_idx)
+                                .or_insert((Vec::new(), Vec::new()));
 
-    [opaque_entities_faces, transparent_entities_faces]
-}
+                            // newer vertices will have their index start at 0 but we don't want that
+                            // need to divide by <x> because each "vertices" has <x> floats
+                            let new_vertices_offset = batch.0.len();
 
-// key: batch idx aka texture array idx
-// value: (world vertex array, index array)
-type BatchLookup = HashMap<usize, (Vec<WorldVertex>, Vec<u32>)>;
+                            batch.0.extend(vertices);
+                            batch.1.extend(
+                                indices.into_iter().map(|i| i + new_vertices_offset as u32),
+                            );
+                        });
 
-fn create_bsp_batch_lookup(
-    bsp: &bsp::Bsp,
-    faces_data: Vec<ProcessBspFaceData>,
-    lightmap: &LightMapAtlasBuffer,
-    // there is only 1 bsp lookup so that is fine
-    texture_lookup_table: &[(usize, usize)],
-) -> BatchLookup {
-    // (array index, (interleaved vertex data, vertex indices))
-    // layer index is inside interleaved data
-    let mut batches = HashMap::<usize, (Vec<WorldVertex>, Vec<u32>)>::new();
+                    // create_bsp_batch_lookup(bsp)
+                }
+                // for some reasons this is inline but the bsp face is not
+                EntityModel::Mdl(mdl) => {
+                    mdl.bodyparts.iter().for_each(|bodypart| {
+                        bodypart.models.iter().for_each(|model| {
+                            model.meshes.iter().for_each(|mesh| {
+                                // one mesh has the same texture everything
+                                let texture_idx = mesh.header.skin_ref as usize;
+                                let texture = &mdl.textures[texture_idx];
+                                let (width, height) = texture.dimensions();
 
-    for face_data in faces_data {
-        let face = face_data.face;
+                                // let triangle_list = triangle_strip_to_triangle_list(&mesh.vertices);
 
-        let texinfo = &bsp.texinfo[face.texinfo as usize];
-        let (array_idx, layer_idx) = texture_lookup_table[texinfo.texture_index as usize];
+                                mesh.triangles.iter().for_each(|triangles| {
+                                    // it is possible for a mesh to have both fan and strip run
+                                    let (is_strip, triverts) = match triangles {
+                                        mdl::MeshTriangles::Strip(triverts) => (true, triverts),
+                                        mdl::MeshTriangles::Fan(triverts) => (false, triverts),
+                                    };
 
-        let (vertices, indices) = process_bsp_face(&face_data, bsp, lightmap, layer_idx);
+                                    // now just convert triverts into mdl vertex data
+                                    // then do some clever stuff with index buffer to make it triangle list
+                                    let (array_idx, layer_idx) = world_texture_lookup
+                                        .get(&(entity_index, texture_idx))
+                                        .expect("cannot get world texture");
+                                    let batch = assigned_lookup
+                                        .entry(*array_idx)
+                                        .or_insert((vec![], vec![]));
 
-        let batch = batches.entry(array_idx).or_insert((Vec::new(), Vec::new()));
+                                    let new_vertices_offset = batch.0.len();
 
-        // newer vertices will have their index start at 0 but we don't want that
-        // need to divide by <x> because each "vertices" has <x> floats
-        let new_vertices_offset = batch.0.len();
+                                    // create vertex buffer here
+                                    let vertices = triverts.iter().map(|trivert| {
+                                        let [u, v] = [
+                                            trivert.header.s as f32 / width as f32,
+                                            trivert.header.t as f32 / height as f32,
+                                        ];
 
-        batch.0.extend(vertices);
-        batch
-            .1
-            .extend(indices.into_iter().map(|i| i + new_vertices_offset as u32));
-    }
+                                        WorldVertex {
+                                            pos: trivert.vertex.to_array(),
+                                            tex_coord: [u, v],
+                                            normal: trivert.normal.to_array(),
+                                            layer: *layer_idx as u32,
+                                            // actual model index is different
+                                            // because 0 is worldspawn
+                                            model_idx: entity_index as u32,
+                                            type_: 1,
+                                            data_a: [0f32; 3],
+                                            data_b: [0u32; 2],
+                                        }
+                                    });
 
-    batches
+                                    batch.0.extend(vertices);
+
+                                    let mut index_buffer: Vec<u32> = vec![];
+
+                                    // create index buffer here
+                                    // here we will create triangle list
+                                    // deepseek v3 zero shot this one
+                                    if is_strip {
+                                        for i in 0..triverts.len().saturating_sub(2) {
+                                            if i % 2 == 0 {
+                                                // Even-indexed triangles
+                                                index_buffer
+                                                    .push(new_vertices_offset as u32 + i as u32);
+                                                index_buffer.push(
+                                                    new_vertices_offset as u32 + (i + 1) as u32,
+                                                );
+                                                index_buffer.push(
+                                                    new_vertices_offset as u32 + (i + 2) as u32,
+                                                );
+                                            } else {
+                                                // Odd-indexed triangles (flip winding order)
+                                                index_buffer.push(
+                                                    new_vertices_offset as u32 + (i + 1) as u32,
+                                                );
+                                                index_buffer
+                                                    .push(new_vertices_offset as u32 + i as u32);
+                                                index_buffer.push(
+                                                    new_vertices_offset as u32 + (i + 2) as u32,
+                                                );
+                                            }
+                                        }
+                                    } else {
+                                        let first_index = new_vertices_offset as u32;
+                                        for i in 1..triverts.len().saturating_sub(1) {
+                                            index_buffer.push(first_index);
+                                            index_buffer
+                                                .push(new_vertices_offset as u32 + i as u32);
+                                            index_buffer
+                                                .push(new_vertices_offset as u32 + (i + 1) as u32);
+                                        }
+                                    }
+
+                                    batch.1.extend(index_buffer);
+                                });
+                            });
+                        });
+                    });
+                }
+                EntityModel::Sprite => todo!("sprite world vertex is not supported"),
+            };
+        });
+
+    (opaque_lookup, transparent_lookup)
 }
 
 fn process_bsp_face(
-    face_data: &ProcessBspFaceData,
+    face_data: ProcessBspFaceData,
     bsp: &bsp::Bsp,
     lightmap: &LightMapAtlasBuffer,
-    texture_layer_idx: usize,
 ) -> (Vec<WorldVertex>, Vec<u32>) {
     let ProcessBspFaceData {
-        index: face_idx,
+        face_index: face_idx,
         face,
         custom_render,
+        entity_index,
+        texture_layer_index,
     } = face_data;
 
     let face_vertices = face_vertices(face, bsp);
@@ -661,8 +602,8 @@ fn process_bsp_face(
             pos: pos.to_array().into(),
             tex_coord: texcoord.into(),
             normal: normal.to_array().into(),
-            layer: texture_layer_idx as u32,
-            model_idx: 0, // hardcoded for now
+            layer: texture_layer_index as u32,
+            model_idx: entity_index as u32,
             type_: 0,
             data_a: [lightmap_coord[0], lightmap_coord[1], renderamt],
             data_b: [rendermode as u32, 0],
@@ -716,101 +657,6 @@ fn triangulate_convex_polygon(vertices: &[bsp::Vec3]) -> Vec<u32> {
         indices.push((i + 1) as u32);
     }
     indices
-}
-
-fn create_mdl_batch_lookup(
-    mdls: &[&mdl::Mdl],
-    lookup_table: &[Vec<(usize, usize)>],
-) -> BatchLookup {
-    // (array index, (interleaved vertex data, vertex indices))
-    let mut batches = HashMap::<usize, (Vec<WorldVertex>, Vec<u32>)>::new();
-
-    mdls.iter().enumerate().for_each(|(mdl_index, mdl)| {
-        mdl.bodyparts.iter().for_each(|bodypart| {
-            bodypart.models.iter().for_each(|model| {
-                model.meshes.iter().for_each(|mesh| {
-                    // one mesh has the same texture everything
-                    let texture_idx = mesh.header.skin_ref as usize;
-                    let texture = &mdl.textures[texture_idx];
-                    let (width, height) = texture.dimensions();
-
-                    // let triangle_list = triangle_strip_to_triangle_list(&mesh.vertices);
-
-                    mesh.triangles.iter().for_each(|triangles| {
-                        // it is possible for a mesh to have both fan and strip run
-                        let (is_strip, triverts) = match triangles {
-                            mdl::MeshTriangles::Strip(triverts) => (true, triverts),
-                            mdl::MeshTriangles::Fan(triverts) => (false, triverts),
-                        };
-
-                        // now just convert triverts into mdl vertex data
-                        // then do some clever stuff with index buffer to make it triangle list
-
-                        // the lookup table already excludes worldspawn textures so mdl index can be 0 here
-                        let (array_idx, layer_idx) = lookup_table[mdl_index][texture_idx];
-                        let batch = batches.entry(array_idx).or_insert((vec![], vec![]));
-
-                        let new_vertices_offset = batch.0.len();
-
-                        // create vertex buffer here
-                        let vertices = triverts.iter().map(|trivert| {
-                            let [u, v] = [
-                                trivert.header.s as f32 / width as f32,
-                                trivert.header.t as f32 / height as f32,
-                            ];
-
-                            WorldVertex {
-                                pos: trivert.vertex.to_array(),
-                                tex_coord: [u, v],
-                                normal: trivert.normal.to_array(),
-                                layer: layer_idx as u32,
-                                // actual model index is different
-                                // because 0 is worldspawn
-                                model_idx: (mdl_index + 1) as u32,
-                                type_: 1,
-                                data_a: [0f32; 3],
-                                data_b: [0u32; 2],
-                            }
-                        });
-
-                        batch.0.extend(vertices);
-
-                        let mut index_buffer: Vec<u32> = vec![];
-
-                        // create index buffer here
-                        // here we will create triangle list
-                        // deepseek v3 zero shot this one
-                        if is_strip {
-                            for i in 0..triverts.len().saturating_sub(2) {
-                                if i % 2 == 0 {
-                                    // Even-indexed triangles
-                                    index_buffer.push(new_vertices_offset as u32 + i as u32);
-                                    index_buffer.push(new_vertices_offset as u32 + (i + 1) as u32);
-                                    index_buffer.push(new_vertices_offset as u32 + (i + 2) as u32);
-                                } else {
-                                    // Odd-indexed triangles (flip winding order)
-                                    index_buffer.push(new_vertices_offset as u32 + (i + 1) as u32);
-                                    index_buffer.push(new_vertices_offset as u32 + i as u32);
-                                    index_buffer.push(new_vertices_offset as u32 + (i + 2) as u32);
-                                }
-                            }
-                        } else {
-                            let first_index = new_vertices_offset as u32;
-                            for i in 1..triverts.len().saturating_sub(1) {
-                                index_buffer.push(first_index);
-                                index_buffer.push(new_vertices_offset as u32 + i as u32);
-                                index_buffer.push(new_vertices_offset as u32 + (i + 1) as u32);
-                            }
-                        }
-
-                        batch.1.extend(index_buffer);
-                    });
-                });
-            });
-        });
-    });
-
-    batches
 }
 
 fn create_world_vertex_buffer(

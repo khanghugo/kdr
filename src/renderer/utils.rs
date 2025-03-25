@@ -78,3 +78,41 @@ pub fn vertex_uv(pos: &bsp::Vec3, texinfo: &bsp::TexInfo) -> [f32; 2] {
         (pos.dot(texinfo.v) + texinfo.v_offset),
     ]
 }
+
+pub fn get_bsp_textures(bsp: &bsp::Bsp) -> Vec<RgbaImage> {
+    bsp.textures
+        .iter()
+        .map(|texture| {
+            let texture_name = texture.texture_name.get_string_standard();
+            let override_alpha = if texture_name == "SKY" {
+                // 16.into()
+                None
+            } else {
+                None
+            };
+
+            eightbpp_to_rgba8(
+                texture.mip_images[0].data.get_bytes(),
+                texture.palette.get_bytes(),
+                texture.width,
+                texture.height,
+                override_alpha,
+            )
+        })
+        .collect()
+}
+
+pub fn get_mdl_textures(mdl: &mdl::Mdl) -> Vec<RgbaImage> {
+    mdl.textures
+        .iter()
+        .map(|texture| {
+            eightbpp_to_rgba8(
+                &texture.image,
+                &texture.palette,
+                texture.dimensions().0,
+                texture.dimensions().1,
+                None,
+            )
+        })
+        .collect()
+}

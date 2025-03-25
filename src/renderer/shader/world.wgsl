@@ -89,14 +89,13 @@ fn calculate_base_color(
         var final_color = albedo.rgb * alpha * 2.0;
 
         // some render mode don't have lightmap
+        // dont gamma corect it either because it is a bit too bright
         if rendermode != 2 {
             final_color *= light;
+            final_color = gamma_correct(final_color);
         }
 
-        // gamma
-        let gamma_corrected = gamma_correct(final_color);
-
-        return vec4(gamma_corrected, alpha);
+        return vec4(final_color, alpha);
     }
 
     return albedo;
