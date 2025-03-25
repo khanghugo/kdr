@@ -1,6 +1,6 @@
 use std::{collections::HashMap, path::Path};
 
-use cgmath::Zero;
+use cgmath::SquareMatrix;
 
 pub enum EntityModel {
     // Entity brushes could be grouped into Bsp if we want some optimization.
@@ -22,9 +22,7 @@ pub struct CustomRender {
     pub renderfx: i32,
 }
 
-// Instead of using vector to store entity, we are using a hash map instead.
-// The reason is that this data type will fit the reduced Bsp entities data more suitably.
-/// Key: Entity index0
+/// Key: Bsp Entity Index
 /// Value: Entity info
 pub type EntityDictionary = HashMap<usize, WorldEntity>;
 
@@ -35,6 +33,10 @@ pub struct BspResource {
 }
 
 pub struct WorldEntity {
+    /// World index based on the world aka current render context, not BSP.
+    ///
+    /// It is used for correctly allocating data without going overboard.
+    pub world_index: usize,
     pub model: EntityModel,
     pub origin: [f32; 3],
     pub angles: [f32; 3],
@@ -44,10 +46,11 @@ pub struct WorldEntity {
 impl WorldEntity {
     fn worldspawn() -> Self {
         Self {
+            world_index: 0,
             model: EntityModel::Bsp,
             origin: [0f32; 3],
             angles: [0f32; 3],
-            model_view_projection: cgmath::Matrix4::zero(),
+            model_view_projection: cgmath::Matrix4::identity(),
         }
     }
 }
@@ -74,14 +77,23 @@ pub fn get_bsp_resources(bsp: bsp::Bsp, bsp_path: &Path) -> BspResource {
         can_load_game_assets = false;
     };
 
+    let mut available_world_index = 0;
+    let mut assign_world_index = move || {
+        let value = available_world_index;
+        available_world_index += 1;
+        value
+    };
+
     res.bsp
         .entities
         .iter()
         .enumerate()
-        .for_each(|(entity_index, entity)| {
+        .for_each(|(bsp_entity_index, entity)| {
             // just add worlspawn if it is 0
-            if entity_index == 0 {
-                res.entity_dictionary.insert(0, WorldEntity::worldspawn());
+            if bsp_entity_index == 0 {
+                // for some reason, incrementing available_world_index doesn't work
+                res.entity_dictionary
+                    .insert(assign_world_index(), WorldEntity::worldspawn());
                 return;
             }
 
@@ -147,8 +159,9 @@ pub fn get_bsp_resources(bsp: bsp::Bsp, bsp_path: &Path) -> BspResource {
 
                 if is_opaque {
                     res.entity_dictionary.insert(
-                        entity_index,
+                        bsp_entity_index,
                         WorldEntity {
+                            world_index: assign_world_index(),
                             model: EntityModel::OpaqueEntityBrush(bsp_model_index),
                             origin,
                             angles,
@@ -157,8 +170,9 @@ pub fn get_bsp_resources(bsp: bsp::Bsp, bsp_path: &Path) -> BspResource {
                     );
                 } else {
                     res.entity_dictionary.insert(
-                        entity_index,
+                        bsp_entity_index,
                         WorldEntity {
+                            world_index: assign_world_index(),
                             model: EntityModel::TransparentEntityBrush((
                                 bsp_model_index,
                                 CustomRender {
@@ -186,8 +200,9 @@ pub fn get_bsp_resources(bsp: bsp::Bsp, bsp_path: &Path) -> BspResource {
                 };
 
                 res.entity_dictionary.insert(
-                    entity_index,
+                    bsp_entity_index,
                     WorldEntity {
+                        world_index: assign_world_index(),
                         model: EntityModel::Mdl(mdl),
                         origin,
                         angles,

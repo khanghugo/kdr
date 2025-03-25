@@ -32,8 +32,9 @@ fn vs_main(
 ) -> VertexOut {
     var output: VertexOut;
 
-    let view_pos = camera_view * vec4(pos, 1.0);
-    let clip_pos = camera_proj * view_pos;
+    let model_view = model_view_array[model_idx];
+
+    let clip_pos = camera_proj * camera_view * model_view * vec4(pos, 1.0);
 
     output.position = clip_pos;
     output.world_position = pos;
