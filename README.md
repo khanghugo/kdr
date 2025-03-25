@@ -10,28 +10,32 @@ Currently work in progress, check back later
     - [X] Texture
     - [X] Lightmap
     - [ ] Weird math lightmap in the case of older compiled HL maps
-    - [ ] Light styles (unplanned) 
-    - Transparency 
+    - [ ] Light styles (unplanned)
+    - Transparency
       - [X] Alpha test ("rendermode" = 4)
-      - [ ] "rendermode"
-      - [ ] "renderamt"
+      - "rendermode"
+        - [X] general entity brush transparency
+        - [ ] very correct transparency for according rendermode
+      - [X] "renderamt"
     - [X] Named entities. Some entities aren't properly displaced
     - [X] Samey shader as the game
-    - [ ] "rendermode"
+    - [X] "rendermode"
   - MDL
     - [X] Face
     - [X] Texture
     - [X] Model view projection
     - [ ] Bone based vertex transformation
-    - [X] Shading  
+    - [X] Shading
   - [ ] Skybox
+  - [ ] SPRites
   - Optimization
     - [X] Lightmap atlas
     - [X] Batch rendering based on texture
     - [X] Array of texture
-    - [ ] Transparency sorting. Order independent transparency. Need to get WBOIT at the very least.
+    - Transparency sorting. Order independent transparency. Need to get WBOIT at the very least.
+      - [X] Implemented WBOIT
     - [ ] Visibility. At the moment it renders everything. Or does it?
-  - [X] Mipmapping
+    - [X] Mipmapping
 - Navigation
   - [X] Noclip movement
   - [X] Pitch and Yaw
@@ -47,5 +51,9 @@ Currently work in progress, check back later
 - Integration
   - [X] Native with Vulkan
   - [ ] Web with WebGPU. Probably working just fine. Just need to write some HTML
-  - [ ] Formats handling. Loads .bsp or .dem and displays them
+  - BSP Loads:
+    - [X] BSP self
+    - [ ] BSP another
+    - [X] MDL
+    - [ ] SPR
   - [ ] User interface. `egui` probably works
