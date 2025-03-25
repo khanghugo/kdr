@@ -40,7 +40,6 @@ pub struct WorldEntity {
     pub model: EntityModel,
     pub origin: [f32; 3],
     pub angles: [f32; 3],
-    pub model_view_projection: cgmath::Matrix4<f32>,
 }
 
 impl WorldEntity {
@@ -50,9 +49,19 @@ impl WorldEntity {
             model: EntityModel::Bsp,
             origin: [0f32; 3],
             angles: [0f32; 3],
-            model_view_projection: cgmath::Matrix4::identity(),
         }
     }
+
+    pub fn build_mvp(&self) -> cgmath::Matrix4<f32> {
+        build_mvp(self.origin, self.angles)
+    }
+}
+
+fn build_mvp(origin: [f32; 3], angles: [f32; 3]) -> cgmath::Matrix4<f32> {
+    cgmath::Matrix4::from_translation(origin.into())
+        * cgmath::Matrix4::from_angle_x(cgmath::Deg(angles[0]))
+        * cgmath::Matrix4::from_angle_y(cgmath::Deg(angles[1]))
+        * cgmath::Matrix4::from_angle_z(cgmath::Deg(angles[2]))
 }
 
 const MODEL_ENTITIES: &[&str] = &["cycler_sprite", "env_sprite"];
@@ -126,10 +135,8 @@ pub fn get_bsp_resources(bsp: bsp::Bsp, bsp_path: &Path) -> BspResource {
                 .get("angles")
                 .and_then(|angles| vec3(angles))
                 .unwrap_or(VEC3_ZERO);
-            let model_view_projection_matrix = cgmath::Matrix4::from_translation(origin.into())
-                * cgmath::Matrix4::from_angle_x(cgmath::Deg(angles[0]))
-                * cgmath::Matrix4::from_angle_y(cgmath::Deg(angles[1]))
-                * cgmath::Matrix4::from_angle_z(cgmath::Deg(angles[2]));
+
+            let model_view_projection_matrix = build_mvp(origin, angles);
 
             let rendermode = entity
                 .get("rendermode")
@@ -165,7 +172,6 @@ pub fn get_bsp_resources(bsp: bsp::Bsp, bsp_path: &Path) -> BspResource {
                             model: EntityModel::OpaqueEntityBrush(bsp_model_index),
                             origin,
                             angles,
-                            model_view_projection: model_view_projection_matrix,
                         },
                     );
                 } else {
@@ -183,7 +189,6 @@ pub fn get_bsp_resources(bsp: bsp::Bsp, bsp_path: &Path) -> BspResource {
                             )),
                             origin,
                             angles,
-                            model_view_projection: model_view_projection_matrix,
                         },
                     );
                 }
@@ -206,7 +211,6 @@ pub fn get_bsp_resources(bsp: bsp::Bsp, bsp_path: &Path) -> BspResource {
                         model: EntityModel::Mdl(mdl),
                         origin,
                         angles,
-                        model_view_projection: model_view_projection_matrix,
                     },
                 );
             }

@@ -28,7 +28,7 @@ impl MvpBuffer {
     pub fn create_mvp(device: &wgpu::Device, entity_infos: &[&WorldEntity]) -> Self {
         let matrices: Vec<[[f32; 4]; 4]> = entity_infos
             .iter()
-            .map(|info| info.model_view_projection.into())
+            .map(|info| info.build_mvp().into())
             .collect();
 
         // fix empty matrix in case there are zero models
@@ -60,5 +60,20 @@ impl MvpBuffer {
             bind_group: mvp_bind_group,
             buffer: mvp_buffer,
         }
+    }
+
+    pub fn update_entity_mvp_buffer(
+        &self,
+        queue: &wgpu::Queue,
+        world_entity_index: usize,
+        entity_info: &WorldEntity,
+    ) {
+        let offset = world_entity_index * 4 * 4 * 4;
+
+        let mvp = entity_info.build_mvp();
+        let mvp_cast: &[f32; 16] = mvp.as_ref();
+        let mvp_bytes: &[u8] = bytemuck::cast_slice(mvp_cast);
+
+        queue.write_buffer(&self.buffer, offset as u64, mvp_bytes);
     }
 }
