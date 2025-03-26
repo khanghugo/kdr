@@ -5,14 +5,14 @@ use nom::{
     bytes::complete::take,
     combinator::map,
     multi::count,
-    number::complete::{le_f32, le_i16, le_i32, le_u8},
+    number::complete::{le_f32, le_i16, le_i32, le_u8, le_u16},
     sequence::tuple,
 };
 
 use crate::{
-    Attachment, Bodypart, BodypartHeader, Bone, BoneController, Hitbox, Mesh, MeshHeader,
-    MeshTriangles, Model, ModelHeader, PALETTE_COUNT, SequenceGroup, SkinFamilies, Trivert,
-    TrivertHeader, VEC3_T_SIZE,
+    Attachment, Blend, Bodypart, BodypartHeader, Bone, BoneController, Hitbox, Mesh, MeshHeader,
+    MeshTriangles, Model, ModelHeader, PALETTE_COUNT, Sequence, SequenceGroup, SkinFamilies,
+    Trivert, TrivertHeader, VEC3_T_SIZE,
     nom_helpers::{IResult, vec3},
     types::{Header, Mdl, SequenceHeader, Texture, TextureFlag, TextureHeader},
 };
@@ -39,10 +39,7 @@ fn parse_mdl(i: &[u8]) -> IResult<Mdl> {
     let start = i;
     let (_, mdl_header) = parse_header(start)?;
 
-    let (_, sequence_descriptions) = count(
-        parse_sequence_description,
-        mdl_header.num_seq as usize,
-    )(&start[mdl_header.seq_index as usize..])?;
+    let (_, sequences) = parse_sequences(start, &mdl_header)?;
 
     let (_, textures) = parse_textures(start, &mdl_header)?;
 
@@ -64,7 +61,7 @@ fn parse_mdl(i: &[u8]) -> IResult<Mdl> {
         i,
         Mdl {
             header: mdl_header,
-            sequences: sequence_descriptions,
+            sequences,
             textures,
             bodyparts,
             bones,
@@ -169,6 +166,112 @@ fn parse_header(i: &[u8]) -> IResult<Header> {
             transition_index,
         },
     )(i)
+}
+
+// https://github.com/LogicAndTrick/sledge-formats/blob/7a3bfb33562aece483e15796b8573b23d71319ab/Sledge.Formats.Model/Goldsource/MdlFile.cs#L442
+fn parse_animation_frame_values(br: &[u8], read_count: usize) -> IResult<Vec<u16>> {
+    let mut values: Vec<u16> = vec![0; read_count];
+
+    let mut i = 0;
+
+    let mut reader = br;
+
+    while i < read_count {
+        let (br, run) = take(2usize)(reader)?;
+        let (br, vals) = count(le_u16, run[0] as usize)(br)?;
+
+        reader = br;
+
+        let mut j = 0;
+
+        while j < run[1] && i < read_count {
+            let idx = (run[0] - 1).min(j);
+            values[i] = vals[idx as usize];
+
+            i += 1;
+            j += 1;
+        }
+    }
+
+    Ok((reader, values))
+}
+
+// parse starting from animation offset
+fn parse_blend<'a>(
+    // panimvalue points to the current blend
+    // the layout goes
+    // - blend 1 offsets
+    // - - bone 0 offsets
+    // - - bone 1 offsets
+    // - - ...
+    // - blend 2 offsets
+    // - - bone 0 offsets
+    // - - ...
+    //
+    // bone N offsets starts from panimvalue
+    // starting from the offset is a RLE
+    // this RLE contains all animation values for that one motion type
+    //
+    // so, the result for 1 blend is: X amount of bone for 6 arrays of Y animation value for that motion type
+    // the type is [[[short animation value; animation count]; 6 motion types]; X bone]
+    panimvalue: &'a [u8],
+    mdl_header: &Header,
+    sequence_header: &SequenceHeader,
+) -> IResult<'a, Blend> {
+    let offset_parser = map(count(le_u16, 6 as usize), |res| {
+        [res[0], res[1], res[2], res[3], res[4], res[5]]
+    });
+
+    let (end_of_blend, blend) = count(offset_parser, mdl_header.num_bones as usize)(panimvalue)?;
+
+    // the animation frame is offset from the beginning of the panim "struct", which is anim_offset + current blend number
+    // https://github.com/ValveSoftware/halflife/blob/c7240b965743a53a29491dd49320c88eecf6257b/utils/mdlviewer/studio_render.cpp#L190
+    let mut res: Blend = vec![];
+    let num_frames = sequence_header.num_frames as usize;
+
+    // at the moment, we have the bone count and the offsets
+    // now we have to fit animations inside the bone count
+    for bone in blend {
+        let mut bone_values: [Vec<u16>; 6] = from_fn(|_| vec![0; num_frames]);
+
+        for (motion_idx, offset) in bone.into_iter().enumerate() {
+            if offset == 0 {
+                continue;
+            }
+
+            let rle_start = &panimvalue[offset as usize..];
+            let (_, values) = parse_animation_frame_values(rle_start, num_frames)?;
+
+            bone_values[motion_idx] = values;
+        }
+
+        res.push(bone_values);
+    }
+
+    Ok((end_of_blend, res))
+}
+
+fn parse_sequence<'a>(start: &'a [u8], i: &'a [u8], mdl_header: &Header) -> IResult<'a, Sequence> {
+    let (_, header) = parse_sequence_description(i)?;
+
+    let animation_frame_parser = |i| parse_blend(i, mdl_header, &header);
+
+    let (_, anim_blends) = count(animation_frame_parser, header.num_blends as usize)(
+        &start[header.anim_index as usize..],
+    )?;
+
+    Ok((
+        &[],
+        Sequence {
+            header,
+            anim_blends,
+        },
+    ))
+}
+
+fn parse_sequences<'a>(start: &'a [u8], mdl_header: &Header) -> IResult<'a, Vec<Sequence>> {
+    let parser = |i| parse_sequence(start, i, mdl_header);
+    count(parser, mdl_header.num_seq as usize)(&start[mdl_header.seq_index as usize..])
 }
 
 fn parse_sequence_description(i: &[u8]) -> IResult<SequenceHeader> {

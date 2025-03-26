@@ -5,7 +5,7 @@ pub const VEC3_T_SIZE: usize = 3 * 4;
 
 pub struct Mdl {
     pub header: Header,
-    pub sequences: Vec<SequenceHeader>,
+    pub sequences: Vec<Sequence>,
     pub textures: Vec<Texture>,
     pub bodyparts: Vec<Bodypart>,
     pub bones: Vec<Bone>,
@@ -55,6 +55,7 @@ pub struct Header {
     pub transition_index: i32,
 }
 
+#[derive(Debug)]
 pub struct SequenceHeader {
     pub label: [u8; 32],
     pub fps: f32,
@@ -84,6 +85,16 @@ pub struct SequenceHeader {
     pub exit_node: i32,
     pub node_flags: i32,
     pub next_seq: i32,
+}
+
+/// [[[animation value; frame count]; 6 motion types]; bone count]
+pub type Blend = Vec<[Vec<u16>; 6]>;
+
+#[derive(Debug)]
+pub struct Sequence {
+    pub header: SequenceHeader,
+    // [[[[short animation value; frame count]; 6 motion types]; bone count]; blend count]
+    pub anim_blends: Vec<Blend>,
 }
 
 bitflags! {
@@ -214,6 +225,7 @@ pub struct Trivert {
     pub normal: Vec3,
 }
 
+#[derive(Debug)]
 pub struct Bone {
     pub name: [u8; 32],
     pub parent: i32,
