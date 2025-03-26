@@ -43,7 +43,7 @@ pub struct WorldEntity {
     pub world_index: usize,
     pub model: EntityModel,
     pub origin: [f32; 3],
-    /// Roll Yaw Pitch (XYZ)
+    /// Roll Pitch Yaw (XYZ)
     pub angles: cgmath::Quaternion<f32>,
 }
 
