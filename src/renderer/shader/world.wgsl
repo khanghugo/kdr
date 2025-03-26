@@ -61,6 +61,7 @@ fn gamma_correct(color: vec3f) -> vec3f {
 }
 
 fn calculate_base_color(
+    position: vec4f,
     tex_coord: vec2f,
     normal: vec3f,
     layer_idx: u32,
@@ -72,7 +73,7 @@ fn calculate_base_color(
     let albedo = textureSample(texture, linear_sampler, tex_coord, layer_idx);
 
     // alpha testing
-    if albedo.a != 1.0 {
+    if albedo.a < 0.9 {
         discard;
     }
 
@@ -98,9 +99,10 @@ fn calculate_base_color(
 
         return vec4(final_color, alpha);
     } else if type_ == 1 {
-        let alpha = min(albedo.a, 1.0);
+        let alpha = albedo.a;
 
-        var final_color = albedo.rgb * alpha;
+        // pre multiply
+        let final_color = albedo.rgb * alpha;
 
         return vec4(final_color, alpha);
     }
@@ -121,7 +123,7 @@ fn fs_opaque(
     @location(6) data_a: vec3f,
     @location(7) data_b: vec2u,
 ) -> @location(0) vec4f {
-    let color = calculate_base_color(tex_coord, normal, layer_idx, model_idx, type_, data_a, data_b);
+    let color = calculate_base_color(position, tex_coord, normal, layer_idx, model_idx, type_, data_a, data_b);
 
     return color;
 }
@@ -150,7 +152,7 @@ fn fs_transparent(
     //     discard;
     // }
 
-    let color = calculate_base_color(tex_coord, normal, layer_idx, model_idx, type_, data_a, data_b);
+    let color = calculate_base_color(position, tex_coord, normal, layer_idx, model_idx, type_, data_a, data_b);
 
     // -position.z goes like from 0 to 2
     // *100.0 because that is what the world looks like
