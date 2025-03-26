@@ -1,5 +1,4 @@
-use cgmath::{Deg, InnerSpace, Matrix4, Point3, Rotation3, Vector3, perspective};
-use guillotiere::euclid::num::Zero;
+use cgmath::{Deg, InnerSpace, Matrix4, Point3, Rotation3, Vector3, Zero, perspective};
 
 pub struct CameraBuffer {
     pub view: wgpu::Buffer,
