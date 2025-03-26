@@ -141,7 +141,7 @@ impl Default for Camera {
             up,
             aspect: 640 as f32 / 480 as f32,
             fovy: Deg(90.0),
-            znear: 0.1,
+            znear: 1.0,
             zfar: 1000000.0,
             orientation,
             yaw: Deg(0.),

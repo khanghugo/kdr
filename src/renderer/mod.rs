@@ -124,6 +124,19 @@ impl RenderContext {
             write_mask: wgpu::ColorWrites::ALL,
         };
 
+        let _alpha_blending = wgpu::ColorTargetState {
+            format: swapchain_format,
+            blend: Some(wgpu::BlendState {
+                color: wgpu::BlendComponent {
+                    src_factor: wgpu::BlendFactor::SrcAlpha,
+                    dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
+                    operation: wgpu::BlendOperation::Add,
+                },
+                alpha: wgpu::BlendComponent::OVER,
+            }),
+            write_mask: wgpu::ColorWrites::ALL,
+        };
+
         let transparent_blending = OITRenderTarget::targets();
 
         let world_opaque_render_pipeline =

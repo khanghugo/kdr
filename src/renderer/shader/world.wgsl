@@ -72,7 +72,7 @@ fn calculate_base_color(
     let albedo = textureSample(texture, linear_sampler, tex_coord, layer_idx);
 
     // alpha testing
-    if albedo.a < 0.01 {
+    if albedo.a != 1.0 {
         discard;
     }
 
@@ -95,6 +95,12 @@ fn calculate_base_color(
             final_color *= light;
             final_color = gamma_correct(final_color);
         }
+
+        return vec4(final_color, alpha);
+    } else if type_ == 1 {
+        let alpha = min(albedo.a, 1.0);
+
+        var final_color = albedo.rgb * alpha;
 
         return vec4(final_color, alpha);
     }

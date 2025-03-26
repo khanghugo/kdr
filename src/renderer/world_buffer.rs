@@ -39,7 +39,7 @@ pub struct WorldVertex {
     // for mdl: unused
     data_a: [f32; 3],
     // for bsp: [rendermode, unused]
-    // for mdl: unused
+    // for mdl: [renderflag, unused]
     data_b: [u32; 2],
 }
 
