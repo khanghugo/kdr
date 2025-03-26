@@ -209,6 +209,11 @@ impl ApplicationHandler for App {
                             self.keys = self.keys.intersection(Key::Control.complement());
                         }
                     }
+                    KeyCode::KeyQ => {
+                        if event.state.is_pressed() {
+                            panic!()
+                        }
+                    }
                     _ => (),
                 },
                 _ => (),
