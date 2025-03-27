@@ -20,9 +20,16 @@ impl TextureArrayBuffer {
                     },
                     count: None,
                 },
-                // sampler
+                // linear sampler
                 wgpu::BindGroupLayoutEntry {
                     binding: 1,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                    count: None,
+                },
+                // nearest sampler
+                wgpu::BindGroupLayoutEntry {
+                    binding: 2,
                     visibility: wgpu::ShaderStages::FRAGMENT,
                     ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
                     count: None,
@@ -61,6 +68,8 @@ pub fn create_texture_array(
     let mip_level_count = calculate_mipmap_count(width, height);
     let texture_format = wgpu::TextureFormat::Rgba8UnormSrgb;
     let mipmap_generator = MipMapGenerator::create_render_pipeline(device, queue, texture_format);
+
+    let power_level = (width.min(height) as f32).log2();
 
     let texture_descriptor = wgpu::TextureDescriptor {
         label: Some("texture array descriptor"),
@@ -118,7 +127,7 @@ pub fn create_texture_array(
 
     // bind layout
     let linear_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-        label: Some("texture array sampler"),
+        label: Some("texture array linear sampler"),
         address_mode_u: wgpu::AddressMode::Repeat,
         address_mode_v: wgpu::AddressMode::Repeat,
         address_mode_w: wgpu::AddressMode::Repeat,
@@ -127,7 +136,19 @@ pub fn create_texture_array(
         mipmap_filter: wgpu::FilterMode::Linear,
         anisotropy_clamp: 16,
         lod_min_clamp: 0.0,
-        lod_max_clamp: 1.5, // change the max mipmap level here
+        lod_max_clamp: (power_level - 5.0).max(0.0), // change the max mipmap level here
+        ..Default::default()
+    });
+
+    let nearest_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+        label: Some("texture array nearest sampler"),
+        address_mode_u: wgpu::AddressMode::Repeat,
+        address_mode_v: wgpu::AddressMode::Repeat,
+        address_mode_w: wgpu::AddressMode::Repeat,
+        mag_filter: wgpu::FilterMode::Nearest,
+        min_filter: wgpu::FilterMode::Nearest,
+        lod_min_clamp: 0.0,
+        lod_max_clamp: (power_level - 5.0).max(0.0), // change the max mipmap level here
         ..Default::default()
     });
 
@@ -159,6 +180,11 @@ pub fn create_texture_array(
             wgpu::BindGroupEntry {
                 binding: 1,
                 resource: wgpu::BindingResource::Sampler(&linear_sampler),
+            },
+            // nearest sampler
+            wgpu::BindGroupEntry {
+                binding: 2,
+                resource: wgpu::BindingResource::Sampler(&nearest_sampler),
             },
         ],
     });

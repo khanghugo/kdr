@@ -52,12 +52,44 @@ fn vs_main(
 // fragment
 @group(2) @binding(0) var texture: texture_2d_array<f32>;
 @group(2) @binding(1) var linear_sampler: sampler;
+@group(2) @binding(2) var nearest_sampler: sampler;
 @group(3) @binding(0) var lightmap: texture_2d<f32>;
 @group(3) @binding(1) var lightmap_sampler: sampler;
 
 fn gamma_correct(color: vec3f) -> vec3f {
     let gamma: f32 = 1.6;
     return pow(color, vec3f(1.0 / gamma));
+}
+
+fn pixel_art_filter(uv: vec2f, layer_idx: u32) -> vec4f {
+    let res = vec2f(textureDimensions(texture, layer_idx));
+    let pixel_uv = uv * res;
+
+    let seam = floor(pixel_uv + 0.5);
+    let clamped_uv = seam + clamp((pixel_uv - seam) / fwidth(pixel_uv), vec2f(-0.5), vec2f(0.5));
+
+    return textureSample(texture, linear_sampler, clamped_uv / res, layer_idx);
+}
+
+/// https://www.shadertoy.com/view/MllBWf
+fn pixel_art_filter2(uv: vec2f, layer_idx: u32) -> vec4f {
+    let res = vec2f(textureDimensions(texture, 0));
+    let pixel_uv = uv * res + 0.5;
+
+    let fl = floor(pixel_uv);
+    var fr = fract(pixel_uv);
+
+    let aa = fwidth(pixel_uv) * 1.0;
+
+    fr = smoothstep(
+        vec2f(0.5) - aa,
+        vec2f(0.5) + aa,
+        fr
+    );
+
+    let final_uv = (fl + fr - 0.5) / res;
+
+    return textureSample(texture, linear_sampler, final_uv, layer_idx);
 }
 
 fn calculate_base_color(
@@ -70,7 +102,9 @@ fn calculate_base_color(
     data_a: vec3f,
     data_b: vec2u,
 ) -> vec4f {
-    let albedo = textureSample(texture, linear_sampler, tex_coord, layer_idx);
+    // let albedo = textureSample(texture, linear_sampler, tex_coord, layer_idx);
+    let albedo = pixel_art_filter2(tex_coord, layer_idx);
+
 
     let alpha_test_value = 0.9;
 
