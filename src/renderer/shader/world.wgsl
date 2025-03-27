@@ -113,6 +113,49 @@ fn alpha_test(uv: vec2f, layer_idx: u32, color: vec3f, alpha: f32) -> vec3f {
     return color * compensation;
 }
 
+// https://www.shadertoy.com/view/XlBBRR
+fn bicubic_filtering(uv: vec2f, layer_idx: u32) -> vec4f {
+    let tex_size = vec2f(textureDimensions(texture, 0));
+    let pixel_uv = uv * tex_size + 0.5;
+    let fract_part = fract(pixel_uv);
+    let floor_part = floor(pixel_uv);
+
+    // Cubic interpolation polynomial (3-2x)x²
+    // let weights = fract_part * fract_part * (3.0 - 2.0 * fract_part);
+    // Wider interpolation curve (-4x² + 7x³ - 3x⁴)
+    // let weights = fract_part * fract_part * (4.0 - fract_part * (7.0 - 3.0 * fract_part));
+    // Alternative smoother version (uncomment if preferred):
+    let weights = fract_part * fract_part * fract_part *
+                 (fract_part * (fract_part * 6.0 - 15.0) + 10.0);
+
+    let sample_uv = (floor_part + weights - 0.5) / tex_size;
+    return textureSample(texture, linear_sampler, sample_uv, layer_idx);
+}
+
+// forgot the link
+fn nearest_aa_filtering(_uv: vec2f, layer_idx: u32) -> vec4f {
+    let sharpness = 1.5;
+
+    let tex_size = vec2f(textureDimensions(texture, 0));
+    let tile_uv = _uv * tex_size;
+
+    let dx = vec2f(dpdx(tile_uv.x), dpdy(tile_uv.x));
+    let dy = vec2f(dpdx(tile_uv.y), dpdy(tile_uv.y));
+
+    let dxdy = vec2f(
+        max(abs(dx.x), abs(dx.y)),
+        max(abs(dy.x), abs(dy.y))
+    );
+
+    let texel_delta = fract(tile_uv) - 0.5;
+    let dist_from_edge = 0.5 - abs(texel_delta);
+
+    let aa_factor = dist_from_edge * sharpness / dxdy;
+
+    let uv = _uv - texel_delta * clamp(aa_factor, vec2f(0.0), vec2f(1.0)) / tex_size;
+    return textureSample(texture, linear_sampler, uv, layer_idx);
+}
+
 fn calculate_base_color(
     position: vec4f,
     tex_coord: vec2f,
@@ -123,19 +166,12 @@ fn calculate_base_color(
     data_a: vec3f,
     data_b: vec2u,
 ) -> vec4f {
-    let tex_size = vec2f(textureDimensions(texture, 0));
-
-    let shorter_side = min(tex_size.x, tex_size.y);
-    let power_level = log2(f32(shorter_side));
-
     var albedo: vec4f;
 
-    // not sure why i have to do this, there is something weird about linear filter
-    if (power_level - 6) >= 0 {
-        albedo = textureSample(texture, linear_sampler, tex_coord, layer_idx);
-    } else {
-        albedo = pixel_art_filter2(tex_coord, layer_idx);
-    };
+    // albedo = textureSample(texture, linear_sampler, tex_coord, layer_idx);
+    albedo = bicubic_filtering(tex_coord, layer_idx);
+    // albedo = nearest_aa_filtering(tex_coord, layer_idx);
+    // albedo = pixel_art_filter2(tex_coord, layer_idx);
 
     if type_ == 0 {
         let lightmap_coord = vec2f(data_a[0], data_a[1]);
