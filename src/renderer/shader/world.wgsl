@@ -73,6 +73,7 @@ fn pixel_art_filter(uv: vec2f, layer_idx: u32) -> vec4f {
 
 /// https://www.shadertoy.com/view/MllBWf
 fn pixel_art_filter2(uv: vec2f, layer_idx: u32) -> vec4f {
+    // all textures in the array have the same dimensions
     let res = vec2f(textureDimensions(texture, 0));
     let pixel_uv = uv * res + 0.5;
 
@@ -92,6 +93,26 @@ fn pixel_art_filter2(uv: vec2f, layer_idx: u32) -> vec4f {
     return textureSample(texture, linear_sampler, final_uv, layer_idx);
 }
 
+// higher mip level will have some alpha interpolated, and it won't be 1.0
+// this makes alpha test discards fragments that should not be discarded
+fn alpha_test(uv: vec2f, layer_idx: u32, color: vec3f, alpha: f32) -> vec3f {
+    let alpha_threshold = 0.95;
+
+    let tex_size = vec2f(textureDimensions(texture, 0));
+    let deriv = max(length(dpdx(uv * tex_size)), length(dpdy(uv * tex_size)));
+    let mip_level = clamp(log2(deriv), 0.0, 10.0);
+    let adjusted_threshold = alpha_threshold * exp2(-mip_level * 0.5);
+
+    if alpha < adjusted_threshold {
+        discard;
+    }
+
+    // boost dark edge
+    let compensation = 1.0 + 0.5 * mip_level;
+
+    return color * compensation;
+}
+
 fn calculate_base_color(
     position: vec4f,
     tex_coord: vec2f,
@@ -102,11 +123,19 @@ fn calculate_base_color(
     data_a: vec3f,
     data_b: vec2u,
 ) -> vec4f {
-    // let albedo = textureSample(texture, linear_sampler, tex_coord, layer_idx);
-    let albedo = pixel_art_filter2(tex_coord, layer_idx);
+    let tex_size = vec2f(textureDimensions(texture, 0));
 
+    let shorter_side = min(tex_size.x, tex_size.y);
+    let power_level = log2(f32(shorter_side));
 
-    let alpha_test_value = 0.9;
+    var albedo: vec4f;
+
+    // not sure why i have to do this, there is something weird about linear filter
+    if (power_level - 6) >= 0 {
+        albedo = textureSample(texture, linear_sampler, tex_coord, layer_idx);
+    } else {
+        albedo = pixel_art_filter2(tex_coord, layer_idx);
+    };
 
     if type_ == 0 {
         let lightmap_coord = vec2f(data_a[0], data_a[1]);
@@ -129,10 +158,7 @@ fn calculate_base_color(
         }
 
         if rendermode == 4 {
-            // alpha testing
-            if albedo.a < alpha_test_value {
-                discard;
-            }
+            final_color = alpha_test(tex_coord, layer_idx, final_color, alpha);
         }
 
         return vec4(final_color, alpha);
@@ -154,10 +180,7 @@ fn calculate_base_color(
 
         // masked
         if (texture_flags & (1u << 6)) != 0 {
-            // alpha testing
-            if alpha < alpha_test_value {
-                discard;
-            }
+            final_color = alpha_test(tex_coord, layer_idx, final_color, alpha);
         }
 
         // additive
