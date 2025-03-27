@@ -123,11 +123,11 @@ pub fn create_texture_array(
         address_mode_v: wgpu::AddressMode::Repeat,
         address_mode_w: wgpu::AddressMode::Repeat,
         mag_filter: wgpu::FilterMode::Linear,
-        min_filter: wgpu::FilterMode::Nearest,
+        min_filter: wgpu::FilterMode::Linear,
         mipmap_filter: wgpu::FilterMode::Linear,
-        // anisotropy_clamp: 16,
+        anisotropy_clamp: 16,
         lod_min_clamp: 0.0,
-        lod_max_clamp: 2.0, // change the max mipmap level here
+        lod_max_clamp: 1.5, // change the max mipmap level here
         ..Default::default()
     });
 
