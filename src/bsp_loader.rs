@@ -11,7 +11,7 @@ pub enum EntityModel {
     // The only case when EntityBrush type is used is when EntityBrush has its own MVP in the cases of func_rotating_door and alikes.
     Bsp,
     /// Data inside is Bsp Model Index
-    OpaqueEntityBrush(i32),
+    OpaqueEntityBrush((i32, CustomRender)),
     /// Data inside is Bsp Model Index, Custom Render properties
     TransparentEntityBrush((i32, CustomRender)),
     // For convenient sake, store the model inside this.
@@ -173,7 +173,14 @@ pub fn get_bsp_resources(bsp: bsp::Bsp, bsp_path: &Path) -> BspResource {
                         bsp_entity_index,
                         WorldEntity {
                             world_index: assign_world_index(),
-                            model: EntityModel::OpaqueEntityBrush(bsp_model_index),
+                            model: EntityModel::OpaqueEntityBrush((
+                                bsp_model_index,
+                                CustomRender {
+                                    rendermode,
+                                    renderamt,
+                                    renderfx,
+                                },
+                            )),
                             origin,
                             angles,
                         },

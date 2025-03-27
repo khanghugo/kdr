@@ -39,7 +39,7 @@ pub struct WorldVertex {
     // for mdl: unused
     data_a: [f32; 3],
     // for bsp: [rendermode, unused]
-    // for mdl: [renderflag, unused]
+    // for mdl: [textureflag, unused]
     data_b: [u32; 2],
 }
 
@@ -356,7 +356,7 @@ fn create_batch_lookups(
             | EntityModel::TransparentEntityBrush(_) => {
                 let bsp_model_index = match &entity.model {
                     EntityModel::Bsp => 0,
-                    EntityModel::OpaqueEntityBrush(x) => *x,
+                    EntityModel::OpaqueEntityBrush((x, _)) => *x,
                     EntityModel::TransparentEntityBrush((x, _)) => *x,
                     _ => unreachable!(),
                 };
@@ -377,6 +377,12 @@ fn create_batch_lookups(
                     }
                 } else {
                     None
+                };
+
+                let custom_render = match &entity.model {
+                    EntityModel::OpaqueEntityBrush((_, custom_render)) => Some(custom_render),
+                    EntityModel::TransparentEntityBrush((_, custom_render)) => Some(custom_render),
+                    _ => None,
                 };
 
                 faces
@@ -425,6 +431,7 @@ fn create_batch_lookups(
                             // one mesh has the same texture everything
                             let texture_idx = mesh.header.skin_ref as usize;
                             let texture = &mdl.textures[texture_idx];
+                            let texture_flags = &texture.header.flags;
                             let (width, height) = texture.dimensions();
 
                             // let triangle_list = triangle_strip_to_triangle_list(&mesh.vertices);
@@ -464,7 +471,7 @@ fn create_batch_lookups(
                                         model_idx: world_entity_index as u32,
                                         type_: 1,
                                         data_a: [0f32; 3],
-                                        data_b: [0u32; 2],
+                                        data_b: [texture_flags.bits() as u32; 2],
                                     }
                                 });
 

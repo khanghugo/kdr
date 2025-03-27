@@ -72,10 +72,7 @@ fn calculate_base_color(
 ) -> vec4f {
     let albedo = textureSample(texture, linear_sampler, tex_coord, layer_idx);
 
-    // alpha testing
-    if albedo.a < 0.9 {
-        discard;
-    }
+    let alpha_test_value = 0.9;
 
     if type_ == 0 {
         let lightmap_coord = vec2f(data_a[0], data_a[1]);
@@ -92,9 +89,16 @@ fn calculate_base_color(
 
         // some render mode don't have lightmap
         // dont gamma corect it either because it is a bit too bright
-        if rendermode != 2 {
+        if rendermode == 0 || rendermode == 4 {
             final_color *= light;
             final_color = gamma_correct(final_color);
+        }
+
+        if rendermode == 4 {
+            // alpha testing
+            if albedo.a < alpha_test_value {
+                discard;
+            }
         }
 
         return vec4(final_color, alpha);
@@ -102,7 +106,30 @@ fn calculate_base_color(
         let alpha = albedo.a;
 
         // pre multiply
-        let final_color = albedo.rgb * alpha;
+        var final_color = albedo.rgb * alpha;
+
+        // light is always pointing down
+        let normal_z = (normal.z + 1.0) / 2.0;
+
+        let texture_flags = data_b[0];
+
+        // if not flatshade, don't do shading
+        if (texture_flags & 1u) == 0 {
+            final_color = final_color * normal_z;
+        }
+
+        // masked
+        if (texture_flags & (1u << 6)) != 0 {
+            // alpha testing
+            if alpha < alpha_test_value {
+                discard;
+            }
+        }
+
+        // additive
+        if (texture_flags & (1u << 5)) != 0 {
+
+        }
 
         return vec4(final_color, alpha);
     }
