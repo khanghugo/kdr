@@ -380,10 +380,24 @@ impl RenderContext {
             });
         }
 
-        // resolve pass
-        if true {
-            self.oit_resolver
-                .resolve(&mut encoder, &self.render_targets.main_view);
+        // composite
+        {
+            let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("composite pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &self.render_targets.main_view,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Load,
+                        store: wgpu::StoreOp::Store,
+                    },
+                    resolve_target: None,
+                })],
+                depth_stencil_attachment: None,
+                timestamp_writes: None,
+                occlusion_query_set: None,
+            });
+
+            self.oit_resolver.composite(&mut rpass);
         }
 
         let swapchain_surface_texture = self.surface.get_current_texture().unwrap();
