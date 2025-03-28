@@ -29,5 +29,7 @@ fn resolve_fs(@builtin(position) frag_coord: vec4f) -> @location(0) vec4f {
     let average_color = accum.rgb / max(accum.a, 1e-5);
     let coverage = 1.0 - reveal;
 
-    return vec4f(average_color, coverage);
+    var final_color = vec4f(average_color, coverage);
+
+    return final_color;
 }
