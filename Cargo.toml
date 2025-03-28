@@ -21,7 +21,6 @@ image = { version = "0.25.5", default-features = false, features = [
 pollster = "0.4.0"
 tobj = "4.0.3"
 wgpu = "24.0.1"
-wgpu-profiler = "0.22.0"
 winit = "0.30.9"
 
 bsp = { path = "./bsp" }

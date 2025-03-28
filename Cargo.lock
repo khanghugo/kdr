@@ -847,7 +847,6 @@ dependencies = [
  "tobj",
  "wad",
  "wgpu",
- "wgpu-profiler",
  "winit",
 ]
 
@@ -2236,17 +2235,6 @@ dependencies = [
  "wgpu-types",
  "windows",
  "windows-core",
-]
-
-[[package]]
-name = "wgpu-profiler"
-version = "0.22.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cdda2055c0da8af2291581148d7eedcd728e97d8519cfe2a163a0b9d28d595ba"
-dependencies = [
- "parking_lot",
- "thiserror 2.0.11",
- "wgpu",
 ]
 
 [[package]]

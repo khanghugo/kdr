@@ -2,10 +2,8 @@ use std::sync::Arc;
 
 use camera::{Camera, CameraBuffer};
 use finalize::FinalizeRenderPipeline;
-use image::error::EncodingError;
 use oit::{OITRenderTarget, OITResolver};
 use wgpu::Extent3d;
-use wgpu_profiler::{GpuProfiler, GpuProfilerSettings};
 use winit::window::Window;
 use world_buffer::{WorldBuffer, WorldLoader};
 
@@ -99,7 +97,6 @@ pub struct RenderContext {
     camera_buffer: CameraBuffer,
     render_targets: RenderTargets,
     finalize_render_pipeline: FinalizeRenderPipeline,
-    profiler: GpuProfiler,
 }
 
 impl Drop for RenderContext {
@@ -227,15 +224,15 @@ impl RenderContext {
             swapchain_format,
         );
 
-        let profiler = GpuProfiler::new(
-            &device,
-            GpuProfilerSettings {
-                enable_timer_queries: true,
-                enable_debug_groups: true,
-                ..Default::default()
-            },
-        )
-        .unwrap();
+        // let profiler = GpuProfiler::new(
+        //     &device,
+        //     GpuProfilerSettings {
+        //         enable_timer_queries: true,
+        //         enable_debug_groups: true,
+        //         ..Default::default()
+        //     },
+        // )
+        // .unwrap();
 
         Self {
             device,
@@ -248,7 +245,6 @@ impl RenderContext {
             camera_buffer,
             render_targets,
             finalize_render_pipeline,
-            profiler,
         }
     }
 
@@ -256,8 +252,6 @@ impl RenderContext {
         let mut encoder = self
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
-
-        let mut scope = self.profiler.scope("rendering", &mut encoder);
 
         // update camera buffer
         {
@@ -307,8 +301,7 @@ impl RenderContext {
                 occlusion_query_set: None,
             };
 
-            let mut opaque_pass =
-                scope.scoped_render_pass("world opaque render", opaque_pass_descriptor);
+            let mut opaque_pass = encoder.begin_render_pass(&opaque_pass_descriptor);
 
             opaque_pass.set_pipeline(&self.world_opaque_render_pipeline);
             opaque_pass.set_bind_group(0, &self.camera_buffer.bind_group, &[]);
@@ -352,8 +345,7 @@ impl RenderContext {
                 occlusion_query_set: None,
             };
 
-            let mut transparent_pass =
-                scope.scoped_render_pass("world transparent render", transparent_pass_descriptor);
+            let mut transparent_pass = encoder.begin_render_pass(&transparent_pass_descriptor);
 
             transparent_pass.set_pipeline(&self.world_transparent_render_pipeline);
             transparent_pass.set_bind_group(0, &self.camera_buffer.bind_group, &[]);
@@ -382,44 +374,22 @@ impl RenderContext {
 
         // resolve pass
         if true {
-            let mut scope = scope.scope("resolver pass");
             self.oit_resolver
-                .resolve(&mut scope, &self.render_targets.main_view);
+                .resolve(&mut encoder, &self.render_targets.main_view);
         }
 
         let swapchain_surface_texture = self.surface.get_current_texture().unwrap();
 
         // blit to surface view
         {
-            let mut scope = scope.scope("blit to surface pass");
-
             let swapchain_view = swapchain_surface_texture
                 .texture
                 .create_view(&wgpu::TextureViewDescriptor::default());
             self.finalize_render_pipeline
-                .finalize_to_swapchain(&mut scope, &swapchain_view);
+                .finalize_to_swapchain(&mut encoder, &swapchain_view);
         }
-
-        drop(scope);
-
-        self.profiler.resolve_queries(&mut encoder);
 
         self.queue.submit(Some(encoder.finish()));
-
-        self.profiler.end_frame().unwrap();
-
-        if let Some(profiling_data) = self
-            .profiler
-            .process_finished_frame(self.queue.get_timestamp_period())
-        {
-            // println!("{:?}", profiling_data);
-            wgpu_profiler::chrometrace::write_chrometrace(
-                std::path::Path::new("mytrace.json"),
-                &profiling_data,
-            )
-            .unwrap();
-        }
-
         swapchain_surface_texture.present();
     }
 
