@@ -19,10 +19,12 @@ pub const CAM_SPEED: f32 = 1000.;
 pub const CAM_TURN: f32 = 150.; // degrees
 
 const FILE: &str = "./examples/textures.obj";
-const BSP_FILE: &str = "/home/khang/kdr/examples/trans_compile.bsp";
+// const BSP_FILE: &str = "/home/khang/bxt/game_isolated/cstrike_downloads/maps/trans_compile.bsp";
 // const BSP_FILE: &str = "./examples/chk_section.bsp";
 // const BSP_FILE: &str = "/home/khang/bxt/game_isolated/cstrike_downloads/maps/arte_drift.bsp";
-// const BSP_FILE: &str = "/home/khang/bxt/game_isolated/cstrike_downloads/maps/surf_cyberwave.bsp";
+// const BSP_FILE: &str = "/home/khang/bxt/_game_native/cstrike_downloads/maps/hb_MART.bsp";
+// const BSP_FILE: &str = "/home/khang/bxt/game_isolated/cstrike_downloads/maps/chk_section.bsp";
+const BSP_FILE: &str = "/home/khang/bxt/game_isolated/cstrike_downloads/maps/surf_cyberwave.bsp";
 #[derive(Debug, Clone, Copy)]
 struct Key(u32);
 
@@ -88,8 +90,11 @@ impl ApplicationHandler for App {
             let bsp = bsp::Bsp::from_file(BSP_FILE).unwrap();
             let resource = get_bsp_resources(bsp, Path::new(BSP_FILE));
 
-            let world_buffer =
-                WorldLoader::load_world(&render_context.device, &render_context.queue, &resource);
+            let world_buffer = WorldLoader::load_world(
+                &render_context.device(),
+                &render_context.queue(),
+                &resource,
+            );
 
             self.render_state.world_buffer = vec![world_buffer];
         }

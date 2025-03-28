@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [workspace.package]
-authors = [ "Lê Hàn Minh Khang (Khang Le) <mkhangle20@gmail.com>" ]
+authors = ["Lê Hàn Minh Khang (Khang Le) <mkhangle20@gmail.com>"]
 version = "0.1.0"
 edition = "2024"
 
@@ -13,11 +13,15 @@ bytemuck = "1.21.0"
 cgmath = "0.18.0"
 env_logger = "0.11.6"
 glam = "0.29.2"
-image = { version = "0.25.5", default-features = false, features = ["bmp", "png", "jpeg"] }
+image = { version = "0.25.5", default-features = false, features = [
+    "bmp",
+    "png",
+    "jpeg",
+] }
 pollster = "0.4.0"
 tobj = "4.0.3"
 wgpu = "24.0.1"
-wgpu-profiler = "0.21.0"
+wgpu-profiler = "0.22.0"
 winit = "0.30.9"
 
 bsp = { path = "./bsp" }

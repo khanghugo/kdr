@@ -132,7 +132,7 @@ fn bicubic_filtering(uv: vec2f, layer_idx: u32) -> vec4f {
     return textureSample(texture, linear_sampler, sample_uv, layer_idx);
 }
 
-// forgot the link
+// https://www.shadertoy.com/view/WtjyWy
 fn nearest_aa_filtering(_uv: vec2f, layer_idx: u32) -> vec4f {
     let sharpness = 1.5;
 

@@ -56,10 +56,15 @@ pub struct OITResolver {
 }
 
 impl OITResolver {
-    pub fn new(device: &wgpu::Device, config: &wgpu::SurfaceConfiguration) -> Self {
+    pub fn new(
+        device: &wgpu::Device,
+        width: u32,
+        height: u32,
+        texture_format: wgpu::TextureFormat,
+    ) -> Self {
         // Create shader module
         let resolve_shader =
-            device.create_shader_module(wgpu::include_wgsl!("./shader/wboit_resolve.wgsl"));
+            device.create_shader_module(wgpu::include_wgsl!("./shader/resolve.wgsl"));
 
         // Create bind group layout
         let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -106,8 +111,7 @@ impl OITResolver {
         });
 
         // render targets
-        let [accum_texture, reveal_texture] =
-            Self::create_render_targets(&device, config.width, config.height);
+        let [accum_texture, reveal_texture] = Self::create_render_targets(&device, width, height);
         let accum_view = accum_texture.create_view(&wgpu::TextureViewDescriptor::default());
         let reveal_view = reveal_texture.create_view(&wgpu::TextureViewDescriptor::default());
 
@@ -152,7 +156,7 @@ impl OITResolver {
                 module: &resolve_shader,
                 entry_point: Some("resolve_fs"),
                 targets: &[Some(wgpu::ColorTargetState {
-                    format: config.format,
+                    format: texture_format,
                     blend: Some(wgpu::BlendState {
                         color: wgpu::BlendComponent {
                             src_factor: wgpu::BlendFactor::SrcAlpha,
