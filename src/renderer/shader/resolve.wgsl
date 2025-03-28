@@ -1,18 +1,3 @@
-// vibe coding
-// Fullscreen triangle vertex shader
-@vertex
-fn resolve_vs(@builtin(vertex_index) vert_idx: u32) -> @builtin(position) vec4f {
-    // Generate fullscreen triangle without any vertex buffers
-    let pos = array(
-        vec2f(-1.0, -1.0),
-        vec2f(3.0, -1.0),
-        vec2f(-1.0, 3.0)
-    );
-
-    return vec4f(pos[vert_idx], 0.0, 1.0);
-}
-
-// Fragment shader
 @group(0) @binding(0) var accum_tex: texture_2d<f32>;
 @group(0) @binding(1) var reveal_tex: texture_2d<f32>;
 @group(0) @binding(2) var resolve_sampler: sampler;

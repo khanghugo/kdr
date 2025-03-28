@@ -168,3 +168,29 @@ pub fn get_idle_sequence_origin_angles(mdl: &mdl::Mdl) -> ([f32; 3], MdlAngles) 
 
     (origin, MdlAngles(angles))
 }
+
+pub struct FullScrenTriVertexShader {
+    pub shader_module: wgpu::ShaderModule,
+}
+
+impl FullScrenTriVertexShader {
+    pub fn entry_point() -> &'static str {
+        "vs_main"
+    }
+
+    pub fn create_shader_module(device: &wgpu::Device) -> Self {
+        Self {
+            shader_module: device
+                .create_shader_module(wgpu::include_wgsl!("./shader/fullscreen_tri.wgsl")),
+        }
+    }
+
+    pub fn vertex_state(&self) -> wgpu::VertexState {
+        wgpu::VertexState {
+            module: &self.shader_module,
+            entry_point: Self::entry_point().into(),
+            compilation_options: Default::default(),
+            buffers: &[],
+        }
+    }
+}

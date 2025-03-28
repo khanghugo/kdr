@@ -1,3 +1,5 @@
+use super::utils::FullScrenTriVertexShader;
+
 type WBOITRenderTargetColor = [wgpu::ColorTargetState; 2];
 
 #[derive(Clone)]
@@ -61,6 +63,7 @@ impl OITResolver {
         width: u32,
         height: u32,
         texture_format: wgpu::TextureFormat,
+        fullscreen_tri_vertex_shader: &FullScrenTriVertexShader,
     ) -> Self {
         // Create shader module
         let resolve_shader =
@@ -146,12 +149,7 @@ impl OITResolver {
         let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("OIT Resolve Pipeline"),
             layout: Some(&pipeline_layout),
-            vertex: wgpu::VertexState {
-                module: &resolve_shader,
-                entry_point: Some("resolve_vs"),
-                buffers: &[],
-                compilation_options: Default::default(),
-            },
+            vertex: fullscreen_tri_vertex_shader.vertex_state(),
             fragment: Some(wgpu::FragmentState {
                 module: &resolve_shader,
                 entry_point: Some("resolve_fs"),

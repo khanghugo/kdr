@@ -2,6 +2,8 @@
 //!
 //! This should be the final step that represents to swapchain surface
 
+use super::utils::FullScrenTriVertexShader;
+
 pub struct FinalizeRenderPipeline {
     pipeline: wgpu::RenderPipeline,
     bind_group: wgpu::BindGroup,
@@ -12,6 +14,7 @@ impl FinalizeRenderPipeline {
         device: &wgpu::Device,
         render_target: &wgpu::TextureView,
         swapchain_format: wgpu::TextureFormat,
+        fullscreen_tri_vertex_shader: &FullScrenTriVertexShader,
     ) -> Self {
         let shader = device.create_shader_module(wgpu::include_wgsl!("./shader/finalize.wgsl"));
 
@@ -78,12 +81,7 @@ impl FinalizeRenderPipeline {
         let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("finalize pipeline layout"),
             layout: Some(&pipeline_layout),
-            vertex: wgpu::VertexState {
-                module: &shader,
-                entry_point: Some("vs_main"),
-                buffers: &[],
-                compilation_options: Default::default(),
-            },
+            vertex: fullscreen_tri_vertex_shader.vertex_state(),
             fragment: Some(wgpu::FragmentState {
                 module: &shader,
                 entry_point: Some("fs_main"),

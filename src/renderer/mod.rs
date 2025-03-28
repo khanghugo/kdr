@@ -3,6 +3,7 @@ use std::sync::Arc;
 use camera::{Camera, CameraBuffer};
 use finalize::FinalizeRenderPipeline;
 use oit::{OITRenderTarget, OITResolver};
+use utils::FullScrenTriVertexShader;
 use wgpu::Extent3d;
 use winit::window::Window;
 use world_buffer::{WorldBuffer, WorldLoader};
@@ -97,6 +98,7 @@ pub struct RenderContext {
     camera_buffer: CameraBuffer,
     render_targets: RenderTargets,
     finalize_render_pipeline: FinalizeRenderPipeline,
+    fullscreen_tri_vertex_shader: FullScrenTriVertexShader,
 }
 
 impl Drop for RenderContext {
@@ -167,9 +169,12 @@ impl RenderContext {
         // camera buffer
         let camera_buffer = CameraBuffer::create(&device);
 
-        // rendering stuffs
+        // swap chain stuffs
         let swapchain_capabilities = surface.get_capabilities(&adapter);
         let swapchain_format = swapchain_capabilities.formats[0];
+
+        // common shader
+        let fullscreen_tri_vertex_shader = FullScrenTriVertexShader::create_shader_module(&device);
 
         // opaque pass and then transparent passs
         let opaque_blending = wgpu::ColorTargetState {
@@ -212,6 +217,7 @@ impl RenderContext {
             size.width,
             size.height,
             RenderTargets::main_texture_format(),
+            &fullscreen_tri_vertex_shader,
         );
 
         surface.configure(&device, &config);
@@ -222,6 +228,7 @@ impl RenderContext {
             &device,
             &render_targets.main_view,
             swapchain_format,
+            &fullscreen_tri_vertex_shader,
         );
 
         // let profiler = GpuProfiler::new(
@@ -245,6 +252,7 @@ impl RenderContext {
             camera_buffer,
             render_targets,
             finalize_render_pipeline,
+            fullscreen_tri_vertex_shader,
         }
     }
 
