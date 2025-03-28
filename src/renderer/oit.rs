@@ -51,10 +51,10 @@ pub type OITRenderTarget = WBOITRenderTarget;
 pub struct OITResolver {
     pub pipeline: wgpu::RenderPipeline,
     pub bind_group: wgpu::BindGroup,
-    pub accum_texture: wgpu::Texture,
-    pub reveal_texture: wgpu::Texture,
-    pub accum_view: wgpu::TextureView,
-    pub reveal_view: wgpu::TextureView,
+    accum_texture: wgpu::Texture,
+    reveal_texture: wgpu::Texture,
+    accum_view: wgpu::TextureView,
+    reveal_view: wgpu::TextureView,
 }
 
 impl OITResolver {
@@ -62,7 +62,7 @@ impl OITResolver {
         device: &wgpu::Device,
         width: u32,
         height: u32,
-        texture_format: wgpu::TextureFormat,
+        input_opaque_texture_format: wgpu::TextureFormat,
         fullscreen_tri_vertex_shader: &FullScrenTriVertexShader,
     ) -> Self {
         // Create shader module
@@ -73,6 +73,7 @@ impl OITResolver {
         let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("OIT Resolve Bind Group Layout"),
             entries: &[
+                // acc tex
                 wgpu::BindGroupLayoutEntry {
                     binding: 0,
                     visibility: wgpu::ShaderStages::FRAGMENT,
@@ -83,6 +84,7 @@ impl OITResolver {
                     },
                     count: None,
                 },
+                // reveal tex
                 wgpu::BindGroupLayoutEntry {
                     binding: 1,
                     visibility: wgpu::ShaderStages::FRAGMENT,
@@ -93,6 +95,7 @@ impl OITResolver {
                     },
                     count: None,
                 },
+                // sampler
                 wgpu::BindGroupLayoutEntry {
                     binding: 2,
                     visibility: wgpu::ShaderStages::FRAGMENT,
@@ -154,7 +157,7 @@ impl OITResolver {
                 module: &resolve_shader,
                 entry_point: Some("resolve_fs"),
                 targets: &[Some(wgpu::ColorTargetState {
-                    format: texture_format,
+                    format: input_opaque_texture_format,
                     blend: Some(wgpu::BlendState {
                         color: wgpu::BlendComponent {
                             src_factor: wgpu::BlendFactor::SrcAlpha,

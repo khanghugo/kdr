@@ -12,8 +12,8 @@ pub struct FinalizeRenderPipeline {
 impl FinalizeRenderPipeline {
     pub fn create_pipeline(
         device: &wgpu::Device,
-        render_target: &wgpu::TextureView,
-        swapchain_format: wgpu::TextureFormat,
+        input_texture: &wgpu::TextureView,
+        output_texture_format: wgpu::TextureFormat,
         fullscreen_tri_vertex_shader: &FullScrenTriVertexShader,
     ) -> Self {
         let shader = device.create_shader_module(wgpu::include_wgsl!("./shader/finalize.wgsl"));
@@ -62,7 +62,7 @@ impl FinalizeRenderPipeline {
                 // texture
                 wgpu::BindGroupEntry {
                     binding: 0,
-                    resource: wgpu::BindingResource::TextureView(&render_target),
+                    resource: wgpu::BindingResource::TextureView(&input_texture),
                 },
                 // sampler
                 wgpu::BindGroupEntry {
@@ -86,7 +86,7 @@ impl FinalizeRenderPipeline {
                 module: &shader,
                 entry_point: Some("fs_main"),
                 targets: &[Some(wgpu::ColorTargetState {
-                    format: swapchain_format,
+                    format: output_texture_format,
                     blend: Some(wgpu::BlendState {
                         color: wgpu::BlendComponent {
                             src_factor: wgpu::BlendFactor::SrcAlpha,

@@ -3,6 +3,7 @@ use std::sync::Arc;
 use camera::{Camera, CameraBuffer};
 use finalize::FinalizeRenderPipeline;
 use oit::{OITRenderTarget, OITResolver};
+use post_process::PostProcessing;
 use utils::FullScrenTriVertexShader;
 use wgpu::Extent3d;
 use winit::window::Window;
@@ -21,14 +22,22 @@ pub mod world_buffer;
 pub struct RenderTargets {
     main_texture: wgpu::Texture,
     main_view: wgpu::TextureView,
+    // need a composite texture because wgpu cannot sample a texture while writing on it
+    // it happens when we want to do post processing, we have to read the current image and then write on it
+    composite_texture: wgpu::Texture,
+    composite_view: wgpu::TextureView,
     depth_texture: wgpu::Texture,
     depth_view: wgpu::TextureView,
 }
 
 impl RenderTargets {
     fn main_texture_format() -> wgpu::TextureFormat {
-        // wgpu::TextureFormat::Rgba16Float
-        wgpu::TextureFormat::Bgra8Unorm
+        wgpu::TextureFormat::Rgba16Float
+        // wgpu::TextureFormat::Bgra8Unorm
+    }
+
+    fn composite_texture_format() -> wgpu::TextureFormat {
+        Self::main_texture_format()
     }
 
     fn depth_texture_format() -> wgpu::TextureFormat {
@@ -37,7 +46,7 @@ impl RenderTargets {
 
     fn new(device: &wgpu::Device, width: u32, height: u32) -> Self {
         let main_texture = device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("main render target"),
+            label: Some("main render texture"),
             size: wgpu::Extent3d {
                 width,
                 height,
@@ -71,11 +80,30 @@ impl RenderTargets {
 
         let depth_view = depth_texture.create_view(&wgpu::TextureViewDescriptor::default());
 
+        let composite_texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("composite texture"),
+            size: wgpu::Extent3d {
+                width,
+                height,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: Self::main_texture_format(),
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+            view_formats: &[],
+        });
+
+        let composite_view = composite_texture.create_view(&wgpu::TextureViewDescriptor::default());
+
         Self {
             main_texture,
             main_view,
             depth_texture,
             depth_view,
+            composite_texture,
+            composite_view,
         }
     }
 }
@@ -84,6 +112,7 @@ impl Drop for RenderTargets {
     fn drop(&mut self) {
         self.main_texture.destroy();
         self.depth_texture.destroy();
+        self.composite_texture.destroy();
     }
 }
 
@@ -99,6 +128,7 @@ pub struct RenderContext {
     render_targets: RenderTargets,
     finalize_render_pipeline: FinalizeRenderPipeline,
     fullscreen_tri_vertex_shader: FullScrenTriVertexShader,
+    post_processing: PostProcessing,
 }
 
 impl Drop for RenderContext {
@@ -172,19 +202,21 @@ impl RenderContext {
         // swap chain stuffs
         let swapchain_capabilities = surface.get_capabilities(&adapter);
         let swapchain_format = swapchain_capabilities.formats[0];
+        let render_targets = RenderTargets::new(&device, size.width, size.height);
+        let render_target_format = RenderTargets::main_texture_format();
 
         // common shader
         let fullscreen_tri_vertex_shader = FullScrenTriVertexShader::create_shader_module(&device);
 
         // opaque pass and then transparent passs
         let opaque_blending = wgpu::ColorTargetState {
-            format: RenderTargets::main_texture_format(),
+            format: render_target_format,
             blend: None,
             write_mask: wgpu::ColorWrites::ALL,
         };
 
         let _alpha_blending = wgpu::ColorTargetState {
-            format: RenderTargets::main_texture_format(),
+            format: render_target_format,
             blend: Some(wgpu::BlendState {
                 color: wgpu::BlendComponent {
                     src_factor: wgpu::BlendFactor::SrcAlpha,
@@ -216,17 +248,17 @@ impl RenderContext {
             &device,
             size.width,
             size.height,
-            RenderTargets::main_texture_format(),
+            render_target_format,
             &fullscreen_tri_vertex_shader,
         );
 
         surface.configure(&device, &config);
 
-        let render_targets = RenderTargets::new(&device, size.width, size.height);
-
         let finalize_render_pipeline = FinalizeRenderPipeline::create_pipeline(
             &device,
-            &render_targets.main_view,
+            // take in composite view and then render it out to the target swapchain
+            // this means composite step is required to move main to composite
+            &render_targets.composite_view,
             swapchain_format,
             &fullscreen_tri_vertex_shader,
         );
@@ -240,6 +272,15 @@ impl RenderContext {
         //     },
         // )
         // .unwrap();
+        //
+
+        let post_processing = PostProcessing::create_pipelines(
+            &device,
+            size.width,
+            size.height,
+            render_target_format,
+            &fullscreen_tri_vertex_shader,
+        );
 
         Self {
             device,
@@ -253,6 +294,7 @@ impl RenderContext {
             render_targets,
             finalize_render_pipeline,
             fullscreen_tri_vertex_shader,
+            post_processing,
         }
     }
 
@@ -380,10 +422,10 @@ impl RenderContext {
             });
         }
 
-        // composite
+        // oit resolve
         {
             let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("composite pass"),
+                label: Some("oit resolve pass"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                     view: &self.render_targets.main_view,
                     ops: wgpu::Operations {
@@ -398,6 +440,18 @@ impl RenderContext {
             });
 
             self.oit_resolver.composite(&mut rpass);
+        }
+
+        // post processing
+        // must be enabled because finalize is sending composite to swapchain
+        // composite is empty at this moment
+        {
+            self.post_processing.execute(
+                &self.device,
+                &mut encoder,
+                &self.render_targets.main_texture,
+                &self.render_targets.composite_texture,
+            );
         }
 
         let swapchain_surface_texture = self.surface.get_current_texture().unwrap();
