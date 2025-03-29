@@ -124,7 +124,7 @@ pub struct Camera {
 
 // const CAM_START_POS: [f32; 3] = [-300., -1000., -2000.];
 // const CAM_START_POS: [f32; 3] = [1000., 300., 500.];
-const CAM_START_POS: [f32; 3] = [-200., 200., 200.];
+const CAM_START_POS: [f32; 3] = [0f32; 3];
 
 impl Default for Camera {
     fn default() -> Self {
@@ -141,8 +141,8 @@ impl Default for Camera {
             up,
             aspect: 1920 as f32 / 1080 as f32,
             fovy: Deg(90.0),
-            znear: 10.0,
-            zfar: 65536.0,
+            znear: 1.0,
+            zfar: 8192.0,
             orientation,
             yaw: Deg(0.),
             pitch: Deg(0.),
@@ -171,11 +171,13 @@ impl Camera {
     }
 
     pub fn rotate_in_place_pitch(&mut self, angle: Deg<f32>) {
-        self.pitch = Deg((self.pitch + angle).0.clamp(-MAX_PITCH, MAX_PITCH));
+        self.pitch += angle;
         self.rebuild_orientation();
     }
 
-    fn rebuild_orientation(&mut self) {
+    pub fn rebuild_orientation(&mut self) {
+        self.pitch = Deg(self.pitch.0.clamp(-MAX_PITCH, MAX_PITCH));
+
         let yaw_quat = cgmath::Quaternion::from_axis_angle(self.up.normalize(), self.yaw);
 
         let forward = yaw_quat * Vector3::unit_x();

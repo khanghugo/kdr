@@ -7,7 +7,6 @@ use winit::{
     dpi::LogicalSize,
     event::WindowEvent,
     event_loop::{ControlFlow, EventLoop},
-    keyboard::KeyCode,
     window::Window,
 };
 
@@ -25,7 +24,12 @@ const FILE: &str = "./examples/textures.obj";
 // const BSP_FILE: &str = "/home/khang/bxt/game_isolated/cstrike_downloads/maps/arte_drift.bsp";
 // const BSP_FILE: &str = "/home/khang/bxt/_game_native/cstrike_downloads/maps/hb_MART.bsp";
 const BSP_FILE: &str = "/home/khang/bxt/game_isolated/cstrike_downloads/maps/chk_section.bsp";
+// const BSP_FILE: &str = "/home/khang/bxt/game_isolated/valve/maps/c1a0.bsp";
 // const BSP_FILE: &str = "/home/khang/bxt/game_isolated/cstrike_downloads/maps/surf_cyberwave.bsp";
+// const BSP_FILE: &str = "/home/khang/bxt/game_isolated/cstrike_downloads/maps/cd_666.bsp";
+
+const WINDOW_WIDTH: i32 = 1440;
+const WINDOW_HEIGHT: i32 = 900;
 
 struct App {
     graphic_context: Option<RenderContext>,
@@ -40,6 +44,7 @@ struct App {
 
     // input
     keys: Key,
+    mouse_right_hold: bool,
 }
 
 impl Default for App {
@@ -51,6 +56,7 @@ impl Default for App {
             frame_time: 1.,
             render_state: Default::default(),
             keys: Key::empty(),
+            mouse_right_hold: false,
         }
     }
 }
@@ -59,8 +65,8 @@ impl ApplicationHandler for App {
     fn resumed(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
         let window = event_loop
             .create_window(Window::default_attributes().with_inner_size(LogicalSize {
-                width: 1440,
-                height: 900,
+                width: WINDOW_WIDTH,
+                height: WINDOW_HEIGHT,
             }))
             .unwrap();
         let window = Arc::new(window);
@@ -89,10 +95,25 @@ impl ApplicationHandler for App {
         self.graphic_context = render_context.into();
     }
 
+    fn device_event(
+        &mut self,
+        _event_loop: &winit::event_loop::ActiveEventLoop,
+        _device_id: winit::event::DeviceId,
+        event: winit::event::DeviceEvent,
+    ) {
+        // Mainly for mouse movement
+        match event {
+            winit::event::DeviceEvent::MouseMotion { delta } => {
+                self.handle_mouse_movement(delta);
+            }
+            _ => (),
+        }
+    }
+
     fn window_event(
         &mut self,
         event_loop: &winit::event_loop::ActiveEventLoop,
-        window_id: winit::window::WindowId,
+        _window_id: winit::window::WindowId,
         event: winit::event::WindowEvent,
     ) {
         match event {
@@ -120,12 +141,29 @@ impl ApplicationHandler for App {
                     window.request_redraw();
                 });
             }
+            // window event inputs are focused so we need to be here
             WindowEvent::KeyboardInput {
-                device_id,
+                device_id: _,
                 event,
-                is_synthetic,
+                is_synthetic: _,
             } => {
-                self.handle_keyboard_input(event);
+                self.handle_keyboard_input(event.physical_key, event.state);
+            }
+            WindowEvent::MouseInput {
+                device_id: _,
+                state,
+                button,
+            } => {
+                self.handle_mouse_input(button, state);
+            }
+            WindowEvent::CursorMoved {
+                device_id: _,
+                position: _,
+            } => {
+                // Do not use this event to handle mouse movement.
+                // It is confined but it can hit the border.
+                // Thus, the position is clamped.
+                // Use raw input instead
             }
             _ => (),
         }
