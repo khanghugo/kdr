@@ -276,6 +276,7 @@ fn fs_transparent(
 
     // -position.z goes like from 0 to 2
     // *100.0 because that is what the world looks like
+    // and the depth texture is mostly white, very sad
     let depth_z = -position.z * 100.0;
     let distance_weight = clamp(0.03 / (1e-5 + pow(depth_z / 200.0, 4.0)), 1e-2, 3e3);
     let alpha_weight = min(1.0, max(color.r, max(color.g, max(color.b, color.a))) * 40.0 + 0.01);

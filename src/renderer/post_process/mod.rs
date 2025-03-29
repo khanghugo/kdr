@@ -1,4 +1,7 @@
+use std::sync::Arc;
+
 use bloom::Bloom;
+use chromatic_aberration::ChromaticAberration;
 use gray_scale::GrayScale;
 use kuwahara::Kuwahara;
 use pp_trait::PostProcessingModule;
@@ -6,6 +9,7 @@ use pp_trait::PostProcessingModule;
 use super::utils::FullScrenTriVertexShader;
 
 mod bloom;
+mod chromatic_aberration;
 mod gray_scale;
 mod kuwahara;
 mod pp_trait;
@@ -20,6 +24,7 @@ pub enum PostEffect {
     GrayScale(GrayScale),
     Bloom(Bloom),
     Kuwahara(Kuwahara),
+    ChromaticAberration(ChromaticAberration),
 }
 
 impl PostProcessing {
@@ -29,6 +34,8 @@ impl PostProcessing {
         height: u32,
         input_texture_format: wgpu::TextureFormat,
         fullscreen_tri_vertex_shader: &FullScrenTriVertexShader,
+        // i dont like reasoning with lifetime
+        depth_texture: Arc<wgpu::Texture>,
     ) -> Self {
         let create_texture = || {
             device.create_texture(&wgpu::TextureDescriptor {
@@ -78,6 +85,13 @@ impl PostProcessing {
         //     device,
         //     input_texture_format,
         //     fullscreen_tri_vertex_shader,
+        // )));
+
+        // res.add_effect(PostEffect::ChromaticAberration(ChromaticAberration::new2(
+        //     device,
+        //     input_texture_format,
+        //     fullscreen_tri_vertex_shader,
+        //     depth_texture,
         // )));
 
         res
@@ -145,6 +159,14 @@ impl PostProcessing {
                     );
                 }
                 PostEffect::Kuwahara(x) => {
+                    x.execute(
+                        device,
+                        encoder,
+                        current_input_texture,
+                        current_intermediate_output_texture,
+                    );
+                }
+                PostEffect::ChromaticAberration(x) => {
                     x.execute(
                         device,
                         encoder,

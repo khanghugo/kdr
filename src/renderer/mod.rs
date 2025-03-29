@@ -77,9 +77,11 @@ impl RenderTargets {
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
             format: Self::depth_texture_format(),
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
             view_formats: &[],
         });
+
+        let depth_texture = Arc::new(depth_texture);
 
         let depth_view = depth_texture.create_view(&wgpu::TextureViewDescriptor::default());
 
@@ -285,6 +287,7 @@ impl RenderContext {
             size.height,
             render_target_format,
             &fullscreen_tri_vertex_shader,
+            render_targets.depth_texture.clone(),
         );
 
         Self {
