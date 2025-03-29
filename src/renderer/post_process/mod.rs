@@ -1,3 +1,4 @@
+use bloom::Bloom;
 use gray_scale::GrayScale;
 use pp_trait::PostProcessingModule;
 
@@ -7,12 +8,6 @@ mod bloom;
 mod gray_scale;
 mod pp_trait;
 
-pub struct PostProcessingPipeline {
-    pub bind_group_layout: wgpu::BindGroupLayout,
-    pub pipeline: wgpu::RenderPipeline,
-    pub sampler: wgpu::Sampler,
-}
-
 pub struct PostProcessing {
     effects: Vec<PostEffect>,
     intermediate_textures: [wgpu::Texture; 2],
@@ -21,6 +16,7 @@ pub struct PostProcessing {
 
 pub enum PostEffect {
     GrayScale(GrayScale),
+    Bloom(Bloom),
 }
 
 impl PostProcessing {
@@ -65,6 +61,14 @@ impl PostProcessing {
         //     device,
         //     input_texture_format,
         //     fullscreen_tri_vertex_shader,
+        // )));
+
+        // res.add_effect(PostEffect::Bloom(Bloom::new2(
+        //     device,
+        //     input_texture_format,
+        //     fullscreen_tri_vertex_shader,
+        //     width,
+        //     height,
         // )));
 
         res
@@ -115,8 +119,16 @@ impl PostProcessing {
             };
 
             match effect {
-                PostEffect::GrayScale(gs) => {
-                    gs.execute(
+                PostEffect::GrayScale(x) => {
+                    x.execute(
+                        device,
+                        encoder,
+                        current_input_texture,
+                        current_intermediate_output_texture,
+                    );
+                }
+                PostEffect::Bloom(x) => {
+                    x.bloom(
                         device,
                         encoder,
                         current_input_texture,

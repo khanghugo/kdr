@@ -1,6 +1,10 @@
 use crate::renderer::utils::FullScrenTriVertexShader;
 
-use super::PostProcessingPipeline;
+pub struct PostProcessingPipeline {
+    pub bind_group_layout: wgpu::BindGroupLayout,
+    pub pipeline: wgpu::RenderPipeline,
+    pub sampler: wgpu::Sampler,
+}
 
 pub trait PostProcessingModule {
     fn create_shader_module(device: &wgpu::Device) -> wgpu::ShaderModule;
@@ -76,27 +80,7 @@ pub trait PostProcessingModule {
     fn get_pipeline(&self) -> &wgpu::RenderPipeline;
     fn get_sampler(&self) -> &wgpu::Sampler;
 
-    fn create_bind_group(
-        &self,
-        device: &wgpu::Device,
-        input_texture_view: &wgpu::TextureView,
-    ) -> wgpu::BindGroup {
-        device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Self::bind_group_label(),
-            layout: &self.get_bind_group_layout(),
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(input_texture_view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::Sampler(self.get_sampler()),
-                },
-            ],
-        })
-    }
-
+    // Modify this if different bind group
     fn bind_group_layout_descriptor() -> wgpu::BindGroupLayoutDescriptor<'static> {
         wgpu::BindGroupLayoutDescriptor {
             label: Self::bind_group_layout_descriptor_label(),
@@ -121,6 +105,28 @@ pub trait PostProcessingModule {
                 },
             ],
         }
+    }
+
+    // Modify this if different bind group
+    fn create_bind_group(
+        &self,
+        device: &wgpu::Device,
+        input_texture_view: &wgpu::TextureView,
+    ) -> wgpu::BindGroup {
+        device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Self::bind_group_label(),
+            layout: &self.get_bind_group_layout(),
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(input_texture_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(self.get_sampler()),
+                },
+            ],
+        })
     }
 
     fn create_pipeline(
