@@ -26,7 +26,7 @@ pub struct RenderTargets {
     // it happens when we want to do post processing, we have to read the current image and then write on it
     composite_texture: wgpu::Texture,
     composite_view: wgpu::TextureView,
-    depth_texture: wgpu::Texture,
+    depth_texture: Arc<wgpu::Texture>,
     depth_view: wgpu::TextureView,
 }
 
