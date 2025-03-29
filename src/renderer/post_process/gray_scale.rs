@@ -1,6 +1,6 @@
 use crate::renderer::utils::FullScrenTriVertexShader;
 
-use super::{PostProcessingModule, PostProcessingPipeline};
+use super::{PostProcessingPipeline, pp_trait::PostProcessingModule};
 
 pub struct GrayScale {
     pipeline: PostProcessingPipeline,
