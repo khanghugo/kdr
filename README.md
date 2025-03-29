@@ -16,7 +16,7 @@ Currently work in progress, check back later
       - [X] Beter alpha test
       - "rendermode"
         - [X] general entity brush transparency
-        - [ ] very correct transparency for according rendermode
+        - [ ] very correct transparency for according rendermode, aka everything else beside 4 or 0
       - [X] "renderamt"
     - [X] Named entities. Some entities aren't properly displaced
     - [X] Samey shader as the game
@@ -34,7 +34,7 @@ Currently work in progress, check back later
     - [ ] Bilinear. Heh?
     - [X] Nearest neighbor with AA. Looks pretty good.
     - [X] Fast cubic.
-    - [ ] Hotswap between texture filtering.
+    - [ ] Hotswap between texture filtering. This needs some egui integration, soon
   - Optimization
     - [X] Lightmap atlas
     - [X] Batch rendering based on texture
@@ -45,14 +45,15 @@ Currently work in progress, check back later
     - [X] Mipmapping
   - [X] "FBO" rendering. There is a render surface and a swapchain surface.
   - Post Processing (for fun)
-    - [ ] Bloom
+    - [X] Bloom
     - [ ] HDR
-    - [ ] Anisotropic Kuwahara Filtering
+    - [X] ~~Anisotropic~~ Kuwahara Filtering
+    - [X] Some random other shader effects just to prove that it is easy to add.
 - Navigation
   - [X] Noclip movement
   - [X] Pitch and Yaw
   - [ ] GoldSrc movement (unplanned)
-  - [ ] Mouse view
+  - [X] Mouse view. Similar to bspguy
 - Demo Player
   - [ ] Demo. Easy to do because this is the same code I have in other two projects
   - [ ] Ghost. Same thing. Very easy to implement
