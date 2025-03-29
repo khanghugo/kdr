@@ -1,6 +1,7 @@
 use std::{path::Path, sync::Arc, time::Instant};
 
 use cgmath::Deg;
+use movement::Key;
 use winit::{
     application::ApplicationHandler,
     dpi::LogicalSize,
@@ -10,23 +11,21 @@ use winit::{
     window::Window,
 };
 
+mod movement;
+mod tracing;
+
 use crate::{
     bsp_loader::get_bsp_resources,
     renderer::{RenderContext, RenderState, camera::Camera, world_buffer::WorldLoader},
 };
-
-pub const CAM_SPEED: f32 = 1000.;
-pub const CAM_TURN: f32 = 150.; // degrees
 
 const FILE: &str = "./examples/textures.obj";
 // const BSP_FILE: &str = "/home/khang/bxt/game_isolated/cstrike_downloads/maps/trans_compile.bsp";
 // const BSP_FILE: &str = "./examples/chk_section.bsp";
 // const BSP_FILE: &str = "/home/khang/bxt/game_isolated/cstrike_downloads/maps/arte_drift.bsp";
 // const BSP_FILE: &str = "/home/khang/bxt/_game_native/cstrike_downloads/maps/hb_MART.bsp";
-// const BSP_FILE: &str = "/home/khang/bxt/game_isolated/cstrike_downloads/maps/chk_section.bsp";
-const BSP_FILE: &str = "/home/khang/bxt/game_isolated/cstrike_downloads/maps/surf_cyberwave.bsp";
-#[derive(Debug, Clone, Copy)]
-struct Key(u32);
+const BSP_FILE: &str = "/home/khang/bxt/game_isolated/cstrike_downloads/maps/chk_section.bsp";
+// const BSP_FILE: &str = "/home/khang/bxt/game_isolated/cstrike_downloads/maps/surf_cyberwave.bsp";
 
 struct App {
     graphic_context: Option<RenderContext>,
@@ -41,23 +40,6 @@ struct App {
 
     // input
     keys: Key,
-}
-
-use bitflags::bitflags;
-
-bitflags! {
-    impl Key: u32 {
-        const Forward   = (1 << 0);
-        const Back      = (1 << 1);
-        const MoveLeft  = (1 << 2);
-        const MoveRight = (1 << 3);
-        const Left      = (1 << 4);
-        const Right     = (1 << 5);
-        const Up        = (1 << 6);
-        const Down      = (1 << 7);
-        const Shift     = (1 << 8);
-        const Control   = (1 << 9);
-    }
 }
 
 impl Default for App {
@@ -142,204 +124,15 @@ impl ApplicationHandler for App {
                 device_id,
                 event,
                 is_synthetic,
-            } => match event.physical_key {
-                winit::keyboard::PhysicalKey::Code(key_code) => match key_code {
-                    KeyCode::KeyW => {
-                        if event.state.is_pressed() {
-                            self.keys = self.keys.union(Key::Forward);
-                        } else {
-                            self.keys = self.keys.intersection(Key::Forward.complement());
-                        }
-                    }
-                    KeyCode::KeyS => {
-                        if event.state.is_pressed() {
-                            self.keys = self.keys.union(Key::Back);
-                        } else {
-                            self.keys = self.keys.intersection(Key::Back.complement());
-                        }
-                    }
-                    KeyCode::KeyA => {
-                        if event.state.is_pressed() {
-                            self.keys = self.keys.union(Key::MoveLeft);
-                        } else {
-                            self.keys = self.keys.intersection(Key::MoveLeft.complement());
-                        }
-                    }
-                    KeyCode::KeyD => {
-                        if event.state.is_pressed() {
-                            self.keys = self.keys.union(Key::MoveRight);
-                        } else {
-                            self.keys = self.keys.intersection(Key::MoveRight.complement());
-                        }
-                    }
-                    KeyCode::ArrowLeft => {
-                        if event.state.is_pressed() {
-                            self.keys = self.keys.union(Key::Left);
-                        } else {
-                            self.keys = self.keys.intersection(Key::Left.complement());
-                        }
-                    }
-                    KeyCode::ArrowRight => {
-                        if event.state.is_pressed() {
-                            self.keys = self.keys.union(Key::Right);
-                        } else {
-                            self.keys = self.keys.intersection(Key::Right.complement());
-                        }
-                    }
-                    KeyCode::ArrowUp => {
-                        if event.state.is_pressed() {
-                            self.keys = self.keys.union(Key::Up);
-                        } else {
-                            self.keys = self.keys.intersection(Key::Up.complement());
-                        }
-                    }
-                    KeyCode::ArrowDown => {
-                        if event.state.is_pressed() {
-                            self.keys = self.keys.union(Key::Down);
-                        } else {
-                            self.keys = self.keys.intersection(Key::Down.complement());
-                        }
-                    }
-                    KeyCode::ShiftLeft => {
-                        if event.state.is_pressed() {
-                            self.keys = self.keys.union(Key::Shift);
-                        } else {
-                            self.keys = self.keys.intersection(Key::Shift.complement());
-                        }
-                    }
-                    KeyCode::ControlLeft => {
-                        if event.state.is_pressed() {
-                            self.keys = self.keys.union(Key::Control);
-                        } else {
-                            self.keys = self.keys.intersection(Key::Control.complement());
-                        }
-                    }
-                    KeyCode::KeyQ => {
-                        if event.state.is_pressed() {
-                            panic!()
-                        }
-                    }
-                    _ => (),
-                },
-                _ => (),
-            },
+            } => {
+                self.handle_keyboard_input(event);
+            }
             _ => (),
         }
     }
 }
 
-impl App {
-    fn forward(&mut self) {
-        self.render_state
-            .camera
-            .move_along_view(self.get_move_displacement());
-    }
-
-    fn back(&mut self) {
-        self.render_state
-            .camera
-            .move_along_view(-self.get_move_displacement());
-    }
-
-    fn moveleft(&mut self) {
-        self.render_state
-            .camera
-            .move_along_view_orthogonal(-self.get_move_displacement());
-    }
-
-    fn moveright(&mut self) {
-        self.render_state
-            .camera
-            .move_along_view_orthogonal(self.get_move_displacement());
-    }
-
-    fn up(&mut self) {
-        self.render_state
-            .camera
-            .rotate_in_place_pitch(self.get_camera_displacement());
-    }
-
-    fn down(&mut self) {
-        self.render_state
-            .camera
-            .rotate_in_place_pitch(-self.get_camera_displacement());
-    }
-
-    fn left(&mut self) {
-        self.render_state
-            .camera
-            .rotate_in_place_yaw(self.get_camera_displacement());
-    }
-
-    fn right(&mut self) {
-        self.render_state
-            .camera
-            .rotate_in_place_yaw(-self.get_camera_displacement());
-    }
-
-    fn get_move_displacement(&self) -> f32 {
-        CAM_SPEED * self.frame_time * self.get_multiplier()
-    }
-
-    fn get_camera_displacement(&self) -> Deg<f32> {
-        Deg(CAM_TURN * self.frame_time) * self.get_multiplier()
-    }
-
-    fn get_multiplier(&self) -> f32 {
-        if self.keys.contains(Key::Shift) {
-            2.0
-        } else if self.keys.contains(Key::Control) {
-            0.5
-        } else {
-            1.0
-        }
-    }
-
-    /// Only ticks on redraw
-    fn tick(&mut self) {
-        let now = Instant::now();
-        self.frame_time = now.duration_since(self.last_time).as_secs_f32();
-        self.last_time = now;
-
-        if self.keys.contains(Key::Forward) {
-            self.forward();
-        }
-        if self.keys.contains(Key::Back) {
-            self.back();
-        }
-        if self.keys.contains(Key::MoveLeft) {
-            self.moveleft();
-        }
-        if self.keys.contains(Key::MoveRight) {
-            self.moveright();
-        }
-        if self.keys.contains(Key::Left) {
-            self.left();
-        }
-        if self.keys.contains(Key::Right) {
-            self.right();
-        }
-        if self.keys.contains(Key::Up) {
-            self.up();
-        }
-        if self.keys.contains(Key::Down) {
-            self.down();
-        }
-    }
-}
-
 pub fn bsp() {
-    // let vertices = models.iter().map(|model| model.mesh)
-    // let reader = BufReader::new(&obj_bytes[..]);
-    // let (models, materials) = tobj::load_obj_buf(&mut reader, &tobj::LoadOptions::default(), |p| {
-
-    // });
-    // wgpu uses `log` for all of our logging, so we initialize a logger with the `env_logger` crate.
-    //
-    // To change the log level, set the `RUST_LOG` environment variable. See the `env_logger`
-    // documentation for more information.
-    env_logger::init();
-
     let event_loop = EventLoop::new().unwrap();
     // When the current loop iteration finishes, immediately begin a new
     // iteration regardless of whether or not new events are available to
