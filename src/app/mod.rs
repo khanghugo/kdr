@@ -1,7 +1,7 @@
 use std::{path::Path, sync::Arc, time::Instant};
 
-use cgmath::Deg;
 use movement::Key;
+use tracing::ensure_logging_hooks;
 use winit::{
     application::ApplicationHandler,
     dpi::LogicalSize,
@@ -133,6 +133,8 @@ impl ApplicationHandler for App {
 }
 
 pub fn bsp() {
+    ensure_logging_hooks();
+
     let event_loop = EventLoop::new().unwrap();
     // When the current loop iteration finishes, immediately begin a new
     // iteration regardless of whether or not new events are available to
