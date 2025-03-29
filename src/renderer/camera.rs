@@ -222,13 +222,13 @@ impl Camera {
         self.pitch
     }
 
+    /// Needs to manually build orientation afterward
     pub fn set_yaw(&mut self, yaw: Deg<f32>) {
         self.yaw = yaw;
-        self.rebuild_orientation();
     }
 
+    /// Needs to manually build orientation afterward
     pub fn set_pitch(&mut self, pitch: Deg<f32>) {
         self.pitch = pitch;
-        self.rebuild_orientation();
     }
 }
