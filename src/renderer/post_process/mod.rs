@@ -1,11 +1,13 @@
 use bloom::Bloom;
 use gray_scale::GrayScale;
+use kuwahara::Kuwahara;
 use pp_trait::PostProcessingModule;
 
 use super::utils::FullScrenTriVertexShader;
 
 mod bloom;
 mod gray_scale;
+mod kuwahara;
 mod pp_trait;
 
 pub struct PostProcessing {
@@ -17,6 +19,7 @@ pub struct PostProcessing {
 pub enum PostEffect {
     GrayScale(GrayScale),
     Bloom(Bloom),
+    Kuwahara(Kuwahara),
 }
 
 impl PostProcessing {
@@ -69,6 +72,12 @@ impl PostProcessing {
         //     fullscreen_tri_vertex_shader,
         //     width,
         //     height,
+        // )));
+
+        // res.add_effect(PostEffect::AnisotropicKuwahara(Kuwahara::new(
+        //     device,
+        //     input_texture_format,
+        //     fullscreen_tri_vertex_shader,
         // )));
 
         res
@@ -129,6 +138,14 @@ impl PostProcessing {
                 }
                 PostEffect::Bloom(x) => {
                     x.bloom(
+                        device,
+                        encoder,
+                        current_input_texture,
+                        current_intermediate_output_texture,
+                    );
+                }
+                PostEffect::Kuwahara(x) => {
+                    x.execute(
                         device,
                         encoder,
                         current_input_texture,
