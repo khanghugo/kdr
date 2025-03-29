@@ -184,12 +184,8 @@ impl WorldLoader {
                 },
                 depth_stencil: Some(wgpu::DepthStencilState {
                     format: wgpu::TextureFormat::Depth32Float,
-                    depth_write_enabled: if opaque { true } else { false },
-                    depth_compare: if opaque {
-                        wgpu::CompareFunction::Less
-                    } else {
-                        wgpu::CompareFunction::Less
-                    },
+                    depth_write_enabled: opaque,
+                    depth_compare: wgpu::CompareFunction::Less,
                     stencil: wgpu::StencilState::default(),
                     bias: wgpu::DepthBiasState::default(),
                 }),

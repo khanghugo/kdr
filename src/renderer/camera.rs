@@ -141,8 +141,8 @@ impl Default for Camera {
             up,
             aspect: 1920 as f32 / 1080 as f32,
             fovy: Deg(90.0),
-            znear: 1.0,
-            zfar: 1000000.0,
+            znear: 10.0,
+            zfar: 65536.0,
             orientation,
             yaw: Deg(0.),
             pitch: Deg(0.),
@@ -213,11 +213,11 @@ impl Camera {
     }
 
     pub fn yaw(&self) -> Deg<f32> {
-        self.yaw()
+        self.yaw
     }
 
     pub fn pitch(&self) -> Deg<f32> {
-        self.pitch()
+        self.pitch
     }
 
     pub fn set_yaw(&mut self, yaw: Deg<f32>) {
