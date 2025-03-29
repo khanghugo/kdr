@@ -1,6 +1,6 @@
 use crate::renderer::utils::FullScrenTriVertexShader;
 
-use super::{PostProcessingPipeline, pp_trait::PostProcessingModule};
+use super::pp_trait::{PostProcessingModule, PostProcessingPipeline};
 
 pub struct GrayScale {
     pipeline: PostProcessingPipeline,
@@ -8,7 +8,7 @@ pub struct GrayScale {
 
 impl PostProcessingModule for GrayScale {
     fn create_shader_module(device: &wgpu::Device) -> wgpu::ShaderModule {
-        device.create_shader_module(wgpu::include_wgsl!("../shader/gray_scale.wgsl"))
+        device.create_shader_module(wgpu::include_wgsl!("./gray_scale.wgsl"))
     }
     fn post_processing_effect_name() -> &'static str {
         "gray scale"
