@@ -43,6 +43,7 @@ Currently work in progress, check back later
       - [X] Implemented WBOIT
     - [ ] Visibility. At the moment it renders everything. Or does it? It does render everything when there is some PVS tricks map like kz_hb_hopez or arte_drift.
     - [X] Mipmapping
+    - [X] Z Pre Pass to eliminate overdraw for complicated maps like surf_cyberwave
   - [X] "FBO" rendering. There is a render surface and a swapchain surface.
   - Post Processing (for fun)
     - [X] Bloom
