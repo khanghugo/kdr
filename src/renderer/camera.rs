@@ -142,7 +142,7 @@ impl Default for Camera {
             aspect: 1920 as f32 / 1080 as f32,
             fovy: Deg(90.0),
             znear: 1.0,
-            zfar: 8192.0,
+            zfar: 131072.0,
             orientation,
             yaw: Deg(0.),
             pitch: Deg(0.),

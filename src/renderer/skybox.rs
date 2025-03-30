@@ -51,6 +51,44 @@ impl SkyboxBuffer {
             }],
         }
     }
+
+    fn vertices() -> [[f32; 3]; 24] {
+        // i dont even know what order they are in
+        // can change the texture instead because that makes more sense
+        [
+            [1.0, 1.0, -1.0],
+            [1.0, -1.0, -1.0],
+            [1.0, -1.0, 1.0],
+            [1.0, 1.0, 1.0],
+            [-1.0, -1.0, -1.0],
+            [-1.0, 1.0, -1.0],
+            [-1.0, 1.0, 1.0],
+            [-1.0, -1.0, 1.0],
+            [-1.0, 1.0, 1.0],
+            [1.0, 1.0, 1.0],
+            [1.0, -1.0, 1.0],
+            [-1.0, -1.0, 1.0],
+            [-1.0, -1.0, -1.0],
+            [1.0, -1.0, -1.0],
+            [1.0, 1.0, -1.0],
+            [-1.0, 1.0, -1.0],
+            [1.0, -1.0, -1.0],
+            [-1.0, -1.0, -1.0],
+            [-1.0, -1.0, 1.0],
+            [1.0, -1.0, 1.0],
+            [-1.0, 1.0, -1.0],
+            [1.0, 1.0, -1.0],
+            [1.0, 1.0, 1.0],
+            [-1.0, 1.0, 1.0],
+        ]
+    }
+
+    fn indices() -> [u32; 36] {
+        [
+            0, 1, 2, 2, 3, 0, 4, 5, 6, 6, 7, 4, 8, 9, 10, 10, 11, 8, 12, 13, 14, 14, 15, 12, 16,
+            17, 18, 18, 19, 16, 20, 21, 22, 22, 23, 20,
+        ]
+    }
 }
 
 pub struct SkyboxLoader {
@@ -97,7 +135,7 @@ impl SkyboxLoader {
                 topology: wgpu::PrimitiveTopology::TriangleList,
                 strip_index_format: None,
                 front_face: wgpu::FrontFace::Cw,
-                cull_mode: Some(wgpu::Face::Back), // the triangles are already flipped
+                cull_mode: Some(wgpu::Face::Front), // the triangles facing outward
                 // cull_mode: None,
                 unclipped_depth: false,
                 polygon_mode: wgpu::PolygonMode::Fill,
@@ -152,7 +190,8 @@ impl SkyboxLoader {
             view_formats: &[],
         });
 
-        // Upload each face
+        // if the orientation is wrong, check with the input images
+        // try until it works
         for (i, image) in images.iter().enumerate() {
             if i >= 6 {
                 break;
@@ -202,47 +241,9 @@ impl SkyboxLoader {
             ..Default::default()
         });
 
-        let vertices: [[f32; 3]; 24] = [
-            // Front
-            [-1.0, -1.0, 1.0],
-            [1.0, -1.0, 1.0],
-            [1.0, 1.0, 1.0],
-            [-1.0, 1.0, 1.0],
-            // Back
-            [-1.0, -1.0, -1.0],
-            [-1.0, 1.0, -1.0],
-            [1.0, 1.0, -1.0],
-            [1.0, -1.0, -1.0],
-            // Top
-            [-1.0, 1.0, -1.0],
-            [-1.0, 1.0, 1.0],
-            [1.0, 1.0, 1.0],
-            [1.0, 1.0, -1.0],
-            // Bottom
-            [-1.0, -1.0, -1.0],
-            [1.0, -1.0, -1.0],
-            [1.0, -1.0, 1.0],
-            [-1.0, -1.0, 1.0],
-            // Right
-            [1.0, -1.0, -1.0],
-            [1.0, 1.0, -1.0],
-            [1.0, 1.0, 1.0],
-            [1.0, -1.0, 1.0],
-            // Left
-            [-1.0, -1.0, -1.0],
-            [-1.0, -1.0, 1.0],
-            [-1.0, 1.0, 1.0],
-            [-1.0, 1.0, -1.0],
-        ];
+        let vertices = SkyboxBuffer::vertices();
 
-        let indices: &[u32] = &[
-            0, 1, 2, 2, 3, 0, // Front
-            4, 5, 6, 6, 7, 4, // Back
-            8, 9, 10, 10, 11, 8, // Top
-            12, 13, 14, 14, 15, 12, // Bottom
-            16, 17, 18, 18, 19, 16, // Right
-            20, 21, 22, 22, 23, 20, // Left
-        ];
+        let indices = SkyboxBuffer::indices();
 
         let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("skybox vertex buffer"),

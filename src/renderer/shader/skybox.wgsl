@@ -17,8 +17,11 @@ var skybox_sampler: sampler;
 fn vs_main(@location(0) position: vec3f) -> VertexOutput {
     var output: VertexOutput;
 
-    // Use position as texture coordinates
-    output.tex_coords = position;
+    // need to rotate 90 degrees clockwise around z up axis
+    let rotated_position = vec3f(-position.y, position.x, position.z);
+
+    // dont flip the coordinate
+    output.tex_coords = vec3f(rotated_position.x, rotated_position.z, rotated_position.y);;
 
     // Project position but ignore translation (only rotation)
     let view_no_translation = mat4x4f(

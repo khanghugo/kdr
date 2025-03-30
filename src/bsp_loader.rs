@@ -41,9 +41,7 @@ pub struct BspResource {
     // [`bsp::Bsp`] is not encapsulated by [`ModelType`] enum is because this is more convenient.
     pub bsp: bsp::Bsp,
     pub entity_dictionary: EntityDictionary,
-    // Vector instead of array is because we might not have any skybox to render.
-    // ["ft", "bk", "up", "dn", "rt", "lf"]
-    // Make sure the order matches the skybox buffer.
+    // Make up the order until it works
     pub skybox: Vec<RgbaImage>,
 }
 
@@ -277,11 +275,12 @@ pub fn get_bsp_resources(bsp: bsp::Bsp, bsp_path: &Path) -> BspResource {
             .map(|f| f.to_owned())
             .unwrap_or("desert".to_string());
 
-        // make sure the order matches the skybox buffer
-        const suffixes: &[&str] = &["ft", "bk", "up", "dn", "rt", "lf"];
+        // skybox order here, already works.
+        // need to make sure shader coordinate is flipped accordingly and culling mode is right
+        const SUFFIXES: &[&str] = &["ft", "bk", "up", "dn", "rt", "lf"];
 
         // even though it is file name, it can also be path inside another folder
-        let file_names: Vec<String> = suffixes
+        let file_names: Vec<String> = SUFFIXES
             .iter()
             .map(|suffix| format!("{}{}.tga", skyname, suffix))
             .collect();
