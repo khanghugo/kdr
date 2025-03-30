@@ -1,10 +1,17 @@
-use std::{collections::HashMap, path::Path};
+use std::{
+    collections::HashMap,
+    path::{Component, Path, PathBuf},
+};
 
 use cgmath::{Rad, Rotation3, Zero};
+use image::RgbaImage;
 
 use crate::renderer::utils::{
     BspAngles, build_mvp_from_origin_angles, get_idle_sequence_origin_angles,
 };
+
+// MUST BE uppercase
+pub const NO_RENDER_TEXTURE: &[&str] = &["NULL", "CLIP", "SKY"];
 
 pub enum EntityModel {
     // Entity brushes could be grouped into Bsp if we want some optimization.
@@ -31,9 +38,13 @@ pub struct CustomRender {
 pub type EntityDictionary = HashMap<usize, WorldEntity>;
 
 pub struct BspResource {
-    // [`bsp::Bsp`] is not encapsulated by [`ModelType`] enum is because this is more convenient
+    // [`bsp::Bsp`] is not encapsulated by [`ModelType`] enum is because this is more convenient.
     pub bsp: bsp::Bsp,
     pub entity_dictionary: EntityDictionary,
+    // Vector instead of array is because we might not have any skybox to render.
+    // ["ft", "bk", "up", "dn", "rt", "lf"]
+    // Make sure the order matches the skybox buffer.
+    pub skybox: Vec<RgbaImage>,
 }
 
 pub struct WorldEntity {
@@ -69,14 +80,15 @@ pub fn get_bsp_resources(bsp: bsp::Bsp, bsp_path: &Path) -> BspResource {
     let mut res = BspResource {
         bsp,
         entity_dictionary: EntityDictionary::new(),
+        skybox: vec![],
     };
 
-    let mut gamedir = bsp_path;
+    let mut gamemod_folder = bsp_path;
     let mut can_load_game_assets = true;
 
     if let Some(bsp_folder) = bsp_path.parent() {
-        if let Some(gamedir_folder) = bsp_folder.parent() {
-            gamedir = gamedir_folder;
+        if let Some(_gamemod_folder) = bsp_folder.parent() {
+            gamemod_folder = _gamemod_folder;
         } else {
             can_load_game_assets = false;
         }
@@ -208,7 +220,7 @@ pub fn get_bsp_resources(bsp: bsp::Bsp, bsp_path: &Path) -> BspResource {
             }
 
             if is_mdl && can_load_game_assets {
-                let model_path = gamedir.join(model_path);
+                let model_path = gamemod_folder.join(model_path);
 
                 let Ok(mdl) = mdl::Mdl::open_from_file(model_path.as_path()) else {
                     println!("cannot open .mdl `{}`", model_path.display());
@@ -257,6 +269,45 @@ pub fn get_bsp_resources(bsp: bsp::Bsp, bsp_path: &Path) -> BspResource {
             }
         });
 
+    // loading skybox now
+    if can_load_game_assets {
+        let entity0 = &res.bsp.entities[0];
+        let skyname = entity0
+            .get("skyname")
+            .map(|f| f.to_owned())
+            .unwrap_or("desert".to_string());
+
+        // make sure the order matches the skybox buffer
+        const suffixes: &[&str] = &["ft", "bk", "up", "dn", "rt", "lf"];
+
+        // even though it is file name, it can also be path inside another folder
+        let file_names: Vec<String> = suffixes
+            .iter()
+            .map(|suffix| format!("{}{}.tga", skyname, suffix))
+            .collect();
+
+        let paths: Vec<PathBuf> = file_names
+            .iter()
+            .map(|file_name| gamemod_folder.join("gfx/env").join(file_name))
+            .filter_map(|path| proper_file_searching(path.as_path()))
+            .collect();
+
+        if paths.len() != 6 {
+            println!("cannot load skyboxes because the program cannot find any");
+        } else {
+            let images: Vec<_> = paths
+                .iter()
+                .filter_map(|path| image::open(path).ok())
+                .collect();
+
+            if images.len() != 6 {
+                println!("cannot open all images");
+            } else {
+                res.skybox.extend(images.into_iter().map(|i| i.to_rgba8()));
+            }
+        }
+    }
+
     return res;
 }
 
@@ -273,4 +324,49 @@ fn vec3(i: &str) -> Option<[f32; 3]> {
     }
 
     Some([res[0], res[1], res[2]])
+}
+
+// the file path must start from gamemod and it shouldnt have anything in prefix except for gamemod
+// eg: cstrike/maps/de_dust2 works
+// eg: ./cstrike/maps/de_dust2 does not work
+fn proper_file_searching(file_path: &Path) -> Option<PathBuf> {
+    if file_path.exists() {
+        return file_path.to_path_buf().into();
+    }
+
+    let components: Vec<_> = file_path.components().collect();
+
+    let Component::Normal(gamemod_name) = components.get(0)? else {
+        return None;
+    };
+
+    let gamemod_name = gamemod_name.to_str()?;
+    let is_download = gamemod_name.ends_with("downloads");
+
+    let mut gamemods_to_check = vec![];
+
+    // cannot search other folder, i guess?
+    if gamemod_name == "valve" {
+        return None;
+    }
+
+    gamemods_to_check.push("valve");
+
+    if is_download {
+        gamemods_to_check.push("cstrike");
+    } else {
+        gamemods_to_check.push("cstrike_downloads");
+    }
+
+    let without_gamemod: PathBuf = components[1..].iter().collect();
+
+    for gamemod_to_check in gamemods_to_check {
+        let new_path = Path::new(gamemod_to_check).join(without_gamemod.as_path());
+
+        if new_path.exists() {
+            return Some(new_path);
+        }
+    }
+
+    None
 }

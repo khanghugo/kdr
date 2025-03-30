@@ -4,6 +4,7 @@ use camera::{Camera, CameraBuffer};
 use finalize::FinalizeRenderPipeline;
 use oit::{OITRenderTarget, OITResolver};
 use post_process::PostProcessing;
+use skybox::{SkyboxBuffer, SkyboxLoader};
 use utils::FullScrenTriVertexShader;
 use wgpu::Extent3d;
 use winit::window::Window;
@@ -15,6 +16,7 @@ pub mod finalize;
 pub mod mvp_buffer;
 pub mod oit;
 pub mod post_process;
+pub mod skybox;
 pub mod texture_buffer;
 pub mod utils;
 pub mod world_buffer;
@@ -136,6 +138,7 @@ pub struct RenderContext {
     finalize_render_pipeline: FinalizeRenderPipeline,
     fullscreen_tri_vertex_shader: FullScrenTriVertexShader,
     post_processing: PostProcessing,
+    pub skybox_loader: SkyboxLoader,
 }
 
 impl Drop for RenderContext {
@@ -146,6 +149,7 @@ impl Drop for RenderContext {
 
 pub struct RenderState {
     pub world_buffer: Vec<WorldBuffer>,
+    pub skybox: Option<SkyboxBuffer>,
 
     pub camera: Camera,
 
@@ -157,6 +161,7 @@ impl Default for RenderState {
     fn default() -> Self {
         Self {
             camera: Default::default(),
+            skybox: None,
             draw_call: 0,
             world_buffer: vec![],
         }
@@ -238,7 +243,7 @@ impl RenderContext {
         let transparent_blending = OITRenderTarget::targets();
 
         let world_opaque_render_pipeline =
-            WorldLoader::create_render_pipeline(&device, vec![opaque_blending], true);
+            WorldLoader::create_render_pipeline(&device, vec![opaque_blending.clone()], true);
         let world_transparent_render_pipeline =
             WorldLoader::create_render_pipeline(&device, transparent_blending.into(), false);
 
@@ -247,7 +252,7 @@ impl RenderContext {
             .unwrap();
 
         let config = wgpu::SurfaceConfiguration {
-            present_mode: wgpu::PresentMode::Mailbox, // to mailbox later
+            present_mode: wgpu::PresentMode::Immediate, // to mailbox later
             ..config
         };
 
@@ -290,6 +295,9 @@ impl RenderContext {
             render_targets.depth_texture.clone(),
         );
 
+        let skybox_render_pipeline =
+            SkyboxLoader::create_render_pipeline(&device, &queue, vec![opaque_blending]);
+
         Self {
             device,
             queue,
@@ -303,6 +311,7 @@ impl RenderContext {
             finalize_render_pipeline,
             fullscreen_tri_vertex_shader,
             post_processing,
+            skybox_loader: skybox_render_pipeline,
         }
     }
 
@@ -360,6 +369,20 @@ impl RenderContext {
             };
 
             let mut opaque_pass = encoder.begin_render_pass(&opaque_pass_descriptor);
+
+            // render skybox first
+            if let Some(ref skybox_buffer) = state.skybox {
+                opaque_pass.set_pipeline(&self.skybox_loader.pipeline);
+                opaque_pass.set_bind_group(0, &self.camera_buffer.bind_group, &[]);
+                opaque_pass.set_bind_group(1, &skybox_buffer.bind_group, &[]);
+
+                opaque_pass.set_vertex_buffer(0, skybox_buffer.vertex_buffer.slice(..));
+                opaque_pass.set_index_buffer(
+                    skybox_buffer.index_buffer.slice(..),
+                    wgpu::IndexFormat::Uint32,
+                );
+                opaque_pass.draw_indexed(0..skybox_buffer.index_count, 0, 0..1);
+            }
 
             opaque_pass.set_pipeline(&self.world_opaque_render_pipeline);
             opaque_pass.set_bind_group(0, &self.camera_buffer.bind_group, &[]);

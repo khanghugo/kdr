@@ -81,11 +81,11 @@ impl PostProcessing {
         //     height,
         // )));
 
-        // res.add_effect(PostEffect::AnisotropicKuwahara(Kuwahara::new(
-        //     device,
-        //     input_texture_format,
-        //     fullscreen_tri_vertex_shader,
-        // )));
+        res.add_effect(PostEffect::Kuwahara(Kuwahara::new(
+            device,
+            input_texture_format,
+            fullscreen_tri_vertex_shader,
+        )));
 
         // res.add_effect(PostEffect::ChromaticAberration(ChromaticAberration::new2(
         //     device,

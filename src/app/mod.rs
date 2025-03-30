@@ -85,10 +85,18 @@ impl ApplicationHandler for App {
             );
 
             self.render_state.world_buffer = vec![world_buffer];
+
+            self.render_state.skybox = render_context
+                .skybox_loader
+                .load_skybox(
+                    &render_context.device(),
+                    &render_context.queue(),
+                    &resource.skybox,
+                )
+                .into();
         }
 
         self.render_state.camera = Camera::default();
-
         // now do stuffs
 
         self.window = Some(window);

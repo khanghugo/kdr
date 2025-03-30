@@ -4,7 +4,7 @@ use bytemuck::{Pod, Zeroable};
 use image::RgbaImage;
 use wgpu::util::DeviceExt;
 
-use crate::bsp_loader::{BspResource, CustomRender, EntityModel, WorldEntity};
+use crate::bsp_loader::{BspResource, CustomRender, EntityModel, NO_RENDER_TEXTURE, WorldEntity};
 
 use super::{
     bsp_lightmap::LightMapAtlasBuffer,
@@ -381,9 +381,25 @@ fn create_batch_lookups(
                     _ => None,
                 };
 
+                let non_render_texture_indices: Vec<u32> = bsp
+                    .textures
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, tex)| {
+                        NO_RENDER_TEXTURE.contains(&tex.texture_name.get_string_standard().as_str())
+                    })
+                    .map(|(idx, _)| idx as u32)
+                    .collect();
+
                 faces
                     .iter()
                     .enumerate()
+                    // filtering skybox textures and whatnot
+                    .filter(|(_, face)| {
+                        let texinfo = &bsp.texinfo[face.texinfo as usize];
+
+                        !non_render_texture_indices.contains(&texinfo.texture_index)
+                    })
                     .for_each(|(face_index_offset, face)| {
                         let bsp_face_index = first_face + face_index_offset;
 
