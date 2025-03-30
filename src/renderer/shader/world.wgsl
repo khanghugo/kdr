@@ -36,7 +36,10 @@ fn vs_main(
 
     let clip_pos = camera_proj * camera_view * model_view * vec4(pos, 1.0);
 
+    // if texture is sky, we will make the depth become 0
     output.position = clip_pos;
+    
+    
     output.world_position = pos;
     output.tex_coord = tex_coord;
     output.normal = normal;
@@ -174,13 +177,17 @@ fn calculate_base_color(
     // albedo = pixel_art_filter2(tex_coord, layer_idx);
 
     if type_ == 0 {
+        // this is bsp vertex
+
         let lightmap_coord = vec2f(data_a[0], data_a[1]);
         let light = textureSample(lightmap, lightmap_sampler, lightmap_coord).rgb
         // from the the game
         * (128.0 / 192.0);
 
         let rendermode = data_b[0];
+        let is_sky = data_b[1];
         let renderamt = data_a[2];
+
         let alpha = min(albedo.a, renderamt);
 
         // pre multiply alpha and overbright
@@ -199,6 +206,8 @@ fn calculate_base_color(
 
         return vec4(final_color, alpha);
     } else if type_ == 1 {
+        // this is mdl vertex
+
         let alpha = albedo.a;
 
         // pre multiply

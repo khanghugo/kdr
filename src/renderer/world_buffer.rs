@@ -38,7 +38,7 @@ pub struct WorldVertex {
     // for bsp: [lightmap_u, lightmap_v, renderamt]
     // for mdl: unused
     data_a: [f32; 3],
-    // for bsp: [rendermode, unused]
+    // for bsp: [rendermode, is_sky]
     // for mdl: [textureflag, unused]
     data_b: [u32; 2],
 }
@@ -381,25 +381,9 @@ fn create_batch_lookups(
                     _ => None,
                 };
 
-                let non_render_texture_indices: Vec<u32> = bsp
-                    .textures
-                    .iter()
-                    .enumerate()
-                    .filter(|(_, tex)| {
-                        NO_RENDER_TEXTURE.contains(&tex.texture_name.get_string_standard().as_str())
-                    })
-                    .map(|(idx, _)| idx as u32)
-                    .collect();
-
                 faces
                     .iter()
                     .enumerate()
-                    // filtering skybox textures and whatnot
-                    .filter(|(_, face)| {
-                        let texinfo = &bsp.texinfo[face.texinfo as usize];
-
-                        !non_render_texture_indices.contains(&texinfo.texture_index)
-                    })
                     .for_each(|(face_index_offset, face)| {
                         let bsp_face_index = first_face + face_index_offset;
 
@@ -557,6 +541,11 @@ fn process_bsp_face(
     let normal = bsp.planes[face.plane as usize].normal;
     let texinfo = &bsp.texinfo[face.texinfo as usize];
 
+    let texture_name = bsp.textures[texinfo.texture_index as usize]
+        .texture_name
+        .get_string_standard();
+    let is_sky = if texture_name == "SKY" { 1 } else { 0 };
+
     // uv
     let miptex = &bsp.textures[texinfo.texture_index as usize];
 
@@ -624,7 +613,7 @@ fn process_bsp_face(
             model_idx: world_entity_index as u32,
             type_: 0,
             data_a: [lightmap_coord[0], lightmap_coord[1], renderamt],
-            data_b: [rendermode as u32, 0],
+            data_b: [rendermode as u32, is_sky],
         })
         .collect();
 
