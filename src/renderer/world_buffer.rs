@@ -118,13 +118,40 @@ pub struct WorldBuffer {
     pub mvp_buffer: MvpBuffer,
 }
 
+pub enum WorldPipelineType {
+    ZPrepass,
+    Opaque,
+    Transparent,
+}
+
 pub struct WorldLoader;
 
 impl WorldLoader {
-    pub fn create_render_pipeline(
+    pub fn create_opaque_render_pipeline(
         device: &wgpu::Device,
         fragment_targets: Vec<wgpu::ColorTargetState>,
-        opaque: bool,
+    ) -> wgpu::RenderPipeline {
+        Self::create_render_pipeline(device, fragment_targets, WorldPipelineType::Opaque)
+    }
+
+    pub fn create_transparent_render_pipeline(
+        device: &wgpu::Device,
+        fragment_targets: Vec<wgpu::ColorTargetState>,
+    ) -> wgpu::RenderPipeline {
+        Self::create_render_pipeline(device, fragment_targets, WorldPipelineType::Transparent)
+    }
+
+    pub fn create_z_prepass_render_pipeline(
+        device: &wgpu::Device,
+        fragment_targets: Vec<wgpu::ColorTargetState>,
+    ) -> wgpu::RenderPipeline {
+        Self::create_render_pipeline(device, fragment_targets, WorldPipelineType::ZPrepass)
+    }
+
+    fn create_render_pipeline(
+        device: &wgpu::Device,
+        fragment_targets: Vec<wgpu::ColorTargetState>,
+        pipeline_type: WorldPipelineType,
     ) -> wgpu::RenderPipeline {
         let world_shader = device.create_shader_module(wgpu::include_wgsl!("./shader/world.wgsl"));
 
@@ -153,9 +180,32 @@ impl WorldLoader {
             push_constant_ranges: &[],
         });
 
+        // dont write any more depth after z prepass
+        let depth_write_enabled = match pipeline_type {
+            WorldPipelineType::ZPrepass => true,
+            WorldPipelineType::Transparent | WorldPipelineType::Opaque => false,
+        };
+
+        let fragment_targets = fragment_targets
+            .into_iter()
+            .map(|v| Some(v))
+            .collect::<Vec<Option<wgpu::ColorTargetState>>>();
+
+        let pipeline_label = match pipeline_type {
+            WorldPipelineType::ZPrepass => "world z prepass render pipeline",
+            WorldPipelineType::Opaque => "world opaque render pipeline",
+            WorldPipelineType::Transparent => "world transparent render pipeline",
+        };
+
+        let depth_compare = match pipeline_type {
+            WorldPipelineType::ZPrepass => wgpu::CompareFunction::Less,
+            WorldPipelineType::Opaque => wgpu::CompareFunction::Equal,
+            WorldPipelineType::Transparent => wgpu::CompareFunction::Less,
+        };
+
         let world_render_pipeline =
             device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-                label: Some("world render pipeline"),
+                label: Some(pipeline_label),
                 layout: Some(&pipeline_layout),
                 vertex: wgpu::VertexState {
                     module: &world_shader,
@@ -163,19 +213,23 @@ impl WorldLoader {
                     compilation_options: Default::default(),
                     buffers: &[WorldVertex::buffer_layout()],
                 },
-                fragment: Some(wgpu::FragmentState {
-                    module: &world_shader,
-                    entry_point: Some(if opaque {
-                        "fs_opaque"
-                    } else {
-                        "fs_transparent"
-                    }),
-                    compilation_options: Default::default(),
-                    targets: &fragment_targets
-                        .into_iter()
-                        .map(|v| Some(v))
-                        .collect::<Vec<Option<wgpu::ColorTargetState>>>(),
-                }),
+                fragment: match pipeline_type {
+                    WorldPipelineType::ZPrepass => None,
+                    WorldPipelineType::Opaque | WorldPipelineType::Transparent => {
+                        Some(wgpu::FragmentState {
+                            module: &world_shader,
+                            entry_point: Some(
+                                if matches!(pipeline_type, WorldPipelineType::Opaque) {
+                                    "fs_opaque"
+                                } else {
+                                    "fs_transparent"
+                                },
+                            ),
+                            compilation_options: Default::default(),
+                            targets: &fragment_targets,
+                        })
+                    }
+                },
                 primitive: wgpu::PrimitiveState {
                     front_face: wgpu::FrontFace::Cw,
                     cull_mode: Some(wgpu::Face::Back),
@@ -184,8 +238,8 @@ impl WorldLoader {
                 },
                 depth_stencil: Some(wgpu::DepthStencilState {
                     format: wgpu::TextureFormat::Depth32Float,
-                    depth_write_enabled: opaque,
-                    depth_compare: wgpu::CompareFunction::Less,
+                    depth_write_enabled,
+                    depth_compare,
                     stencil: wgpu::StencilState::default(),
                     bias: wgpu::DepthBiasState::default(),
                 }),
