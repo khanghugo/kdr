@@ -130,6 +130,7 @@ pub struct RenderContext {
     queue: wgpu::Queue,
     world_z_prepass_render_pipeline: wgpu::RenderPipeline,
     world_opaque_render_pipeline: wgpu::RenderPipeline,
+    world_skybox_mask_render_pipeline: wgpu::RenderPipeline,
     world_transparent_render_pipeline: wgpu::RenderPipeline,
     swapchain_format: wgpu::TextureFormat,
     surface: wgpu::Surface<'static>,
@@ -247,6 +248,8 @@ impl RenderContext {
             WorldLoader::create_z_prepass_render_pipeline(&device, vec![opaque_blending.clone()]);
         let world_opaque_render_pipeline =
             WorldLoader::create_opaque_render_pipeline(&device, vec![opaque_blending.clone()]);
+        let world_skybox_mask_render_pipeline =
+            WorldLoader::create_skybox_mask_render_pipeline(&device, vec![opaque_blending.clone()]);
         let world_transparent_render_pipeline =
             WorldLoader::create_transparent_render_pipeline(&device, transparent_blending.into());
 
@@ -308,6 +311,7 @@ impl RenderContext {
             surface,
             world_z_prepass_render_pipeline,
             world_opaque_render_pipeline,
+            world_skybox_mask_render_pipeline,
             world_transparent_render_pipeline,
             oit_resolver,
             camera_buffer,
@@ -375,7 +379,7 @@ impl RenderContext {
                 z_prepass_pass.set_bind_group(1, &world_buffer.mvp_buffer.bind_group, &[]);
 
                 world_buffer.opaque.iter().for_each(|batch| {
-                    state.draw_call += 1;
+                    // state.draw_call += 1;
 
                     // texture array
                     z_prepass_pass.set_bind_group(
@@ -389,6 +393,50 @@ impl RenderContext {
                         .set_index_buffer(batch.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
                     z_prepass_pass.draw_indexed(0..batch.index_count as u32, 0, 0..1);
                 });
+            });
+        }
+
+        // skybox mask
+        if true {
+            state.world_buffer.iter().for_each(|world_buffer| {
+                let Some(batch_idx) = world_buffer.skybrush_batch_index else {
+                    return;
+                };
+                let batch = &world_buffer.opaque[batch_idx];
+
+                let skybox_mask_pass_descriptor = wgpu::RenderPassDescriptor {
+                    label: Some("world skybox mask pass descriptor"),
+                    color_attachments: &[],
+                    depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                        view: &self.render_targets.depth_view,
+                        depth_ops: Some(wgpu::Operations {
+                            // edit the mask
+                            load: wgpu::LoadOp::Load,
+                            store: wgpu::StoreOp::Store,
+                        }),
+                        stencil_ops: None,
+                    }),
+                    timestamp_writes: None,
+                    occlusion_query_set: None,
+                };
+
+                let mut rpass = encoder.begin_render_pass(&skybox_mask_pass_descriptor);
+
+                rpass.set_bind_group(3, &world_buffer.bsp_lightmap.bind_group, &[]);
+                rpass.set_bind_group(1, &world_buffer.mvp_buffer.bind_group, &[]);
+
+                rpass.set_pipeline(&self.world_skybox_mask_render_pipeline);
+                rpass.set_bind_group(0, &self.camera_buffer.bind_group, &[]);
+
+                rpass.set_bind_group(
+                    2,
+                    &world_buffer.textures[batch.texture_array_index].bind_group,
+                    &[],
+                );
+
+                rpass.set_vertex_buffer(0, batch.vertex_buffer.slice(..));
+                rpass.set_index_buffer(batch.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
+                rpass.draw_indexed(0..batch.index_count as u32, 0, 0..1);
             });
         }
 
@@ -420,20 +468,6 @@ impl RenderContext {
 
             let mut opaque_pass = encoder.begin_render_pass(&opaque_pass_descriptor);
 
-            // render skybox first
-            // if let Some(ref skybox_buffer) = state.skybox {
-            //     opaque_pass.set_pipeline(&self.skybox_loader.pipeline);
-            //     opaque_pass.set_bind_group(0, &self.camera_buffer.bind_group, &[]);
-            //     opaque_pass.set_bind_group(1, &skybox_buffer.bind_group, &[]);
-
-            //     opaque_pass.set_vertex_buffer(0, skybox_buffer.vertex_buffer.slice(..));
-            //     opaque_pass.set_index_buffer(
-            //         skybox_buffer.index_buffer.slice(..),
-            //         wgpu::IndexFormat::Uint32,
-            //     );
-            //     opaque_pass.draw_indexed(0..skybox_buffer.index_count, 0, 0..1);
-            // }
-
             opaque_pass.set_pipeline(&self.world_opaque_render_pipeline);
             opaque_pass.set_bind_group(0, &self.camera_buffer.bind_group, &[]);
 
@@ -457,6 +491,48 @@ impl RenderContext {
                     opaque_pass.draw_indexed(0..batch.index_count as u32, 0, 0..1);
                 });
             });
+        }
+
+        // skybox pass
+        if true {
+            if let Some(ref skybox_buffer) = state.skybox {
+                let skybox_pass_descriptor = wgpu::RenderPassDescriptor {
+                    label: Some("skybox pass descriptor"),
+                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                        view: &self.render_targets.main_view,
+                        resolve_target: None,
+                        ops: wgpu::Operations {
+                            // load previously written opaque
+                            load: wgpu::LoadOp::Load,
+                            store: wgpu::StoreOp::Store,
+                        },
+                    })],
+                    depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                        view: &self.render_targets.depth_view,
+                        depth_ops: Some(wgpu::Operations {
+                            // already have depth from z prepass, dont overwrite it
+                            // load: wgpu::LoadOp::Clear(1.0),
+                            load: wgpu::LoadOp::Load,
+                            store: wgpu::StoreOp::Store,
+                        }),
+                        stencil_ops: None,
+                    }),
+                    timestamp_writes: None,
+                    occlusion_query_set: None,
+                };
+
+                let mut rpass = encoder.begin_render_pass(&skybox_pass_descriptor);
+                rpass.set_pipeline(&self.skybox_loader.pipeline);
+                rpass.set_bind_group(0, &self.camera_buffer.bind_group, &[]);
+                rpass.set_bind_group(1, &skybox_buffer.bind_group, &[]);
+
+                rpass.set_vertex_buffer(0, skybox_buffer.vertex_buffer.slice(..));
+                rpass.set_index_buffer(
+                    skybox_buffer.index_buffer.slice(..),
+                    wgpu::IndexFormat::Uint32,
+                );
+                rpass.draw_indexed(0..skybox_buffer.index_count, 0, 0..1);
+            }
         }
 
         // world transparent pass

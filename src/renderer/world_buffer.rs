@@ -20,6 +20,7 @@ use super::{
 type WorldTextureLookupTable = HashMap<(usize, usize), (usize, usize)>;
 
 /// Key: Batch Index aka Texture Array Index
+///
 /// Value: (World Vertex Array, Index Array)
 type BatchLookup = HashMap<usize, (Vec<WorldVertex>, Vec<u32>)>;
 
@@ -116,10 +117,23 @@ pub struct WorldBuffer {
     pub textures: Vec<TextureArrayBuffer>,
     pub bsp_lightmap: LightMapAtlasBuffer,
     pub mvp_buffer: MvpBuffer,
+    // seems dumb, but it works. The only downside is that it feeds in a maybe big vertex buffer containing a lot of other vertices
+    // but the fact that we can filter it inside the shader is nice enough
+    // it works and it looks dumb so that is why i have to write a lot here
+    // a map might not have sky texture so this is optional
+    // the index is for opaque buffer vector
+    pub skybrush_batch_index: Option<usize>,
 }
 
 pub enum WorldPipelineType {
+    /// Standard Z Pre Pass
     ZPrepass,
+    /// Masking SKY texture in the scene with depth value of 1.0 (farthest possible)
+    ///
+    /// With this, it is easier to draw skybox over it while also being able to occlude objects behind it.
+    ///
+    /// This means 3D skybox tricks don't work :()
+    SkyboxMask,
     Opaque,
     Transparent,
 }
@@ -146,6 +160,13 @@ impl WorldLoader {
         fragment_targets: Vec<wgpu::ColorTargetState>,
     ) -> wgpu::RenderPipeline {
         Self::create_render_pipeline(device, fragment_targets, WorldPipelineType::ZPrepass)
+    }
+
+    pub fn create_skybox_mask_render_pipeline(
+        device: &wgpu::Device,
+        fragment_targets: Vec<wgpu::ColorTargetState>,
+    ) -> wgpu::RenderPipeline {
+        Self::create_render_pipeline(device, fragment_targets, WorldPipelineType::SkyboxMask)
     }
 
     fn create_render_pipeline(
@@ -182,7 +203,7 @@ impl WorldLoader {
 
         // dont write any more depth after z prepass
         let depth_write_enabled = match pipeline_type {
-            WorldPipelineType::ZPrepass => true,
+            WorldPipelineType::ZPrepass | WorldPipelineType::SkyboxMask => true,
             WorldPipelineType::Transparent | WorldPipelineType::Opaque => false,
         };
 
@@ -195,12 +216,35 @@ impl WorldLoader {
             WorldPipelineType::ZPrepass => "world z prepass render pipeline",
             WorldPipelineType::Opaque => "world opaque render pipeline",
             WorldPipelineType::Transparent => "world transparent render pipeline",
+            WorldPipelineType::SkyboxMask => "world skybox mask render pipeline",
         };
 
         let depth_compare = match pipeline_type {
             WorldPipelineType::ZPrepass => wgpu::CompareFunction::Less,
             WorldPipelineType::Opaque => wgpu::CompareFunction::Equal,
             WorldPipelineType::Transparent => wgpu::CompareFunction::Less,
+            WorldPipelineType::SkyboxMask => wgpu::CompareFunction::LessEqual,
+        };
+
+        let stencil_state: wgpu::StencilState = match pipeline_type {
+            WorldPipelineType::SkyboxMask => wgpu::StencilState {
+                front: wgpu::StencilFaceState {
+                    compare: wgpu::CompareFunction::Always,
+                    pass_op: wgpu::StencilOperation::Replace,
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+            WorldPipelineType::ZPrepass
+            | WorldPipelineType::Opaque
+            | WorldPipelineType::Transparent => Default::default(),
+        };
+
+        let vertex_shader_entry_point = match pipeline_type {
+            WorldPipelineType::SkyboxMask => "skybox_mask_vs",
+            WorldPipelineType::ZPrepass
+            | WorldPipelineType::Opaque
+            | WorldPipelineType::Transparent => "vs_main",
         };
 
         let world_render_pipeline =
@@ -209,12 +253,12 @@ impl WorldLoader {
                 layout: Some(&pipeline_layout),
                 vertex: wgpu::VertexState {
                     module: &world_shader,
-                    entry_point: Some("vs_main"),
+                    entry_point: Some(vertex_shader_entry_point),
                     compilation_options: Default::default(),
                     buffers: &[WorldVertex::buffer_layout()],
                 },
                 fragment: match pipeline_type {
-                    WorldPipelineType::ZPrepass => None,
+                    WorldPipelineType::ZPrepass | WorldPipelineType::SkyboxMask => None,
                     WorldPipelineType::Opaque | WorldPipelineType::Transparent => {
                         Some(wgpu::FragmentState {
                             module: &world_shader,
@@ -240,7 +284,7 @@ impl WorldLoader {
                     format: wgpu::TextureFormat::Depth32Float,
                     depth_write_enabled,
                     depth_compare,
-                    stencil: wgpu::StencilState::default(),
+                    stencil: stencil_state,
                     bias: wgpu::DepthBiasState::default(),
                 }),
                 multisample: wgpu::MultisampleState::default(),
@@ -260,6 +304,7 @@ impl WorldLoader {
         let (lookup_table, texture_arrays) = Self::load_textures(device, queue, resource);
         let (opaque_batch, transparent_batch) =
             create_batch_lookups(resource, &lookup_table, &lightmap);
+
         let opaque_vertex_buffer = create_world_vertex_buffer(device, opaque_batch);
         let transparent_vertex_buffer = create_world_vertex_buffer(device, transparent_batch);
 
@@ -273,12 +318,30 @@ impl WorldLoader {
 
         let mvp_buffer = MvpBuffer::create_mvp(device, &entity_infos);
 
+        // need to find which buffer sky brushes are in
+        let skybrush_batch_index = resource
+            .bsp
+            .textures
+            .iter()
+            .enumerate()
+            .find(|(_, texture)| texture.texture_name.get_string_standard() == "SKY")
+            .and_then(|(idx, _)| lookup_table.get(&(0, idx)))
+            .map(|&(tex_array_idx, _)| tex_array_idx)
+            .and_then(|skybrush_texture_array_index| {
+                opaque_vertex_buffer
+                    .iter()
+                    .enumerate()
+                    .find(|(_, e)| e.texture_array_index == skybrush_texture_array_index)
+            })
+            .map(|(idx, _)| idx);
+
         WorldBuffer {
             opaque: opaque_vertex_buffer,
             transparent: transparent_vertex_buffer,
             textures: texture_arrays,
             bsp_lightmap: lightmap,
             mvp_buffer,
+            skybrush_batch_index,
         }
     }
 

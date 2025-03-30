@@ -38,8 +38,13 @@ fn vs_main(
 
     // if texture is sky, we will make the depth become 0
     output.position = clip_pos;
-    
-    
+
+    // let is_sky = type_ == 0 && data_b[1] == 1;
+
+    // if is_sky {
+    //     output.position = clip_pos.xyww;
+    // }
+
     output.world_position = pos;
     output.tex_coord = tex_coord;
     output.normal = normal;
@@ -48,6 +53,43 @@ fn vs_main(
     output.type_ = type_;
     output.data_a = data_a;
     output.data_b = data_b;
+
+    return output;
+}
+
+@vertex
+fn skybox_mask_vs(
+    @location(0) pos: vec3f,
+    @location(1) tex_coord: vec2f,
+    @location(2) normal: vec3f,
+    @location(3) layer_idx: u32,
+    @location(4) model_idx: u32,
+    @location(5) type_: u32,
+    @location(6) data_a: vec3f,
+    @location(7) data_b: vec2u,
+) -> VertexOut {
+    var output: VertexOut;
+
+    let model_view = model_view_array[model_idx];
+
+    let clip_pos = camera_proj * camera_view * model_view * vec4(pos, 1.0);
+
+    output.position = clip_pos;
+    output.world_position = pos;
+    output.tex_coord = tex_coord;
+    output.normal = normal;
+    output.layer_idx = layer_idx;
+    output.model_idx = model_idx;
+    output.type_ = type_;
+    output.data_a = data_a;
+    output.data_b = data_b;
+
+    let is_sky = output.type_ == 0 && output.data_b[1] == 1;
+
+    // if texture is sky, we will make the depth become 0
+    if is_sky {
+        output.position = output.position.xyww;
+    }
 
     return output;
 }
@@ -178,6 +220,11 @@ fn calculate_base_color(
 
     if type_ == 0 {
         // this is bsp vertex
+        let is_sky = data_b[1];
+
+        if is_sky == 1 {
+            discard;
+        }
 
         let lightmap_coord = vec2f(data_a[0], data_a[1]);
         let light = textureSample(lightmap, lightmap_sampler, lightmap_coord).rgb
@@ -185,7 +232,6 @@ fn calculate_base_color(
         * (128.0 / 192.0);
 
         let rendermode = data_b[0];
-        let is_sky = data_b[1];
         let renderamt = data_a[2];
 
         let alpha = min(albedo.a, renderamt);
