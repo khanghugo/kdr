@@ -27,7 +27,7 @@ Currently work in progress, check back later
     - [X] Model view projection
     - [ ] Bone based vertex transformation
     - [X] Shading
-  - [ ] Skybox
+  - [X] Skybox
   - [ ] SPRites
   - Texture Filtering
     - [X] Linear. Comes with the graphic API. Looks bad.
