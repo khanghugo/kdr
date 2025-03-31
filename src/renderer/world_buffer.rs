@@ -144,34 +144,59 @@ impl WorldLoader {
     pub fn create_opaque_render_pipeline(
         device: &wgpu::Device,
         fragment_targets: Vec<wgpu::ColorTargetState>,
+        depth_format: wgpu::TextureFormat,
     ) -> wgpu::RenderPipeline {
-        Self::create_render_pipeline(device, fragment_targets, WorldPipelineType::Opaque)
+        Self::create_render_pipeline(
+            device,
+            fragment_targets,
+            depth_format,
+            WorldPipelineType::Opaque,
+        )
     }
 
     pub fn create_transparent_render_pipeline(
         device: &wgpu::Device,
         fragment_targets: Vec<wgpu::ColorTargetState>,
+        depth_format: wgpu::TextureFormat,
     ) -> wgpu::RenderPipeline {
-        Self::create_render_pipeline(device, fragment_targets, WorldPipelineType::Transparent)
+        Self::create_render_pipeline(
+            device,
+            fragment_targets,
+            depth_format,
+            WorldPipelineType::Transparent,
+        )
     }
 
     pub fn create_z_prepass_render_pipeline(
         device: &wgpu::Device,
         fragment_targets: Vec<wgpu::ColorTargetState>,
+        depth_format: wgpu::TextureFormat,
     ) -> wgpu::RenderPipeline {
-        Self::create_render_pipeline(device, fragment_targets, WorldPipelineType::ZPrepass)
+        Self::create_render_pipeline(
+            device,
+            fragment_targets,
+            depth_format,
+            WorldPipelineType::ZPrepass,
+        )
     }
 
     pub fn create_skybox_mask_render_pipeline(
         device: &wgpu::Device,
         fragment_targets: Vec<wgpu::ColorTargetState>,
+        depth_format: wgpu::TextureFormat,
     ) -> wgpu::RenderPipeline {
-        Self::create_render_pipeline(device, fragment_targets, WorldPipelineType::SkyboxMask)
+        Self::create_render_pipeline(
+            device,
+            fragment_targets,
+            depth_format,
+            WorldPipelineType::SkyboxMask,
+        )
     }
 
     fn create_render_pipeline(
         device: &wgpu::Device,
         fragment_targets: Vec<wgpu::ColorTargetState>,
+        depth_format: wgpu::TextureFormat,
         pipeline_type: WorldPipelineType,
     ) -> wgpu::RenderPipeline {
         let world_shader = device.create_shader_module(wgpu::include_wgsl!("./shader/world.wgsl"));
@@ -203,8 +228,9 @@ impl WorldLoader {
 
         // dont write any more depth after z prepass
         let depth_write_enabled = match pipeline_type {
-            WorldPipelineType::ZPrepass | WorldPipelineType::SkyboxMask => true,
-            WorldPipelineType::Transparent | WorldPipelineType::Opaque => false,
+            WorldPipelineType::ZPrepass => true,
+            WorldPipelineType::Opaque => false,
+            WorldPipelineType::Transparent | WorldPipelineType::SkyboxMask => false,
         };
 
         let fragment_targets = fragment_targets
@@ -221,8 +247,9 @@ impl WorldLoader {
 
         let depth_compare = match pipeline_type {
             WorldPipelineType::ZPrepass => wgpu::CompareFunction::Less,
-            WorldPipelineType::Opaque => wgpu::CompareFunction::Equal,
+            WorldPipelineType::Opaque => wgpu::CompareFunction::LessEqual,
             WorldPipelineType::Transparent => wgpu::CompareFunction::Less,
+            // need to write stencil in a way that the skybrushes are behind some objects
             WorldPipelineType::SkyboxMask => wgpu::CompareFunction::LessEqual,
         };
 
@@ -231,8 +258,11 @@ impl WorldLoader {
                 front: wgpu::StencilFaceState {
                     compare: wgpu::CompareFunction::Always,
                     pass_op: wgpu::StencilOperation::Replace,
+                    fail_op: wgpu::StencilOperation::Keep,
                     ..Default::default()
                 },
+                read_mask: 0xFF,
+                write_mask: 0xFF,
                 ..Default::default()
             },
             WorldPipelineType::ZPrepass
@@ -241,10 +271,9 @@ impl WorldLoader {
         };
 
         let vertex_shader_entry_point = match pipeline_type {
-            WorldPipelineType::SkyboxMask => "skybox_mask_vs",
-            WorldPipelineType::ZPrepass
-            | WorldPipelineType::Opaque
-            | WorldPipelineType::Transparent => "vs_main",
+            WorldPipelineType::SkyboxMask => "vs_main",
+            WorldPipelineType::ZPrepass => "vs_main",
+            WorldPipelineType::Opaque | WorldPipelineType::Transparent => "vs_main",
         };
 
         let world_render_pipeline =
@@ -281,7 +310,7 @@ impl WorldLoader {
                     ..Default::default()
                 },
                 depth_stencil: Some(wgpu::DepthStencilState {
-                    format: wgpu::TextureFormat::Depth32Float,
+                    format: depth_format,
                     depth_write_enabled,
                     depth_compare,
                     stencil: stencil_state,

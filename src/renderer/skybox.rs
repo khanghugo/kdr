@@ -99,9 +99,8 @@ pub struct SkyboxLoader {
 impl SkyboxLoader {
     pub fn create_render_pipeline(
         device: &wgpu::Device,
-        queue: &wgpu::Queue,
         fragment_targets: Vec<wgpu::ColorTargetState>,
-        // images: &[RgbaImage; 6],
+        depth_texture_format: wgpu::TextureFormat,
     ) -> Self {
         let shader = device.create_shader_module(wgpu::include_wgsl!("./shader/skybox.wgsl"));
 
@@ -143,10 +142,21 @@ impl SkyboxLoader {
             },
             // basically no depth but we need it to be compatible with opaque pass
             depth_stencil: Some(wgpu::DepthStencilState {
-                format: wgpu::TextureFormat::Depth32Float,
-                depth_write_enabled: false, // dont write depth data
-                depth_compare: wgpu::CompareFunction::LessEqual,
-                stencil: wgpu::StencilState::default(),
+                format: depth_texture_format,
+                depth_write_enabled: false,
+                // always draw on top
+                depth_compare: wgpu::CompareFunction::Always,
+                stencil: wgpu::StencilState {
+                    back: wgpu::StencilFaceState {
+                        compare: wgpu::CompareFunction::Equal,
+                        pass_op: wgpu::StencilOperation::Keep,
+                        fail_op: wgpu::StencilOperation::Keep,
+                        depth_fail_op: wgpu::StencilOperation::Keep,
+                    },
+                    read_mask: 0xFF,
+                    write_mask: 0x00,
+                    ..Default::default()
+                },
                 bias: wgpu::DepthBiasState::default(),
             }),
             multisample: Default::default(),

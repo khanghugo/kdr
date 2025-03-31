@@ -43,7 +43,7 @@ impl RenderTargets {
     }
 
     fn depth_texture_format() -> wgpu::TextureFormat {
-        wgpu::TextureFormat::Depth32Float
+        wgpu::TextureFormat::Depth32FloatStencil8
     }
 
     fn new(device: &wgpu::Device, width: u32, height: u32) -> Self {
@@ -201,7 +201,8 @@ impl RenderContext {
                 &wgpu::DeviceDescriptor {
                     label: None,
                     required_features: wgpu::Features::TEXTURE_BINDING_ARRAY
-                        | wgpu::Features::TIMESTAMP_QUERY,
+                        | wgpu::Features::TIMESTAMP_QUERY
+                        | wgpu::Features::DEPTH32FLOAT_STENCIL8,
                     required_limits: limits,
                     memory_hints: wgpu::MemoryHints::MemoryUsage,
                 },
@@ -243,15 +244,22 @@ impl RenderContext {
         };
 
         let transparent_blending = OITRenderTarget::targets();
+        let depth_texture_format = RenderTargets::depth_texture_format();
 
         let world_z_prepass_render_pipeline =
-            WorldLoader::create_z_prepass_render_pipeline(&device, vec![opaque_blending.clone()]);
-        let world_opaque_render_pipeline =
-            WorldLoader::create_opaque_render_pipeline(&device, vec![opaque_blending.clone()]);
+            WorldLoader::create_z_prepass_render_pipeline(&device, vec![], depth_texture_format);
+        let world_opaque_render_pipeline = WorldLoader::create_opaque_render_pipeline(
+            &device,
+            vec![opaque_blending.clone()],
+            depth_texture_format,
+        );
         let world_skybox_mask_render_pipeline =
-            WorldLoader::create_skybox_mask_render_pipeline(&device, vec![opaque_blending.clone()]);
-        let world_transparent_render_pipeline =
-            WorldLoader::create_transparent_render_pipeline(&device, transparent_blending.into());
+            WorldLoader::create_skybox_mask_render_pipeline(&device, vec![], depth_texture_format);
+        let world_transparent_render_pipeline = WorldLoader::create_transparent_render_pipeline(
+            &device,
+            transparent_blending.into(),
+            depth_texture_format,
+        );
 
         let config = surface
             .get_default_config(&adapter, size.width, size.height)
@@ -281,17 +289,6 @@ impl RenderContext {
             &fullscreen_tri_vertex_shader,
         );
 
-        // let profiler = GpuProfiler::new(
-        //     &device,
-        //     GpuProfilerSettings {
-        //         enable_timer_queries: true,
-        //         enable_debug_groups: true,
-        //         ..Default::default()
-        //     },
-        // )
-        // .unwrap();
-        //
-
         let post_processing = PostProcessing::create_pipelines(
             &device,
             size.width,
@@ -301,8 +298,11 @@ impl RenderContext {
             render_targets.depth_texture.clone(),
         );
 
-        let skybox_render_pipeline =
-            SkyboxLoader::create_render_pipeline(&device, &queue, vec![opaque_blending]);
+        let skybox_render_pipeline = SkyboxLoader::create_render_pipeline(
+            &device,
+            vec![opaque_blending],
+            depth_texture_format,
+        );
 
         Self {
             device,
@@ -409,18 +409,25 @@ impl RenderContext {
                     color_attachments: &[],
                     depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
                         view: &self.render_targets.depth_view,
+                        // need to use depth texture to make sure skybox brushes are behind things
                         depth_ops: Some(wgpu::Operations {
-                            // edit the mask
                             load: wgpu::LoadOp::Load,
                             store: wgpu::StoreOp::Store,
                         }),
-                        stencil_ops: None,
+                        stencil_ops: Some(wgpu::Operations {
+                            // clear stencil please
+                            load: wgpu::LoadOp::Clear(0),
+                            store: wgpu::StoreOp::Store,
+                        }),
                     }),
                     timestamp_writes: None,
                     occlusion_query_set: None,
                 };
 
                 let mut rpass = encoder.begin_render_pass(&skybox_mask_pass_descriptor);
+
+                // VERY IMPORTANT
+                rpass.set_stencil_reference(1);
 
                 rpass.set_bind_group(3, &world_buffer.bsp_lightmap.bind_group, &[]);
                 rpass.set_bind_group(1, &world_buffer.mvp_buffer.bind_group, &[]);
@@ -448,7 +455,7 @@ impl RenderContext {
                     view: &self.render_targets.main_view,
                     resolve_target: None,
                     ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                        load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
                         store: wgpu::StoreOp::Store,
                     },
                 })],
@@ -456,7 +463,6 @@ impl RenderContext {
                     view: &self.render_targets.depth_view,
                     depth_ops: Some(wgpu::Operations {
                         // already have depth from z prepass, dont overwrite it
-                        // load: wgpu::LoadOp::Clear(1.0),
                         load: wgpu::LoadOp::Load,
                         store: wgpu::StoreOp::Store,
                     }),
@@ -509,19 +515,21 @@ impl RenderContext {
                     })],
                     depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
                         view: &self.render_targets.depth_view,
-                        depth_ops: Some(wgpu::Operations {
-                            // already have depth from z prepass, dont overwrite it
-                            // load: wgpu::LoadOp::Clear(1.0),
+                        depth_ops: None,
+                        stencil_ops: Some(wgpu::Operations {
                             load: wgpu::LoadOp::Load,
                             store: wgpu::StoreOp::Store,
                         }),
-                        stencil_ops: None,
                     }),
                     timestamp_writes: None,
                     occlusion_query_set: None,
                 };
 
                 let mut rpass = encoder.begin_render_pass(&skybox_pass_descriptor);
+
+                // VERY IMPORTANT
+                rpass.set_stencil_reference(1);
+
                 rpass.set_pipeline(&self.skybox_loader.pipeline);
                 rpass.set_bind_group(0, &self.camera_buffer.bind_group, &[]);
                 rpass.set_bind_group(1, &skybox_buffer.bind_group, &[]);
@@ -536,6 +544,7 @@ impl RenderContext {
         }
 
         // world transparent pass
+        // if resolve pass runs but this pass does not, the result image is black
         if true {
             let transparent_pass_descriptor = wgpu::RenderPassDescriptor {
                 label: Some("world transparent pass descriptor"),
@@ -580,7 +589,7 @@ impl RenderContext {
         }
 
         // oit resolve
-        {
+        if true {
             let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("oit resolve pass"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
