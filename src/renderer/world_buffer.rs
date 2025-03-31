@@ -4,7 +4,7 @@ use bytemuck::{Pod, Zeroable};
 use image::RgbaImage;
 use wgpu::util::DeviceExt;
 
-use crate::bsp_loader::{BspResource, CustomRender, EntityModel, NO_RENDER_TEXTURE, WorldEntity};
+use crate::bsp_loader::{BspResource, CustomRender, EntityModel, WorldEntity};
 
 use super::{
     bsp_lightmap::LightMapAtlasBuffer,
@@ -226,17 +226,18 @@ impl WorldLoader {
             push_constant_ranges: &[],
         });
 
-        // dont write any more depth after z prepass
-        let depth_write_enabled = match pipeline_type {
-            WorldPipelineType::ZPrepass => true,
-            WorldPipelineType::Opaque => false,
-            WorldPipelineType::Transparent | WorldPipelineType::SkyboxMask => false,
-        };
-
         let fragment_targets = fragment_targets
             .into_iter()
             .map(|v| Some(v))
             .collect::<Vec<Option<wgpu::ColorTargetState>>>();
+
+        // dont write any more depth after z prepass
+        let depth_write_enabled = match pipeline_type {
+            WorldPipelineType::ZPrepass => true,
+            // if i somehow start doign z prepass again, opaque should not write to depth
+            WorldPipelineType::Opaque => true,
+            WorldPipelineType::Transparent | WorldPipelineType::SkyboxMask => false,
+        };
 
         let pipeline_label = match pipeline_type {
             WorldPipelineType::ZPrepass => "world z prepass render pipeline",
@@ -272,7 +273,7 @@ impl WorldLoader {
 
         let vertex_shader_entry_point = match pipeline_type {
             WorldPipelineType::SkyboxMask => "vs_main",
-            WorldPipelineType::ZPrepass => "vs_main",
+            WorldPipelineType::ZPrepass => "z_prepass_vs",
             WorldPipelineType::Opaque | WorldPipelineType::Transparent => "vs_main",
         };
 

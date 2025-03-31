@@ -352,11 +352,67 @@ impl RenderContext {
 
         state.draw_call = 0;
 
+        // UPDATE: no more z pre pass, it is more troubling than it is worth it
+        // the game doesn't have enough polygon to worry about overdrawing
+        // on top of that, dealing with alpha test texture is not very fun
+        // it might hurt more performance just to fix the alpha test texture depth
+        //
         // z prepass
+        // if true {
+        //     let z_prepass_pass_descriptor = wgpu::RenderPassDescriptor {
+        //         label: Some("world z prepass pass descriptor"),
+        //         color_attachments: &[],
+        //         depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+        //             view: &self.render_targets.depth_view,
+        //             depth_ops: Some(wgpu::Operations {
+        //                 load: wgpu::LoadOp::Clear(1.0),
+        //                 store: wgpu::StoreOp::Store,
+        //             }),
+        //             stencil_ops: None,
+        //         }),
+        //         timestamp_writes: None,
+        //         occlusion_query_set: None,
+        //     };
+
+        //     let mut z_prepass_pass = encoder.begin_render_pass(&z_prepass_pass_descriptor);
+
+        //     z_prepass_pass.set_pipeline(&self.world_z_prepass_render_pipeline);
+        //     z_prepass_pass.set_bind_group(0, &self.camera_buffer.bind_group, &[]);
+
+        //     state.world_buffer.iter().for_each(|world_buffer| {
+        //         z_prepass_pass.set_bind_group(3, &world_buffer.bsp_lightmap.bind_group, &[]);
+        //         z_prepass_pass.set_bind_group(1, &world_buffer.mvp_buffer.bind_group, &[]);
+
+        //         world_buffer.opaque.iter().for_each(|batch| {
+        //             // state.draw_call += 1;
+
+        //             // texture array
+        //             z_prepass_pass.set_bind_group(
+        //                 2,
+        //                 &world_buffer.textures[batch.texture_array_index].bind_group,
+        //                 &[],
+        //             );
+
+        //             z_prepass_pass.set_vertex_buffer(0, batch.vertex_buffer.slice(..));
+        //             z_prepass_pass
+        //                 .set_index_buffer(batch.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
+        //             z_prepass_pass.draw_indexed(0..batch.index_count as u32, 0, 0..1);
+        //         });
+        //     });
+        // }
+
+        // world opaque pass
         if true {
-            let z_prepass_pass_descriptor = wgpu::RenderPassDescriptor {
-                label: Some("world z prepass pass descriptor"),
-                color_attachments: &[],
+            let opaque_pass_descriptor = wgpu::RenderPassDescriptor {
+                label: Some("world opaque pass descriptor"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &self.render_targets.main_view,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
                 depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
                     view: &self.render_targets.depth_view,
                     depth_ops: Some(wgpu::Operations {
@@ -369,29 +425,29 @@ impl RenderContext {
                 occlusion_query_set: None,
             };
 
-            let mut z_prepass_pass = encoder.begin_render_pass(&z_prepass_pass_descriptor);
+            let mut opaque_pass = encoder.begin_render_pass(&opaque_pass_descriptor);
 
-            z_prepass_pass.set_pipeline(&self.world_z_prepass_render_pipeline);
-            z_prepass_pass.set_bind_group(0, &self.camera_buffer.bind_group, &[]);
+            opaque_pass.set_pipeline(&self.world_opaque_render_pipeline);
+            opaque_pass.set_bind_group(0, &self.camera_buffer.bind_group, &[]);
 
             state.world_buffer.iter().for_each(|world_buffer| {
-                z_prepass_pass.set_bind_group(3, &world_buffer.bsp_lightmap.bind_group, &[]);
-                z_prepass_pass.set_bind_group(1, &world_buffer.mvp_buffer.bind_group, &[]);
+                opaque_pass.set_bind_group(3, &world_buffer.bsp_lightmap.bind_group, &[]);
+                opaque_pass.set_bind_group(1, &world_buffer.mvp_buffer.bind_group, &[]);
 
                 world_buffer.opaque.iter().for_each(|batch| {
-                    // state.draw_call += 1;
+                    state.draw_call += 1;
 
                     // texture array
-                    z_prepass_pass.set_bind_group(
+                    opaque_pass.set_bind_group(
                         2,
                         &world_buffer.textures[batch.texture_array_index].bind_group,
                         &[],
                     );
 
-                    z_prepass_pass.set_vertex_buffer(0, batch.vertex_buffer.slice(..));
-                    z_prepass_pass
+                    opaque_pass.set_vertex_buffer(0, batch.vertex_buffer.slice(..));
+                    opaque_pass
                         .set_index_buffer(batch.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
-                    z_prepass_pass.draw_indexed(0..batch.index_count as u32, 0, 0..1);
+                    opaque_pass.draw_indexed(0..batch.index_count as u32, 0, 0..1);
                 });
             });
         }
@@ -409,7 +465,6 @@ impl RenderContext {
                     color_attachments: &[],
                     depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
                         view: &self.render_targets.depth_view,
-                        // need to use depth texture to make sure skybox brushes are behind things
                         depth_ops: Some(wgpu::Operations {
                             load: wgpu::LoadOp::Load,
                             store: wgpu::StoreOp::Store,
@@ -444,58 +499,6 @@ impl RenderContext {
                 rpass.set_vertex_buffer(0, batch.vertex_buffer.slice(..));
                 rpass.set_index_buffer(batch.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
                 rpass.draw_indexed(0..batch.index_count as u32, 0, 0..1);
-            });
-        }
-
-        // world opaque pass
-        if true {
-            let opaque_pass_descriptor = wgpu::RenderPassDescriptor {
-                label: Some("world opaque pass descriptor"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &self.render_targets.main_view,
-                    resolve_target: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
-                        store: wgpu::StoreOp::Store,
-                    },
-                })],
-                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                    view: &self.render_targets.depth_view,
-                    depth_ops: Some(wgpu::Operations {
-                        // already have depth from z prepass, dont overwrite it
-                        load: wgpu::LoadOp::Load,
-                        store: wgpu::StoreOp::Store,
-                    }),
-                    stencil_ops: None,
-                }),
-                timestamp_writes: None,
-                occlusion_query_set: None,
-            };
-
-            let mut opaque_pass = encoder.begin_render_pass(&opaque_pass_descriptor);
-
-            opaque_pass.set_pipeline(&self.world_opaque_render_pipeline);
-            opaque_pass.set_bind_group(0, &self.camera_buffer.bind_group, &[]);
-
-            state.world_buffer.iter().for_each(|world_buffer| {
-                opaque_pass.set_bind_group(3, &world_buffer.bsp_lightmap.bind_group, &[]);
-                opaque_pass.set_bind_group(1, &world_buffer.mvp_buffer.bind_group, &[]);
-
-                world_buffer.opaque.iter().for_each(|batch| {
-                    state.draw_call += 1;
-
-                    // texture array
-                    opaque_pass.set_bind_group(
-                        2,
-                        &world_buffer.textures[batch.texture_array_index].bind_group,
-                        &[],
-                    );
-
-                    opaque_pass.set_vertex_buffer(0, batch.vertex_buffer.slice(..));
-                    opaque_pass
-                        .set_index_buffer(batch.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
-                    opaque_pass.draw_indexed(0..batch.index_count as u32, 0, 0..1);
-                });
             });
         }
 

@@ -20,6 +20,45 @@ var<uniform> camera_pos: vec3f;
 var<storage> model_view_array: array<mat4x4f>;
 
 @vertex
+fn z_prepass_vs(
+    @location(0) pos: vec3f,
+    @location(1) tex_coord: vec2f,
+    @location(2) normal: vec3f,
+    @location(3) layer_idx: u32,
+    @location(4) model_idx: u32,
+    @location(5) type_: u32,
+    @location(6) data_a: vec3f,
+    @location(7) data_b: vec2u,
+) -> VertexOut {
+    var output: VertexOut;
+
+    let model_view = model_view_array[model_idx];
+
+    let clip_pos = camera_proj * camera_view * model_view * vec4(pos, 1.0);
+
+    output.position = clip_pos;
+    output.world_position = pos;
+    output.tex_coord = tex_coord;
+    output.normal = normal;
+    output.layer_idx = layer_idx;
+    output.model_idx = model_idx;
+    output.type_ = type_;
+    output.data_a = data_a;
+    output.data_b = data_b;
+
+    // let is_model = type_ == 1;
+    // let is_entity_brush = type_ == 0 && data_b[1] != 0;
+
+    // // dont write depth if it is entity brush
+    // // could be optimized further if we check for texture mask
+    // if is_model {
+    //     output.position.z = 65536.0;
+    // }
+
+    return output;
+}
+
+@vertex
 fn vs_main(
     @location(0) pos: vec3f,
     @location(1) tex_coord: vec2f,
@@ -176,10 +215,6 @@ fn calculate_base_color(
     if type_ == 0 {
         // this is bsp vertex
         let is_sky = data_b[1];
-
-        if is_sky == 1 {
-            discard;
-        }
 
         let lightmap_coord = vec2f(data_a[0], data_a[1]);
         let light = textureSample(lightmap, lightmap_sampler, lightmap_coord).rgb
