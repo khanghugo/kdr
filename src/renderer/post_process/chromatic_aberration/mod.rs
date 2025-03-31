@@ -4,7 +4,7 @@ use super::pp_trait::{PostProcessingModule, PostProcessingPipeline};
 
 pub struct ChromaticAberration {
     pipeline: PostProcessingPipeline,
-    depth_texture: Arc<wgpu::Texture>,
+    depth_view: wgpu::TextureView,
 }
 
 impl PostProcessingModule for ChromaticAberration {
@@ -80,11 +80,7 @@ impl PostProcessingModule for ChromaticAberration {
                 },
                 wgpu::BindGroupEntry {
                     binding: 1,
-                    resource: wgpu::BindingResource::TextureView(
-                        &self
-                            .depth_texture
-                            .create_view(&wgpu::TextureViewDescriptor::default()),
-                    ),
+                    resource: wgpu::BindingResource::TextureView(&self.depth_view),
                 },
                 wgpu::BindGroupEntry {
                     binding: 2,
@@ -113,9 +109,14 @@ impl ChromaticAberration {
         let pipeline =
             Self::create_pipeline(device, input_texture_format, fullscreen_tri_vertex_shader);
 
+        let depth_view = depth_texture.create_view(&wgpu::TextureViewDescriptor {
+            aspect: wgpu::TextureAspect::DepthOnly,
+            ..Default::default()
+        });
+
         Self {
             pipeline,
-            depth_texture,
+            depth_view,
         }
     }
 }

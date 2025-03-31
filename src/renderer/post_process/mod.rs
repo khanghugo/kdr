@@ -87,12 +87,12 @@ impl PostProcessing {
         //     fullscreen_tri_vertex_shader,
         // )));
 
-        // res.add_effect(PostEffect::ChromaticAberration(ChromaticAberration::new2(
-        //     device,
-        //     input_texture_format,
-        //     fullscreen_tri_vertex_shader,
-        //     depth_texture,
-        // )));
+        res.add_effect(PostEffect::ChromaticAberration(ChromaticAberration::new2(
+            device,
+            input_texture_format,
+            fullscreen_tri_vertex_shader,
+            depth_texture,
+        )));
 
         res
     }
