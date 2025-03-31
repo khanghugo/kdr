@@ -8,6 +8,12 @@ pub struct MvpBuffer {
     pub buffer: wgpu::Buffer,
 }
 
+impl Drop for MvpBuffer {
+    fn drop(&mut self) {
+        self.buffer.destroy();
+    }
+}
+
 impl MvpBuffer {
     pub fn bind_group_layout_descriptor() -> wgpu::BindGroupLayoutDescriptor<'static> {
         wgpu::BindGroupLayoutDescriptor {

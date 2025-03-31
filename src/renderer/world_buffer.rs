@@ -110,6 +110,13 @@ pub struct WorldVertexBuffer {
     pub texture_array_index: usize,
 }
 
+impl Drop for WorldVertexBuffer {
+    fn drop(&mut self) {
+        self.vertex_buffer.destroy();
+        self.index_buffer.destroy();
+    }
+}
+
 pub struct WorldBuffer {
     pub opaque: Vec<WorldVertexBuffer>,
     // only 1 buffer because OIT

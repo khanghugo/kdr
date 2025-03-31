@@ -7,6 +7,14 @@ pub struct CameraBuffer {
     pub bind_group: wgpu::BindGroup,
 }
 
+impl Drop for CameraBuffer {
+    fn drop(&mut self) {
+        self.view.destroy();
+        self.projection.destroy();
+        self.position.destroy();
+    }
+}
+
 impl CameraBuffer {
     pub fn bind_group_layout_descriptor() -> wgpu::BindGroupLayoutDescriptor<'static> {
         wgpu::BindGroupLayoutDescriptor {

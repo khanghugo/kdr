@@ -4,6 +4,12 @@ pub struct TextureBuffer {
     pub bind_group: wgpu::BindGroup,
 }
 
+impl Drop for TextureBuffer {
+    fn drop(&mut self) {
+        self.texture.destroy();
+    }
+}
+
 impl TextureBuffer {
     pub fn bind_group_layout_descriptor() -> wgpu::BindGroupLayoutDescriptor<'static> {
         wgpu::BindGroupLayoutDescriptor {

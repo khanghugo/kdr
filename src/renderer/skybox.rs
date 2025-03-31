@@ -1,7 +1,7 @@
 use image::RgbaImage;
 use wgpu::util::DeviceExt;
 
-use crate::renderer::{RenderTargets, camera::CameraBuffer};
+use crate::renderer::camera::CameraBuffer;
 
 pub struct SkyboxBuffer {
     pub texture: wgpu::Texture,
@@ -11,6 +11,14 @@ pub struct SkyboxBuffer {
     pub index_buffer: wgpu::Buffer,
     pub index_count: u32,
     pub bind_group: wgpu::BindGroup,
+}
+
+impl Drop for SkyboxBuffer {
+    fn drop(&mut self) {
+        self.texture.destroy();
+        self.vertex_buffer.destroy();
+        self.index_buffer.destroy();
+    }
 }
 
 impl SkyboxBuffer {

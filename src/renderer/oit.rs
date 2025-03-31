@@ -57,6 +57,13 @@ pub struct OITResolver {
     reveal_view: wgpu::TextureView,
 }
 
+impl Drop for OITResolver {
+    fn drop(&mut self) {
+        self.accum_texture.destroy();
+        self.reveal_texture.destroy();
+    }
+}
+
 impl OITResolver {
     pub fn new(
         device: &wgpu::Device,

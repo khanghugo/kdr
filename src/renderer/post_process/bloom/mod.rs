@@ -83,6 +83,12 @@ pub struct Bloom {
     bloom_texture: wgpu::Texture,
 }
 
+impl Drop for Bloom {
+    fn drop(&mut self) {
+        self.bloom_texture.destroy();
+    }
+}
+
 impl PostProcessingModule for Bloom {
     fn create_shader_module(device: &wgpu::Device) -> wgpu::ShaderModule {
         device.create_shader_module(wgpu::include_wgsl!("./composite.wgsl"))

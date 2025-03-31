@@ -20,6 +20,13 @@ pub struct PostProcessing {
     intermediate_views: [wgpu::TextureView; 2],
 }
 
+impl Drop for PostProcessing {
+    fn drop(&mut self) {
+        self.intermediate_textures[0].destroy();
+        self.intermediate_textures[1].destroy();
+    }
+}
+
 pub enum PostEffect {
     GrayScale(GrayScale),
     Bloom(Bloom),
