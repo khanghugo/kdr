@@ -20,7 +20,7 @@ var<uniform> camera_pos: vec3f;
 var<storage> model_view_array: array<mat4x4f>;
 
 @vertex
-fn z_prepass_vs(
+fn skybox_mask_vs(
     @location(0) pos: vec3f,
     @location(1) tex_coord: vec2f,
     @location(2) normal: vec3f,
@@ -45,6 +45,14 @@ fn z_prepass_vs(
     output.type_ = type_;
     output.data_a = data_a;
     output.data_b = data_b;
+
+    let is_sky = type_ == 0 && data_b[1] == 1;
+
+    // reverse z
+    // if not sky, make it far plane, which means it will fail stencil depth
+    if !is_sky {
+        output.position.z = 65536.0;
+    }
 
     // let is_model = type_ == 1;
     // let is_entity_brush = type_ == 0 && data_b[1] != 0;

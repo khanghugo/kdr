@@ -272,8 +272,9 @@ impl WorldLoader {
         };
 
         let vertex_shader_entry_point = match pipeline_type {
-            WorldPipelineType::SkyboxMask => "vs_main",
-            WorldPipelineType::ZPrepass => "z_prepass_vs",
+            WorldPipelineType::SkyboxMask => "skybox_mask_vs",
+            // does nothing
+            WorldPipelineType::ZPrepass => "skybox_mask_vs",
             WorldPipelineType::Opaque | WorldPipelineType::Transparent => "vs_main",
         };
 
