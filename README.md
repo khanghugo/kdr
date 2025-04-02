@@ -56,13 +56,15 @@ Currently work in progress, check back later
   - [ ] GoldSrc movement (unplanned)
   - [X] Mouse view. Similar to bspguy
 - Demo Player
-  - [ ] Demo. Easy to do because this is the same code I have in other two projects
-  - [ ] Ghost. Same thing. Very easy to implement
+  - [X] Demo. Easy to do because this is the same code I have in other two projects
+  - [X] Ghost. Same thing. Very easy to implement
+  - [ ] Demo player UI. This needs to be compatible in both native and web. egui is the best bet. This needs some refactor to separate the "app" logic so that it is platform agnostic.
 - Demo Renderer
   - [X] Framebuffer
   - [ ] Remux
   - [ ] Gstream or ffmpeg built-in. Gstream if everything contained but ffmpeg external binary seems nicer to work with.
 - [X] BSP viewer. It is implicitly one.
+- [ ] Demo checker. Seems like a cool addition. If I add the normal UI on top, should be easy to have demo checker UI similar to demo.unique-kz.net. That UI should be for scrubbing through the demo?
 - Integration
   - [X] Native with Vulkan
   - [ ] Web with WebGPU. Probably working just fine. Just need to write some HTML
