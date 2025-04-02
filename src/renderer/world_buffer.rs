@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use bytemuck::{Pod, Zeroable};
+use bytemuck_derive::{Pod, Zeroable};
 use image::RgbaImage;
 use wgpu::util::DeviceExt;
 
