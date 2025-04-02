@@ -1,6 +1,8 @@
 mod app;
-mod bsp_loader;
+mod ghost;
+mod loader;
 mod renderer;
+pub(crate) mod utils;
 
 pub fn main() {
     // // wgpu uses `log` for all of our logging, so we initialize a logger with the `env_logger` crate.

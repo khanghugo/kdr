@@ -192,7 +192,11 @@ impl SkyboxLoader {
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         images: &Vec<RgbaImage>,
-    ) -> SkyboxBuffer {
+    ) -> Option<SkyboxBuffer> {
+        if images.len() != 6 {
+            return None;
+        }
+
         let texture = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("skybox texture"),
             size: wgpu::Extent3d {
@@ -301,5 +305,6 @@ impl SkyboxLoader {
             index_count,
             bind_group,
         }
+        .into()
     }
 }

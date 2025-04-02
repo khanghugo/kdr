@@ -1,6 +1,10 @@
-use std::{path::Path, sync::Arc, time::Instant};
+use std::{
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 use movement::Key;
+use pollster::FutureExt;
 use tracing::ensure_logging_hooks;
 use winit::{
     application::ApplicationHandler,
@@ -14,19 +18,9 @@ mod movement;
 mod tracing;
 
 use crate::{
-    bsp_loader::get_bsp_resources,
+    loader::{ResourceProvider, native::NativeResourceProvider},
     renderer::{RenderContext, RenderState, camera::Camera, world_buffer::WorldLoader},
 };
-
-const FILE: &str = "./examples/textures.obj";
-// const BSP_FILE: &str = "/home/khang/bxt/game_isolated/cstrike_downloads/maps/trans_compile.bsp";
-// const BSP_FILE: &str = "./examples/chk_section.bsp";
-// const BSP_FILE: &str = "/home/khang/bxt/game_isolated/cstrike_downloads/maps/arte_drift.bsp";
-// const BSP_FILE: &str = "/home/khang/bxt/_game_native/cstrike_downloads/maps/hb_MART.bsp";
-const BSP_FILE: &str = "/home/khang/bxt/game_isolated/cstrike_downloads/maps/chk_section.bsp";
-// const BSP_FILE: &str = "/home/khang/bxt/game_isolated/valve/maps/c1a0.bsp";
-// const BSP_FILE: &str = "/home/khang/bxt/game_isolated/cstrike_downloads/maps/surf_cyberwave.bsp";
-// const BSP_FILE: &str = "/home/khang/bxt/game_isolated/cstrike_downloads/maps/cd_666.bsp";
 
 const WINDOW_WIDTH: i32 = 1440;
 const WINDOW_HEIGHT: i32 = 900;
@@ -36,6 +30,7 @@ struct App {
     window: Option<Arc<Window>>,
 
     // time
+    time: Duration,
     last_time: Instant,
     frame_time: f32,
 
@@ -52,6 +47,7 @@ impl Default for App {
         Self {
             graphic_context: Default::default(),
             window: Default::default(),
+            time: Duration::ZERO,
             last_time: Instant::now(),
             frame_time: 1.,
             render_state: Default::default(),
@@ -75,8 +71,15 @@ impl ApplicationHandler for App {
 
         // load bsp
         {
-            let bsp = bsp::Bsp::from_file(BSP_FILE).unwrap();
-            let resource = get_bsp_resources(bsp, Path::new(BSP_FILE));
+            let resource_loader = NativeResourceProvider::new("/home/khang/bxt/game_isolated/");
+            let resource = resource_loader
+                .get_resource(&crate::loader::ResourceIdentifier {
+                    map_name: "surf_cyberwave.bsp".to_string(),
+                    game_mod: "cstrike_downloads".to_string(),
+                })
+                .block_on()
+                .unwrap()
+                .to_bsp_resource();
 
             let world_buffer = WorldLoader::load_world(
                 &render_context.device(),
@@ -86,14 +89,11 @@ impl ApplicationHandler for App {
 
             self.render_state.world_buffer = vec![world_buffer];
 
-            self.render_state.skybox = render_context
-                .skybox_loader
-                .load_skybox(
-                    &render_context.device(),
-                    &render_context.queue(),
-                    &resource.skybox,
-                )
-                .into();
+            self.render_state.skybox = render_context.skybox_loader.load_skybox(
+                &render_context.device(),
+                &render_context.queue(),
+                &resource.skybox,
+            );
         }
 
         self.render_state.camera = Camera::default();
