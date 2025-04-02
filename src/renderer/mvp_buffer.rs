@@ -1,6 +1,6 @@
 use wgpu::util::DeviceExt;
 
-use crate::bsp_loader::WorldEntity;
+use crate::loader::bsp_resource::WorldEntity;
 
 // this should work for bsp as well because we will have func_rotating_door and whatever
 pub struct MvpBuffer {
