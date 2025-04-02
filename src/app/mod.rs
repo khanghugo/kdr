@@ -74,8 +74,8 @@ impl ApplicationHandler for App {
             let resource_loader = NativeResourceProvider::new("/home/khang/bxt/game_isolated/");
             let resource = resource_loader
                 .get_resource(&crate::loader::ResourceIdentifier {
-                    map_name: "surf_cyberwave.bsp".to_string(),
-                    game_mod: "cstrike_downloads".to_string(),
+                    map_name: "c1a0.bsp".to_string(),
+                    game_mod: "cstrike".to_string(),
                 })
                 .block_on()
                 .unwrap()

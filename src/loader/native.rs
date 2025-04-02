@@ -2,7 +2,10 @@ use std::path::{Component, Path, PathBuf};
 
 use bsp::Bsp;
 
-use crate::loader::{MODEL_ENTITIES, ResourceMap};
+use crate::{
+    err,
+    loader::{MODEL_ENTITIES, ResourceMap},
+};
 
 use super::{ResourceProvider, SKYBOX_SUFFIXES, fix_bsp_file_name};
 
@@ -37,9 +40,17 @@ impl ResourceProvider for NativeResourceProvider {
         identifier: &super::ResourceIdentifier,
     ) -> eyre::Result<super::Resource> {
         let map_name = fix_bsp_file_name(identifier.map_name.as_str());
+        let map_relative_path = PathBuf::from("maps").join(map_name.as_str());
 
-        let game_mod = self.game_dir.join(identifier.game_mod.as_str());
-        let path_to_map = game_mod.join("maps").join(map_name);
+        // need to properly search the bsp as well
+        let Some(path_to_map) = search_game_resource(
+            &self.game_dir,
+            &identifier.game_mod,
+            map_relative_path.as_path(),
+        ) else {
+            return err!("cannot find .bsp `{}`", map_name);
+        };
+
         let bsp = Bsp::from_file(path_to_map.as_path())?;
 
         let mut resource_map = ResourceMap::new();
@@ -64,9 +75,15 @@ impl ResourceProvider for NativeResourceProvider {
                 continue;
             }
 
-            let model_real_path = game_mod.join(model_path);
-            let Ok(model_bytes) = std::fs::read(model_real_path.as_path()) else {
-                println!("cannot load model {}", model_real_path.display());
+            let Some(model_absolute_path) =
+                search_game_resource(&self.game_dir, &identifier.game_mod, Path::new(model_path))
+            else {
+                println!("cannot find model `{model_path}`");
+                continue;
+            };
+
+            let Ok(model_bytes) = std::fs::read(model_absolute_path.as_path()) else {
+                println!("cannot load model {}", model_absolute_path.display());
                 continue;
             };
 
@@ -100,7 +117,7 @@ impl ResourceProvider for NativeResourceProvider {
             // the relative path can stay the same but we need the absolute path to open the correct file
             let absolute_paths: Vec<PathBuf> = local_paths
                 .iter()
-                .filter_map(|path| proper_file_searching(game_mod.join(path).as_path()))
+                .filter_map(|path| search_game_resource(&self.game_dir, &identifier.game_mod, path))
                 .collect();
 
             if absolute_paths.len() == 6 {
@@ -130,39 +147,37 @@ impl ResourceProvider for NativeResourceProvider {
 // the file path must start from gamemod and it shouldnt have anything in prefix except for gamemod
 // eg: cstrike/maps/de_dust2 works
 // eg: ./cstrike/maps/de_dust2 does not work
-fn proper_file_searching(file_path: &Path) -> Option<PathBuf> {
-    if file_path.exists() {
-        return file_path.to_path_buf().into();
+fn search_game_resource(game_dir: &Path, game_mod: &str, relative_path: &Path) -> Option<PathBuf> {
+    let one_shot_path = game_dir.join(game_mod).join(relative_path);
+
+    if one_shot_path.exists() {
+        return one_shot_path.into();
     }
 
-    let components: Vec<_> = file_path.components().collect();
+    let is_valve = game_mod == "valve";
+    let is_download = game_mod.ends_with("downloads");
+    let mut gamemods_to_check: Vec<String> = vec![];
 
-    let Component::Normal(gamemod_name) = components.get(0)? else {
-        return None;
-    };
-
-    let gamemod_name = gamemod_name.to_str()?;
-    let is_download = gamemod_name.ends_with("downloads");
-
-    let mut gamemods_to_check = vec![];
-
-    // cannot search other folder, i guess?
-    if gamemod_name == "valve" {
-        return None;
-    }
-
-    gamemods_to_check.push("valve");
-
-    if is_download {
-        gamemods_to_check.push("cstrike");
+    // if someone feeds in half life maps, check for valve_downloads because why not
+    // otherwise, add valve to our list
+    if is_valve {
+        gamemods_to_check.push("value_downloads".to_string());
     } else {
-        gamemods_to_check.push("cstrike_downloads");
-    }
+        // every else needs to check in with "valve"
+        gamemods_to_check.push("valve".to_string());
+        gamemods_to_check.push("value_downloads".to_string());
 
-    let without_gamemod: PathBuf = components[1..].iter().collect();
+        if is_download {
+            let without_download = game_mod.replace("_downloads", "");
+
+            gamemods_to_check.push(without_download);
+        } else {
+            gamemods_to_check.push(format!("{game_mod}_downloads"));
+        }
+    }
 
     for gamemod_to_check in gamemods_to_check {
-        let new_path = Path::new(gamemod_to_check).join(without_gamemod.as_path());
+        let new_path = game_dir.join(gamemod_to_check).join(relative_path);
 
         if new_path.exists() {
             return Some(new_path);
