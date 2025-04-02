@@ -1,5 +1,3 @@
-use std::time::Instant;
-
 use bitflags::bitflags;
 use cgmath::Deg;
 use winit::{
@@ -99,11 +97,7 @@ impl App {
         }
     }
 
-    fn movent_tick(&mut self) {
-        let now = Instant::now();
-        self.frame_time = now.duration_since(self.last_time).as_secs_f32();
-        self.last_time = now;
-
+    pub fn interaction_tick(&mut self) {
         if self.keys.contains(Key::Forward) {
             self.forward();
         }
@@ -128,10 +122,6 @@ impl App {
         if self.keys.contains(Key::Down) {
             self.down();
         }
-    }
-
-    pub fn tick(&mut self) {
-        self.movent_tick();
     }
 
     pub fn handle_keyboard_input(&mut self, physical_key: PhysicalKey, state: ElementState) {

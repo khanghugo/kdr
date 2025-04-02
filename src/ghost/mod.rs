@@ -1,4 +1,5 @@
 use std::{
+    ffi::{OsStr, OsString},
     path::{Path, PathBuf},
     str::from_utf8,
 };
@@ -23,10 +24,13 @@ pub enum GhostBlob<'a> {
 ///
 /// The client needs to run this command at most 2 times just to verify that we have a correct ghost blob.
 fn categorise_ghost_blob<'a>(
-    path: &Path,
+    path: impl AsRef<Path> + AsRef<OsStr>,
     ghost_blob: &'a [u8],
 ) -> Result<GhostBlob<'a>, GhostError> {
-    let filename = path.file_name().unwrap().to_str().unwrap();
+    let filename: &Path = path.as_ref();
+    let filename = filename.file_name().unwrap().to_str().unwrap();
+
+    let path: &Path = path.as_ref();
 
     if filename.ends_with(".dem") {
         return open_demo_from_bytes(ghost_blob)
@@ -52,7 +56,11 @@ fn categorise_ghost_blob<'a>(
     })
 }
 
-pub fn get_ghost<'a>(path: &Path, ghost_blob: &'a [u8]) -> Result<GhostInfo, GhostError> {
+pub fn get_ghost<'a>(
+    path: impl AsRef<Path> + AsRef<OsStr>,
+    ghost_blob: &'a [u8],
+) -> Result<GhostInfo, GhostError> {
+    let path: &Path = path.as_ref();
     let ghost_blob = categorise_ghost_blob(path, ghost_blob)?;
 
     // get ghost galore

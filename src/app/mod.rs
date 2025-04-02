@@ -3,8 +3,9 @@ use std::{
     time::{Duration, Instant},
 };
 
-use movement::Key;
+use interaction::Key;
 use pollster::FutureExt;
+use replay::Replay;
 use tracing::ensure_logging_hooks;
 use winit::{
     application::ApplicationHandler,
@@ -14,17 +15,23 @@ use winit::{
     window::Window,
 };
 
-mod movement;
+mod interaction;
+mod replay;
 mod tracing;
 
 use crate::{
-    loader::{ResourceProvider, native::NativeResourceProvider},
+    ghost::get_ghost,
+    loader::{ResourceIdentifier, ResourceProvider, native::NativeResourceProvider},
     renderer::{RenderContext, RenderState, camera::Camera, world_buffer::WorldLoader},
 };
 
 const WINDOW_WIDTH: i32 = 1440;
 const WINDOW_HEIGHT: i32 = 900;
 
+// TODO restructure this
+// app might still be a general "app" that both native and web points to
+// the difference might be the "window" aka where the canvas is
+// though not sure how to handle loop, that is for my future self
 struct App {
     graphic_context: Option<RenderContext>,
     window: Option<Arc<Window>>,
@@ -35,7 +42,11 @@ struct App {
     frame_time: f32,
 
     // stuffs
+    // TODO future render state might need to be optional so that we can reload map or something?? not sure
+    // like we can start the app with nothing going on and hten drag and rdop the map 🤤
     render_state: RenderState,
+    // optional ghost because we might just want to render bsp
+    ghost: Option<Replay>,
 
     // input
     keys: Key,
@@ -53,7 +64,24 @@ impl Default for App {
             render_state: Default::default(),
             keys: Key::empty(),
             mouse_right_hold: false,
+            ghost: None,
         }
+    }
+}
+
+impl App {
+    /// Tick function modifies everything in the app including the rendering state.
+    ///
+    /// If there is any event going on every frame, it should be contained in this function.
+    pub fn tick(&mut self) {
+        let now = Instant::now();
+        let diff = now.duration_since(self.last_time);
+        self.frame_time = diff.as_secs_f32();
+        self.last_time = now;
+        self.time += diff;
+
+        self.interaction_tick();
+        self.replay_tick();
     }
 }
 
@@ -69,14 +97,21 @@ impl ApplicationHandler for App {
 
         let render_context = pollster::block_on(RenderContext::new(window.clone()));
 
-        // load bsp
+        // load ghost and then bsp?
         {
             let resource_loader = NativeResourceProvider::new("/home/khang/bxt/game_isolated/");
+
+            let demo_path =
+                "/home/khang/bxt/game_isolated/cstrike/cc1036/c21_malle_enjoy_Mrjuice_0052.85.dem";
+            let demo_bytes = std::fs::read(demo_path).unwrap();
+            let ghost = get_ghost(demo_path, &demo_bytes).unwrap();
+            let resource_identifier = ResourceIdentifier {
+                map_name: ghost.map_name.to_owned(),
+                game_mod: ghost.game_mod.to_owned(),
+            };
+
             let resource = resource_loader
-                .get_resource(&crate::loader::ResourceIdentifier {
-                    map_name: "c1a0.bsp".to_string(),
-                    game_mod: "cstrike".to_string(),
-                })
+                .get_resource(&resource_identifier)
                 .block_on()
                 .unwrap()
                 .to_bsp_resource();
@@ -94,7 +129,39 @@ impl ApplicationHandler for App {
                 &render_context.queue(),
                 &resource.skybox,
             );
+
+            self.ghost = Some(Replay {
+                ghost,
+                playback_mode: replay::ReplayPlaybackMode::RealTime,
+            });
         }
+
+        // load just bsp
+        // {
+        //     let resource_loader = NativeResourceProvider::new("/home/khang/bxt/game_isolated/");
+        //     let resource = resource_loader
+        //         .get_resource(&crate::loader::ResourceIdentifier {
+        //             map_name: "c1a0.bsp".to_string(),
+        //             game_mod: "cstrike".to_string(),
+        //         })
+        //         .block_on()
+        //         .unwrap()
+        //         .to_bsp_resource();
+
+        //     let world_buffer = WorldLoader::load_world(
+        //         &render_context.device(),
+        //         &render_context.queue(),
+        //         &resource,
+        //     );
+
+        //     self.render_state.world_buffer = vec![world_buffer];
+
+        //     self.render_state.skybox = render_context.skybox_loader.load_skybox(
+        //         &render_context.device(),
+        //         &render_context.queue(),
+        //         &resource.skybox,
+        //     );
+        // }
 
         self.render_state.camera = Camera::default();
         // now do stuffs
@@ -133,9 +200,12 @@ impl ApplicationHandler for App {
             WindowEvent::RedrawRequested => {
                 self.tick();
 
-                self.graphic_context
-                    .as_mut()
-                    .map(|res| res.render(&mut self.render_state));
+                self.graphic_context.as_mut().map(|res| {
+                    // rendering world
+                    res.render(&mut self.render_state);
+
+                    // TODO rendering GUI with egui or somethin??
+                });
 
                 self.window.as_mut().map(|window| {
                     let fps = (1.0 / self.frame_time).round();

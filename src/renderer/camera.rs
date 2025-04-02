@@ -239,4 +239,8 @@ impl Camera {
     pub fn set_pitch(&mut self, pitch: Deg<f32>) {
         self.pitch = pitch;
     }
+
+    pub fn set_position(&mut self, pos: [f32; 3]) {
+        self.pos = pos.into();
+    }
 }

@@ -36,7 +36,7 @@ pub fn demo_ghost_parse(filename: &str, demo: &Demo) -> eyre::Result<GhostInfo> 
             //     })
             // }
             FrameData::ClientData(client) => {
-                origin = [client.origin[0], client.origin[1], client.origin[2]];
+                // origin = [client.origin[0], client.origin[1], client.origin[2]];
 
                 viewangles = [
                     client.viewangles[0],
@@ -53,9 +53,14 @@ pub fn demo_ghost_parse(filename: &str, demo: &Demo) -> eyre::Result<GhostInfo> 
                 None
             }
             FrameData::NetworkMessage(box_type) => {
-                let MessageData::Parsed(ref messages) = box_type.as_ref().1.messages else {
+                let netmessage = &box_type.as_ref().1;
+
+                let MessageData::Parsed(ref messages) = netmessage.messages else {
                     return None;
                 };
+
+                let sim_org = &netmessage.info.refparams.sim_org;
+                origin = [sim_org[0], sim_org[1], sim_org[2]];
 
                 // Every time there is svc_clientdata, there is svc_deltapacketentities
                 // Even if there isn't, this is more safe to make sure that we have the client data.

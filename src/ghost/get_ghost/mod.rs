@@ -1,4 +1,5 @@
 use std::array::from_fn;
+use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 use std::str::from_utf8;
 
@@ -22,7 +23,11 @@ mod simen;
 mod surf_gateway;
 
 // done like this so that it is client wasm friendly
-pub fn get_ghost<'a>(path: &Path, ghost_blob: GhostBlob) -> eyre::Result<GhostInfo> {
+pub fn get_ghost<'a>(
+    path: impl AsRef<Path> + AsRef<OsStr>,
+    ghost_blob: GhostBlob,
+) -> eyre::Result<GhostInfo> {
+    let path: &Path = path.as_ref();
     let filename = path.file_name().unwrap().to_str().unwrap();
 
     match ghost_blob {
