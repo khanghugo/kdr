@@ -25,8 +25,8 @@ use crate::{
     renderer::{RenderContext, RenderState, camera::Camera, world_buffer::WorldLoader},
 };
 
-const WINDOW_WIDTH: i32 = 1440;
-const WINDOW_HEIGHT: i32 = 900;
+const WINDOW_WIDTH: i32 = 1280;
+const WINDOW_HEIGHT: i32 = 960;
 
 // TODO restructure this
 // app might still be a general "app" that both native and web points to

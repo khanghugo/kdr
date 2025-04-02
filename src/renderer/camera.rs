@@ -147,7 +147,7 @@ impl Default for Camera {
             pos: start_pos,
             target: target_pos,
             up,
-            aspect: 1920 as f32 / 1080 as f32,
+            aspect: 640. / 480.,
             fovy: Deg(90.0),
             znear: 1.0,
             zfar: 131072.0,
