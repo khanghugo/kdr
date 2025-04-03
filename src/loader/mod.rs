@@ -17,7 +17,7 @@
 //!
 //! This means, all code in this client repo will think about not having access to file system even though it can be used natively.
 
-use std::{collections::HashMap, path::Path};
+use std::{collections::HashMap, ffi::OsStr, path::Path};
 
 use bsp_resource::BspResource;
 
@@ -89,7 +89,7 @@ pub trait ResourceProvider {
     /// The client should handle the error properly.
     async fn get_ghost_data<'a>(
         &self,
-        path: &Path,
+        path: impl AsRef<Path> + AsRef<OsStr>,
         ghost_blob: &'a [u8],
     ) -> Result<(ResourceIdentifier, GhostInfo), GhostError> {
         let ghost = get_ghost(path, ghost_blob)?;

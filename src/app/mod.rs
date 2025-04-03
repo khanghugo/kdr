@@ -96,6 +96,7 @@ impl App {
 
 impl ApplicationHandler for App {
     fn resumed(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
+        #[allow(unused_mut)]
         let mut window_attributes = Window::default_attributes().with_inner_size(LogicalSize {
             width: WINDOW_WIDTH,
             height: WINDOW_HEIGHT,
@@ -139,22 +140,20 @@ impl ApplicationHandler for App {
 
         // load ghost and then bsp?
         {
-            let resource_loader = NativeResourceProvider::new("/home/khang/bxt/game_isolated/");
-
             let demo_path =
                 "/home/khang/bxt/game_isolated/cstrike/cc1036/c21_malle_enjoy_Mrjuice_0052.85.dem";
             let demo_bytes = std::fs::read(demo_path).unwrap();
-            let ghost = get_ghost(demo_path, &demo_bytes).unwrap();
 
-            let resource_identifier = ResourceIdentifier {
-                map_name: ghost.map_name.to_owned(),
-                game_mod: ghost.game_mod.to_owned(),
-            };
+            let resource_loader = NativeResourceProvider::new("/home/khang/bxt/game_isolated/");
+            let (resource_identifier, ghost) = resource_loader
+                .get_ghost_data(demo_path, &demo_bytes)
+                .block_on()
+                .unwrap();
 
-            let resource_identifier = ResourceIdentifier {
-                map_name: "trans_compile".to_owned(),
-                game_mod: "cstrike".to_owned(),
-            };
+            // let resource_identifier = ResourceIdentifier {
+            //     map_name: "trans_compile".to_owned(),
+            //     game_mod: "cstrike".to_owned(),
+            // };
 
             let resource = resource_loader
                 .get_resource(&resource_identifier)
@@ -180,8 +179,6 @@ impl ApplicationHandler for App {
                 ghost,
                 playback_mode: replay::ReplayPlaybackMode::RealTime,
             });
-
-            self.ghost = None;
         }
 
         self.render_state.camera = Camera::default();
