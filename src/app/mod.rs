@@ -28,6 +28,9 @@ use crate::{
     renderer::{RenderContext, RenderState, camera::Camera, world_buffer::WorldLoader},
 };
 
+#[cfg(target_arch = "wasm32")]
+use crate::browser_console_log;
+
 const WINDOW_WIDTH: i32 = 1280;
 const WINDOW_HEIGHT: i32 = 960;
 
@@ -107,14 +110,24 @@ impl ApplicationHandler for App {
             let document = window.document().unwrap();
             let canvas_element = document.get_element_by_id("canvas").unwrap();
 
+            browser_console_log(format!("{:?}", canvas_element).as_str());
+            browser_console_log("new message");
+
             // Append canvas to body if it's not already there
             let body = document.body().unwrap();
             if canvas_element.parent_node().is_none() {
+                browser_console_log("cannot find <canvas id=\"canvas\">");
+
                 body.append_child(&canvas_element).unwrap();
             }
 
-            window_attributes =
-                window_attributes.with_canvas(Some(canvas_element.dyn_into().unwrap()));
+            let canvas: web_sys::HtmlCanvasElement = canvas_element.dyn_into().unwrap();
+
+            if canvas.get_context("webgl2").is_err() {
+                browser_console_log("<canvas> does not have webgl2 context");
+            }
+
+            window_attributes = window_attributes.with_canvas(Some(canvas));
         }
 
         let window = event_loop.create_window(window_attributes).unwrap();

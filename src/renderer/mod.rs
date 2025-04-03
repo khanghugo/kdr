@@ -181,14 +181,28 @@ impl RenderContext {
             // gl for the web
 wgpu::Backends::GL
             ,
-            ..Default::default()
+            flags: wgpu::InstanceFlags::default(),
+            backend_options: wgpu::BackendOptions { gl: wgpu::GlBackendOptions {
+                gles_minor_version: wgpu::Gles3MinorVersion::Automatic,
+            }, dx12: wgpu::Dx12BackendOptions::default() },
+
         });
 
         let surface = instance.create_surface(window).unwrap();
-        let adapter = instance
-            .request_adapter(&wgpu::RequestAdapterOptions::default())
+
+        // for some FUCKING reasons, this woks but specifically using a ReqestAdapterOptions doesn's work.
+        let adapter = wgpu::util::initialize_adapter_from_env_or_default(&instance, Some(&surface))
             .await
             .unwrap();
+
+        // let adapter = instance
+        //     .request_adapter(&wgpu::RequestAdapterOptions {
+        //         power_preference: wgpu::PowerPreference::HighPerformance,
+        //         force_fallback_adapter: true,
+        //         compatible_surface: Some(&surface),
+        //     })
+        //     .block_on()
+        //     .unwrap();
 
         // edit limits
         let mut limits =
@@ -204,8 +218,7 @@ wgpu::Backends::GL
             .request_device(
                 &wgpu::DeviceDescriptor {
                     label: None,
-                    required_features: wgpu::Features::TIMESTAMP_QUERY
-                        | wgpu::Features::DEPTH32FLOAT_STENCIL8,
+                    required_features: wgpu::Features::DEPTH32FLOAT_STENCIL8,
                     required_limits: limits,
                     memory_hints: wgpu::MemoryHints::MemoryUsage,
                 },

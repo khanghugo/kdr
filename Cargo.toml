@@ -61,10 +61,15 @@ web-sys = { version = "0.3.77", features = [
     "Document",
     "Element",
     "HtmlCanvasElement",
-    "Performance",
+    "WebGl2RenderingContext",
+    "CanvasRenderingContext2d",
+    "RequestInit",
+    "RequestMode",
+    "Request",
 ] }
 wasm-bindgen = "0.2.100"
 console_error_panic_hook = "0.1.7"
+console_log = "1.0.0"
 
 [lib]
 crate-type = ["cdylib", "rlib"]
