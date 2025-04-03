@@ -175,7 +175,12 @@ impl RenderContext {
         let size = window.inner_size();
 
         let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
-            backends: wgpu::Backends::GL,
+            backends:
+            // vulkan for native linux/windows
+            // wgpu::Backends::VULKAN
+            // gl for the web
+wgpu::Backends::GL
+            ,
             ..Default::default()
         });
 
@@ -188,19 +193,18 @@ impl RenderContext {
         // edit limits
         let mut limits =
             wgpu::Limits::downlevel_webgl2_defaults().using_resolution(adapter.limits());
-        // limits.max_texture_array_layers = 1024;
-        // limits.max_storage_buffers_per_shader_stage = 4;
-        // // this is for mvp matrices
-        // limits.max_storage_buffer_binding_size = (4 * 4 * 4) // 1 matrix4x4f
-        //     * 1024 // 1000 entities
+        limits.max_texture_array_layers = 1024;
+        limits.max_storage_buffers_per_shader_stage = 4;
+        // this is for mvp matrices
+        limits.max_storage_buffer_binding_size = (4 * 4 * 4) // 1 matrix4x4f
+            * 256; // 256 entities at 16.4 KB
         // end limits
 
         let (device, queue) = adapter
             .request_device(
                 &wgpu::DeviceDescriptor {
                     label: None,
-                    required_features: wgpu::Features::TEXTURE_BINDING_ARRAY
-                        | wgpu::Features::TIMESTAMP_QUERY
+                    required_features: wgpu::Features::TIMESTAMP_QUERY
                         | wgpu::Features::DEPTH32FLOAT_STENCIL8,
                     required_limits: limits,
                     memory_hints: wgpu::MemoryHints::MemoryUsage,
