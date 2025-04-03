@@ -163,10 +163,6 @@ fn search_game_resource(game_dir: &Path, game_mod: &str, relative_path: &Path) -
     if is_valve {
         gamemods_to_check.push("value_downloads".to_string());
     } else {
-        // every else needs to check in with "valve"
-        gamemods_to_check.push("valve".to_string());
-        gamemods_to_check.push("value_downloads".to_string());
-
         if is_download {
             let without_download = game_mod.replace("_downloads", "");
 
@@ -174,6 +170,11 @@ fn search_game_resource(game_dir: &Path, game_mod: &str, relative_path: &Path) -
         } else {
             gamemods_to_check.push(format!("{game_mod}_downloads"));
         }
+
+        // every else needs to check in with "valve"
+        // but we add it last because we have to prioritize our game mod
+        gamemods_to_check.push("valve".to_string());
+        gamemods_to_check.push("value_downloads".to_string());
     }
 
     for gamemod_to_check in gamemods_to_check {
