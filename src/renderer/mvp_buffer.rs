@@ -1,6 +1,6 @@
 use wgpu::util::DeviceExt;
 
-use crate::loader::bsp_resource::WorldEntity;
+use crate::{app::constants::MAX_MVP, loader::bsp_resource::WorldEntity};
 
 // this should work for bsp as well because we will have func_rotating_door and whatever
 pub struct MvpBuffer {
@@ -14,6 +14,8 @@ impl Drop for MvpBuffer {
     }
 }
 
+const EMPTY_MATRIX: [[f32; 4]; 4] = [[0f32; 4]; 4];
+
 impl MvpBuffer {
     pub fn bind_group_layout_descriptor() -> wgpu::BindGroupLayoutDescriptor<'static> {
         wgpu::BindGroupLayoutDescriptor {
@@ -22,7 +24,7 @@ impl MvpBuffer {
                 binding: 0,
                 visibility: wgpu::ShaderStages::VERTEX,
                 ty: wgpu::BindingType::Buffer {
-                    ty: wgpu::BufferBindingType::Storage { read_only: true },
+                    ty: wgpu::BufferBindingType::Uniform,
                     has_dynamic_offset: false,
                     min_binding_size: None,
                 },
@@ -32,22 +34,18 @@ impl MvpBuffer {
     }
 
     pub fn create_mvp(device: &wgpu::Device, entity_infos: &[&WorldEntity]) -> Self {
-        let matrices: Vec<[[f32; 4]; 4]> = entity_infos
+        let mut matrices: Vec<[[f32; 4]; 4]> = entity_infos
             .iter()
             .map(|info| info.build_mvp().into())
             .collect();
 
-        // fix empty matrix in case there are zero models
-        let matrices = if matrices.is_empty() {
-            vec![[[0f32; 4]; 4]]
-        } else {
-            matrices
-        };
+        // uniform buffer has fixed and defined size
+        matrices.resize(MAX_MVP as usize, EMPTY_MATRIX);
 
         let mvp_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("model view projection array buffer"),
             contents: bytemuck::cast_slice(&matrices),
-            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
 
         let mvp_bind_group_layout =
