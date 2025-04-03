@@ -77,7 +77,7 @@ impl App {
     ///
     /// If there is any event going on every frame, it should be contained in this function.
     pub fn tick(&mut self) {
-        // self.delta_update();
+        self.delta_update();
 
         self.interaction_tick();
         self.replay_tick();
@@ -245,10 +245,13 @@ impl ApplicationHandler for App {
     }
 }
 
+// "rustc: cannot declare a non-inline module inside a block unless it has a path attribute"
+#[cfg(not(target_arch = "wasm32"))]
+mod tracing;
+
 pub fn run_kdr() {
     #[cfg(not(target_arch = "wasm32"))]
     {
-        mod tracing;
         tracing::ensure_logging_hooks();
     }
 
