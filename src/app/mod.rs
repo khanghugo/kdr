@@ -105,15 +105,16 @@ impl ApplicationHandler for App {
             // Get the canvas from the DOM
             let window = web_sys::window().unwrap();
             let document = window.document().unwrap();
-            let canvas = document.get_element_by_id("canvas").unwrap();
+            let canvas_element = document.get_element_by_id("canvas").unwrap();
 
             // Append canvas to body if it's not already there
             let body = document.body().unwrap();
-            if canvas.parent_node().is_none() {
-                body.append_child(&canvas).unwrap();
+            if canvas_element.parent_node().is_none() {
+                body.append_child(&canvas_element).unwrap();
             }
 
-            window_attributes = window_attributes.with_canvas(Some(canvas.dyn_into().unwrap()));
+            window_attributes =
+                window_attributes.with_canvas(Some(canvas_element.dyn_into().unwrap()));
         }
 
         let window = event_loop.create_window(window_attributes).unwrap();

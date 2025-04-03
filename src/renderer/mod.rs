@@ -175,7 +175,7 @@ impl RenderContext {
         let size = window.inner_size();
 
         let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
-            backends: wgpu::Backends::all(),
+            backends: wgpu::Backends::GL,
             ..Default::default()
         });
 
@@ -188,12 +188,11 @@ impl RenderContext {
         // edit limits
         let mut limits =
             wgpu::Limits::downlevel_webgl2_defaults().using_resolution(adapter.limits());
-        limits.max_texture_array_layers = 1024;
-        limits.max_storage_buffers_per_shader_stage = 4;
-        // this is for mvp matrices
-        limits.max_storage_buffer_binding_size = (4 * 4 * 4) // 1 matrix4x4f
-            * 1024 // 1000 entities
-        ;
+        // limits.max_texture_array_layers = 1024;
+        // limits.max_storage_buffers_per_shader_stage = 4;
+        // // this is for mvp matrices
+        // limits.max_storage_buffer_binding_size = (4 * 4 * 4) // 1 matrix4x4f
+        //     * 1024 // 1000 entities
         // end limits
 
         let (device, queue) = adapter
@@ -266,7 +265,7 @@ impl RenderContext {
             .unwrap();
 
         let config = wgpu::SurfaceConfiguration {
-            present_mode: wgpu::PresentMode::Immediate, // to mailbox later
+            present_mode: wgpu::PresentMode::AutoVsync, // to mailbox later
             ..config
         };
 

@@ -23,7 +23,7 @@ image = { version = "0.25.5", default-features = false, features = [
     "tga",
 ] }
 pollster = "0.4.0"
-wgpu = "24.0.1"
+wgpu = { version = "24.0.1", features = ["webgl"] }
 winit = { version = "0.30.9", features = [] }
 
 bsp = { path = "./bsp" }
