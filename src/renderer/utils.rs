@@ -142,3 +142,10 @@ impl FullScrenTriVertexShader {
         }
     }
 }
+
+pub fn maybe_web_debug_print(s: &str) {
+    #[cfg(target_arch = "wasm32")]
+    {
+        crate::browser_console_log(s);
+    }
+}
