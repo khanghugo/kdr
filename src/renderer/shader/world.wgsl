@@ -17,7 +17,7 @@ var<uniform> camera_proj: mat4x4f;
 @group(0) @binding(2)
 var<uniform> camera_pos: vec3f;
 @group(1) @binding(0)
-var<storage> model_view_array: array<mat4x4f>;
+var<uniform> model_view_array: array<mat4x4f, 256>; // make sure to match the max entity count
 
 @vertex
 fn skybox_mask_vs(
@@ -336,8 +336,17 @@ fn fs_transparent(
 
     let weight = distance_weight * alpha_weight * alpha_weight;
 
+    // reminder, colors are already pre multiplied
+    let accum_color = color * weight;
+
+    // revealage math shit that circumvents webgl2 INDEPENDENT_BLENDING
+    let epsilon = 1e-6;
+    let reveal_log = log(max(epsilon, 1.0 - color.a));
+    // Output to the Red channel of the reveal target
+    let reveal_color = vec4(reveal_log, 0.0, 0.0, 0.0);
+
     return FragOutput(
-        color * weight,
-        vec4(color.a, 0.0, 0.0, color.a)
+        accum_color,
+        reveal_color
     );
 }

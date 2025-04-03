@@ -5,6 +5,12 @@ type WBOITRenderTargetColor = [wgpu::ColorTargetState; 2];
 #[derive(Clone)]
 pub struct WBOITRenderTarget();
 
+const COLOR_BLEND_OP: wgpu::BlendComponent = wgpu::BlendComponent {
+    src_factor: wgpu::BlendFactor::One,
+    dst_factor: wgpu::BlendFactor::One,
+    operation: wgpu::BlendOperation::Add,
+};
+
 impl WBOITRenderTarget {
     pub fn targets() -> WBOITRenderTargetColor {
         [
@@ -12,16 +18,8 @@ impl WBOITRenderTarget {
             wgpu::ColorTargetState {
                 format: wgpu::TextureFormat::Rgba16Float,
                 blend: Some(wgpu::BlendState {
-                    color: wgpu::BlendComponent {
-                        src_factor: wgpu::BlendFactor::One,
-                        dst_factor: wgpu::BlendFactor::One,
-                        operation: wgpu::BlendOperation::Add,
-                    },
-                    alpha: wgpu::BlendComponent {
-                        src_factor: wgpu::BlendFactor::One,
-                        dst_factor: wgpu::BlendFactor::One,
-                        operation: wgpu::BlendOperation::Add,
-                    },
+                    color: COLOR_BLEND_OP,
+                    alpha: COLOR_BLEND_OP,
                 }),
                 write_mask: wgpu::ColorWrites::ALL,
             },
@@ -29,18 +27,13 @@ impl WBOITRenderTarget {
             wgpu::ColorTargetState {
                 format: wgpu::TextureFormat::R16Float,
                 blend: Some(wgpu::BlendState {
-                    color: wgpu::BlendComponent {
-                        src_factor: wgpu::BlendFactor::Zero,
-                        dst_factor: wgpu::BlendFactor::OneMinusSrc,
-                        operation: wgpu::BlendOperation::Add,
-                    },
-                    alpha: wgpu::BlendComponent::REPLACE,
+                    color: COLOR_BLEND_OP,
+                    alpha: COLOR_BLEND_OP,
                 }),
                 write_mask: wgpu::ColorWrites::ALL,
             },
         ]
     }
-    // i kind of giving up on refactoring this...
 }
 
 // change stuff here to switch OIT methods
@@ -250,7 +243,7 @@ impl OITResolver {
                 view: &self.reveal_view,
                 resolve_target: None,
                 ops: wgpu::Operations {
-                    load: wgpu::LoadOp::Clear(wgpu::Color::WHITE),
+                    load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
                     store: wgpu::StoreOp::Store,
                 },
             }),

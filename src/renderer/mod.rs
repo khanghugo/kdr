@@ -4,11 +4,17 @@ use camera::{Camera, CameraBuffer};
 use finalize::FinalizeRenderPipeline;
 use oit::{OITRenderTarget, OITResolver};
 use post_process::PostProcessing;
+use render_targets::RenderTargets;
 use skybox::{SkyboxBuffer, SkyboxLoader};
 use utils::FullScrenTriVertexShader;
-use wgpu::Extent3d;
 use winit::window::Window;
 use world_buffer::{WorldBuffer, WorldLoader};
+
+// need this to have window.canvas()
+#[cfg(target_arch = "wasm32")]
+use winit::platform::web::WindowExtWebSys;
+
+use crate::app::constants::MAX_MVP;
 
 pub mod bsp_lightmap;
 pub mod camera;
@@ -16,114 +22,11 @@ pub mod finalize;
 pub mod mvp_buffer;
 pub mod oit;
 pub mod post_process;
+mod render_targets;
 pub mod skybox;
 pub mod texture_buffer;
 pub mod utils;
 pub mod world_buffer;
-
-pub struct RenderTargets {
-    main_texture: wgpu::Texture,
-    main_view: wgpu::TextureView,
-    // need a composite texture because wgpu cannot sample a texture while writing on it
-    // it happens when we want to do post processing, we have to read the current image and then write on it
-    composite_texture: wgpu::Texture,
-    composite_view: wgpu::TextureView,
-    depth_texture: Arc<wgpu::Texture>,
-    depth_view: wgpu::TextureView,
-}
-
-impl RenderTargets {
-    fn main_texture_format() -> wgpu::TextureFormat {
-        wgpu::TextureFormat::Rgba16Float
-        // wgpu::TextureFormat::Bgra8Unorm
-    }
-
-    fn composite_texture_format() -> wgpu::TextureFormat {
-        Self::main_texture_format()
-    }
-
-    fn depth_texture_format() -> wgpu::TextureFormat {
-        wgpu::TextureFormat::Depth32FloatStencil8
-    }
-
-    fn new(device: &wgpu::Device, width: u32, height: u32) -> Self {
-        let main_texture = device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("main render texture"),
-            size: wgpu::Extent3d {
-                width,
-                height,
-                depth_or_array_layers: 1,
-            },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: Self::main_texture_format(),
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT
-                | wgpu::TextureUsages::TEXTURE_BINDING
-                | wgpu::TextureUsages::COPY_SRC
-                | wgpu::TextureUsages::COPY_DST,
-            view_formats: &[],
-        });
-
-        let main_view = main_texture.create_view(&wgpu::TextureViewDescriptor::default());
-
-        // depth stuffs
-        let depth_texture = device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("depth texture"),
-            size: Extent3d {
-                width,
-                height,
-                depth_or_array_layers: 1,
-            },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: Self::depth_texture_format(),
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
-            view_formats: &[],
-        });
-
-        let depth_texture = Arc::new(depth_texture);
-
-        let depth_view = depth_texture.create_view(&wgpu::TextureViewDescriptor::default());
-
-        let composite_texture = device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("composite texture"),
-            size: wgpu::Extent3d {
-                width,
-                height,
-                depth_or_array_layers: 1,
-            },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: Self::main_texture_format(),
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT
-                | wgpu::TextureUsages::TEXTURE_BINDING
-                | wgpu::TextureUsages::COPY_DST,
-            view_formats: &[],
-        });
-
-        let composite_view = composite_texture.create_view(&wgpu::TextureViewDescriptor::default());
-
-        Self {
-            main_texture,
-            main_view,
-            depth_texture,
-            depth_view,
-            composite_texture,
-            composite_view,
-        }
-    }
-}
-
-impl Drop for RenderTargets {
-    fn drop(&mut self) {
-        self.main_texture.destroy();
-        self.depth_texture.destroy();
-        self.composite_texture.destroy();
-    }
-}
 
 pub struct RenderContext {
     device: wgpu::Device,
@@ -172,20 +75,26 @@ impl Default for RenderState {
 
 impl RenderContext {
     pub async fn new(window: Arc<Window>) -> Self {
+        #[cfg(not(target_arch = "wasm32"))]
         let size = window.inner_size();
 
-        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
-            backends:
-            // vulkan for native linux/windows
-            // wgpu::Backends::VULKAN
-            // gl for the web
-wgpu::Backends::GL
-            ,
-            flags: wgpu::InstanceFlags::default(),
-            backend_options: wgpu::BackendOptions { gl: wgpu::GlBackendOptions {
-                gles_minor_version: wgpu::Gles3MinorVersion::Automatic,
-            }, dx12: wgpu::Dx12BackendOptions::default() },
+        #[cfg(target_arch = "wasm32")]
+        let size = {
+            // for some fucking reasons it has to be like this fuckinghell
+            let canvas = window.canvas().unwrap();
+            winit::dpi::LogicalSize::new(canvas.width(), canvas.height())
+        };
 
+        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
+            backends: wgpu::Backends::VULKAN // native windows/linux
+            | wgpu::Backends::GL, // webgpu doesnt work well on modern browsers, yet TODO: come back in 2 years
+            flags: wgpu::InstanceFlags::default(),
+            backend_options: wgpu::BackendOptions {
+                gl: wgpu::GlBackendOptions {
+                    gles_minor_version: wgpu::Gles3MinorVersion::Automatic,
+                },
+                dx12: wgpu::Dx12BackendOptions::default(),
+            },
         });
 
         let surface = instance.create_surface(window).unwrap();
@@ -208,17 +117,17 @@ wgpu::Backends::GL
         let mut limits =
             wgpu::Limits::downlevel_webgl2_defaults().using_resolution(adapter.limits());
         limits.max_texture_array_layers = 1024;
-        limits.max_storage_buffers_per_shader_stage = 4;
         // this is for mvp matrices
-        limits.max_storage_buffer_binding_size = (4 * 4 * 4) // 1 matrix4x4f
-            * 256; // 256 entities at 16.4 KB
+        limits.max_uniform_buffer_binding_size = (4 * 4 * 4) // 1 matrix4x4f
+            * MAX_MVP; // 512 entities at 32.8 KB
         // end limits
 
         let (device, queue) = adapter
             .request_device(
                 &wgpu::DeviceDescriptor {
                     label: None,
-                    required_features: wgpu::Features::DEPTH32FLOAT_STENCIL8,
+                    required_features: wgpu::Features::DEPTH32FLOAT_STENCIL8
+                        | wgpu::Features::FLOAT32_FILTERABLE,
                     required_limits: limits,
                     memory_hints: wgpu::MemoryHints::MemoryUsage,
                 },
