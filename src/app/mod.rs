@@ -1,12 +1,11 @@
-use std::{
-    sync::Arc,
-    time::{Duration, Instant},
-};
+use std::sync::Arc;
+
+// can use this for both native and web
+use web_time::{Duration, Instant};
 
 use interaction::Key;
 use pollster::FutureExt;
 use replay::Replay;
-use tracing::ensure_logging_hooks;
 use winit::{
     application::ApplicationHandler,
     dpi::LogicalSize,
@@ -15,9 +14,13 @@ use winit::{
     window::Window,
 };
 
+#[cfg(target_arch = "wasm32")]
+use wasm_bindgen::JsCast;
+#[cfg(target_arch = "wasm32")]
+use winit::platform::web::WindowAttributesExtWebSys;
+
 mod interaction;
 mod replay;
-mod tracing;
 
 use crate::{
     ghost::get_ghost,
@@ -74,25 +77,46 @@ impl App {
     ///
     /// If there is any event going on every frame, it should be contained in this function.
     pub fn tick(&mut self) {
+        // self.delta_update();
+
+        self.interaction_tick();
+        self.replay_tick();
+    }
+
+    fn delta_update(&mut self) {
         let now = Instant::now();
         let diff = now.duration_since(self.last_time);
         self.frame_time = diff.as_secs_f32();
         self.last_time = now;
         self.time += diff;
-
-        self.interaction_tick();
-        self.replay_tick();
     }
 }
 
 impl ApplicationHandler for App {
     fn resumed(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
-        let window = event_loop
-            .create_window(Window::default_attributes().with_inner_size(LogicalSize {
-                width: WINDOW_WIDTH,
-                height: WINDOW_HEIGHT,
-            }))
-            .unwrap();
+        let mut window_attributes = Window::default_attributes().with_inner_size(LogicalSize {
+            width: WINDOW_WIDTH,
+            height: WINDOW_HEIGHT,
+        });
+
+        // need to pass window into web <canvas>
+        #[cfg(target_arch = "wasm32")]
+        {
+            // Get the canvas from the DOM
+            let window = web_sys::window().unwrap();
+            let document = window.document().unwrap();
+            let canvas = document.get_element_by_id("canvas").unwrap();
+
+            // Append canvas to body if it's not already there
+            let body = document.body().unwrap();
+            if canvas.parent_node().is_none() {
+                body.append_child(&canvas).unwrap();
+            }
+
+            window_attributes = window_attributes.with_canvas(Some(canvas.dyn_into().unwrap()));
+        }
+
+        let window = event_loop.create_window(window_attributes).unwrap();
         let window = Arc::new(window);
 
         let render_context = pollster::block_on(RenderContext::new(window.clone()));
@@ -135,33 +159,6 @@ impl ApplicationHandler for App {
                 playback_mode: replay::ReplayPlaybackMode::RealTime,
             });
         }
-
-        // load just bsp
-        // {
-        //     let resource_loader = NativeResourceProvider::new("/home/khang/bxt/game_isolated/");
-        //     let resource = resource_loader
-        //         .get_resource(&crate::loader::ResourceIdentifier {
-        //             map_name: "c1a0.bsp".to_string(),
-        //             game_mod: "cstrike".to_string(),
-        //         })
-        //         .block_on()
-        //         .unwrap()
-        //         .to_bsp_resource();
-
-        //     let world_buffer = WorldLoader::load_world(
-        //         &render_context.device(),
-        //         &render_context.queue(),
-        //         &resource,
-        //     );
-
-        //     self.render_state.world_buffer = vec![world_buffer];
-
-        //     self.render_state.skybox = render_context.skybox_loader.load_skybox(
-        //         &render_context.device(),
-        //         &render_context.queue(),
-        //         &resource.skybox,
-        //     );
-        // }
 
         self.render_state.camera = Camera::default();
         // now do stuffs
@@ -248,8 +245,12 @@ impl ApplicationHandler for App {
     }
 }
 
-pub fn bsp() {
-    ensure_logging_hooks();
+pub fn run_kdr() {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        mod tracing;
+        tracing::ensure_logging_hooks();
+    }
 
     let event_loop = EventLoop::new().unwrap();
     // When the current loop iteration finishes, immediately begin a new
@@ -257,14 +258,6 @@ pub fn bsp() {
     // process. Preferred for applications that want to render as fast as
     // possible, like games.
     event_loop.set_control_flow(ControlFlow::Poll);
-
-    // When the current loop iteration finishes, suspend the thread until
-    // another event arrives. Helps keeping CPU utilization low if nothing
-    // is happening, which is preferred if the application might be idling in
-    // the background.
-    // event_loop.set_control_flow(ControlFlow::Wait);
-
-    // let mut app = HelloTriangle::new(event_loop);
 
     let mut a = App::default();
     event_loop.run_app(&mut a).unwrap();
