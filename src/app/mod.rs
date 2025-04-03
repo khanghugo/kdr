@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use constants::{WINDOW_HEIGHT, WINDOW_WIDTH};
 // can use this for both native and web
 use web_time::{Duration, Instant};
 
@@ -19,20 +20,18 @@ use wasm_bindgen::JsCast;
 #[cfg(target_arch = "wasm32")]
 use winit::platform::web::WindowAttributesExtWebSys;
 
+pub mod constants;
 mod interaction;
 mod replay;
 
 use crate::{
     ghost::get_ghost,
     loader::{ResourceIdentifier, ResourceProvider, native::NativeResourceProvider},
-    renderer::{RenderContext, RenderState, camera::Camera, world_buffer::WorldLoader},
+    renderer::{
+        RenderContext, RenderState, camera::Camera, utils::maybe_web_debug_print,
+        world_buffer::WorldLoader,
+    },
 };
-
-#[cfg(target_arch = "wasm32")]
-use crate::browser_console_log;
-
-const WINDOW_WIDTH: i32 = 1280;
-const WINDOW_HEIGHT: i32 = 960;
 
 // TODO restructure this
 // app might still be a general "app" that both native and web points to
@@ -110,13 +109,13 @@ impl ApplicationHandler for App {
             let document = window.document().unwrap();
             let canvas_element = document.get_element_by_id("canvas").unwrap();
 
-            browser_console_log(format!("{:?}", canvas_element).as_str());
-            browser_console_log("new message");
+            crate::browser_console_log(format!("{:?}", canvas_element).as_str());
+            crate::browser_console_log("new message");
 
             // Append canvas to body if it's not already there
             let body = document.body().unwrap();
             if canvas_element.parent_node().is_none() {
-                browser_console_log("cannot find <canvas id=\"canvas\">");
+                crate::browser_console_log("cannot find <canvas id=\"canvas\">");
 
                 body.append_child(&canvas_element).unwrap();
             }
@@ -124,14 +123,17 @@ impl ApplicationHandler for App {
             let canvas: web_sys::HtmlCanvasElement = canvas_element.dyn_into().unwrap();
 
             if canvas.get_context("webgl2").is_err() {
-                browser_console_log("<canvas> does not have webgl2 context");
+                crate::browser_console_log("<canvas> does not have webgl2 context");
             }
 
+            // TODO, make sure we have the element first before doing this?
             window_attributes = window_attributes.with_canvas(Some(canvas));
         }
 
         let window = event_loop.create_window(window_attributes).unwrap();
         let window = Arc::new(window);
+
+        maybe_web_debug_print(&format!("window size is {:?}", window.outer_size()));
 
         let render_context = pollster::block_on(RenderContext::new(window.clone()));
 
@@ -143,9 +145,15 @@ impl ApplicationHandler for App {
                 "/home/khang/bxt/game_isolated/cstrike/cc1036/c21_malle_enjoy_Mrjuice_0052.85.dem";
             let demo_bytes = std::fs::read(demo_path).unwrap();
             let ghost = get_ghost(demo_path, &demo_bytes).unwrap();
+
             let resource_identifier = ResourceIdentifier {
                 map_name: ghost.map_name.to_owned(),
                 game_mod: ghost.game_mod.to_owned(),
+            };
+
+            let resource_identifier = ResourceIdentifier {
+                map_name: "trans_compile".to_owned(),
+                game_mod: "cstrike".to_owned(),
             };
 
             let resource = resource_loader
@@ -172,6 +180,8 @@ impl ApplicationHandler for App {
                 ghost,
                 playback_mode: replay::ReplayPlaybackMode::RealTime,
             });
+
+            self.ghost = None;
         }
 
         self.render_state.camera = Camera::default();
@@ -253,6 +263,9 @@ impl ApplicationHandler for App {
                 // It is confined but it can hit the border.
                 // Thus, the position is clamped.
                 // Use raw input instead
+            }
+            WindowEvent::Resized(new_size) => {
+                maybe_web_debug_print(&format!("new window resize to {:?}", new_size));
             }
             _ => (),
         }

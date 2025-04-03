@@ -6,11 +6,10 @@ use winit::{
     window::CursorGrabMode,
 };
 
-use super::App;
-
-pub const CAM_SPEED: f32 = 1000.;
-pub const CAM_TURN: f32 = 150.; // degrees
-pub const SENSITIVITY: f32 = 0.06; // degree angles per mouse unit moved
+use super::{
+    App,
+    constants::{CAM_SPEED, CAM_TURN, SENSITIVITY},
+};
 
 #[derive(Debug, Clone, Copy)]
 pub struct Key(u32);
