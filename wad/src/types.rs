@@ -311,6 +311,10 @@ impl MipTex {
         // pad palette to correctly have 256 colors
         writer.append_u8_slice(&vec![0u8; (256 - self.palette.get_bytes().len()) * 3]);
     }
+
+    pub fn is_external(&self) -> bool {
+        self.mip_offsets[0] == 0
+    }
 }
 
 #[derive(Debug, Clone)]
