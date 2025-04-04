@@ -40,5 +40,9 @@ fn vs_main(@location(0) position: vec3f) -> VertexOutput {
 
 @fragment
 fn fs_main(input: VertexOutput) -> @location(0) vec4f {
-    return textureSample(skybox, skybox_sampler, input.tex_coords);
+    let color = textureSample(skybox, skybox_sampler, input.tex_coords);
+
+    // alpha must be hardcoded to 1.0
+    // some skyboxes like de_dust2 skybox ("Des*") have alpha 0.0
+    return vec4(color.rgb, 1.0);
 }
