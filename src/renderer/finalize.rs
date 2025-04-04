@@ -1,6 +1,10 @@
-//! Blits to swapchain
+//! Writes colors to swapchain.
 //!
-//! This should be the final step that represents to swapchain surface
+//! This should be the final step that presents to swapchain surface.
+//!
+//! The reason why this is needed is that we have multiple intermediate textures for appropriate states.
+//! Then, the final color is written to a final texture. That texture has more color range than swapchain.
+//! This step will convert the colorspace. We cannot directly blit into swapchain because it does not have COPY_DST.
 
 use super::utils::FullScrenTriVertexShader;
 
@@ -45,7 +49,7 @@ impl FinalizeRenderPipeline {
         let bind_group_layout = device.create_bind_group_layout(&bind_group_layout_descriptor);
 
         let linear_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-            label: Some("OIT Resolve Sampler"),
+            label: Some("finalize sampler"),
             address_mode_u: wgpu::AddressMode::ClampToEdge,
             address_mode_v: wgpu::AddressMode::ClampToEdge,
             address_mode_w: wgpu::AddressMode::ClampToEdge,
@@ -124,7 +128,7 @@ impl FinalizeRenderPipeline {
         swapchain_target: &wgpu::TextureView,
     ) {
         let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-            label: Some("OIT Resolve Pass"),
+            label: Some("finalize pass"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                 view: swapchain_target,
                 ops: wgpu::Operations {

@@ -283,7 +283,7 @@ impl LightMapAtlasBuffer {
             ],
         });
 
-        atlas_image.save("./examples/out.png");
+        // atlas_image.save("./examples/out.png");
 
         LightMapAtlasBuffer {
             texture,
@@ -304,6 +304,7 @@ struct LightmapDimension {
 
 // minimum light map size is always 2x2
 // https://github.com/rein4ce/hlbsp/blob/1546eaff4e350a2329bc2b67378f042b09f0a0b7/js/hlbsp.js#L499
+// TODO: fix weird lightmap alignment. It seems like noclip.website has it correctly so take a look at that.
 fn get_lightmap_dimensions(uvs: &[[f32; 2]]) -> LightmapDimension {
     let mut min_u = uvs[0][0].floor() as i32;
     let mut min_v = uvs[0][1].floor() as i32;

@@ -90,6 +90,7 @@ impl RenderContext {
             | wgpu::Backends::GL, // webgpu doesnt work well on modern browsers, yet TODO: come back in 2 years
             flags: wgpu::InstanceFlags::default(),
             backend_options: wgpu::BackendOptions {
+                // need to be explicit here just to be safe
                 gl: wgpu::GlBackendOptions {
                     gles_minor_version: wgpu::Gles3MinorVersion::Automatic,
                 },
@@ -126,8 +127,7 @@ impl RenderContext {
             .request_device(
                 &wgpu::DeviceDescriptor {
                     label: None,
-                    required_features: wgpu::Features::DEPTH32FLOAT_STENCIL8
-                        | wgpu::Features::FLOAT32_FILTERABLE,
+                    required_features: wgpu::Features::DEPTH32FLOAT_STENCIL8,
                     required_limits: limits,
                     memory_hints: wgpu::MemoryHints::MemoryUsage,
                 },
@@ -550,7 +550,8 @@ impl RenderContext {
 
         let swapchain_surface_texture = self.surface.get_current_texture().unwrap();
 
-        // blit to surface view
+        // writes to surface view because simply blitting doesn's work
+        // surface texture does not have COPY_DST
         {
             let swapchain_view = swapchain_surface_texture
                 .texture

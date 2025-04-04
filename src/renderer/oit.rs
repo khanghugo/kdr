@@ -243,6 +243,8 @@ impl OITResolver {
                 view: &self.reveal_view,
                 resolve_target: None,
                 ops: wgpu::Operations {
+                    // In the original implementation, revealage goes from 1.0 back to 0.0
+                    // Now we have to do the opposite due to some math.
                     load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
                     store: wgpu::StoreOp::Store,
                 },

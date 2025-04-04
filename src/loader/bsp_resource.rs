@@ -67,7 +67,7 @@ impl WorldEntity {
 
 /// Holds all data related to BSP for rendering. The client will process the data for the renderer to use.
 ///
-/// This struct must acquires all data from [`Resource`].
+/// This struct must acquires all data from [`loader::Resource`].
 pub struct BspResource {
     // [`bsp::Bsp`] is not encapsulated by [`ModelType`] enum is because this is more convenient.
     pub bsp: bsp::Bsp,
