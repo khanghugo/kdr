@@ -130,11 +130,6 @@ impl ResourceProvider for NativeResourceProvider {
             // then have the actual path of the skybox, starting from the gamedir so that we can load the images
             // the reason why this is needed is because the skybox might be in "valve" folder instead
             // the relative path can stay the same but we need the absolute path to open the correct file
-            println!("game mod {}", identifier.game_mod);
-            let rstarst = get_game_mods_to_check(&identifier.game_mod);
-            println!("game mods to check {:?}", rstarst);
-            println!("skybox name {}", skyname);
-
             let Some(absolute_paths) = local_paths
                 .iter()
                 .map(|path| {
@@ -160,6 +155,7 @@ impl ResourceProvider for NativeResourceProvider {
                 .iter()
                 .zip(images.into_iter())
                 .for_each(|(path, image_bytes)| {
+                    // when inserting back to the resource map, we use the name from cl_skyname
                     resource_map.insert(path.display().to_string(), image_bytes);
                 });
         }
