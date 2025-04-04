@@ -151,7 +151,7 @@ impl ApplicationHandler for App {
                 .unwrap();
 
             // let resource_identifier = ResourceIdentifier {
-            //     map_name: "trans_compile".to_owned(),
+            //     map_name: "surf_cyberwave".to_owned(),
             //     game_mod: "cstrike".to_owned(),
             // };
 
@@ -179,6 +179,8 @@ impl ApplicationHandler for App {
                 ghost,
                 playback_mode: replay::ReplayPlaybackMode::RealTime,
             });
+
+            // self.ghost = None;
         }
 
         self.render_state.camera = Camera::default();
