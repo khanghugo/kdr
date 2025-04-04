@@ -399,7 +399,10 @@ impl WorldLoader {
             .for_each(|(_, entity)| match entity.model {
                 EntityModel::Bsp => {
                     // hardcoded for all bsp brushes to use textures from worldspawn
-                    entity_textures.insert(entity.world_index, get_bsp_textures(&resource.bsp));
+                    entity_textures.insert(
+                        entity.world_index,
+                        get_bsp_textures(&resource.bsp, &resource.external_wad_textures),
+                    );
                 }
                 EntityModel::Mdl(ref mdl) => {
                     entity_textures.insert(entity.world_index, get_mdl_textures(&mdl));

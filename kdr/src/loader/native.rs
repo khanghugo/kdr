@@ -1,6 +1,12 @@
-use std::path::{Path, PathBuf};
+use std::{
+    collections::HashSet,
+    path::{Path, PathBuf},
+};
 
 use bsp::Bsp;
+use eyre::eyre;
+use tracing::info;
+use wad::types::Wad;
 
 use crate::{
     err,
@@ -42,11 +48,14 @@ impl ResourceProvider for NativeResourceProvider {
         let map_name = fix_bsp_file_name(identifier.map_name.as_str());
         let map_relative_path = PathBuf::from("maps").join(map_name.as_str());
 
+        info!("Requesting resources for {}", map_name);
+
         // need to properly search the bsp as well
         let Some(path_to_map) = search_game_resource(
             &self.game_dir,
             &identifier.game_mod,
             map_relative_path.as_path(),
+            true,
         ) else {
             return err!("cannot find .bsp `{}`", map_name);
         };
@@ -75,9 +84,12 @@ impl ResourceProvider for NativeResourceProvider {
                 continue;
             }
 
-            let Some(model_absolute_path) =
-                search_game_resource(&self.game_dir, &identifier.game_mod, Path::new(model_path))
-            else {
+            let Some(model_absolute_path) = search_game_resource(
+                &self.game_dir,
+                &identifier.game_mod,
+                Path::new(model_path),
+                true,
+            ) else {
                 println!("cannot find model `{model_path}`");
                 continue;
             };
@@ -91,6 +103,9 @@ impl ResourceProvider for NativeResourceProvider {
         }
 
         // get the skybox, just for the bsp_resource to do the same thing again
+        // UPDATE: skybox in cl_skyname is case insensitive
+        // that means, when we look for skybox files, we have to be case insensitive as well.
+        // eg: cl_skyname = "hello", that means, "Hellodn.tga" and "hellOuP.tga" are all valid.
         {
             // TODO find the skybox from the resources instead of deducing stuffs here
             let entity0 = &bsp.entities[0];
@@ -115,25 +130,220 @@ impl ResourceProvider for NativeResourceProvider {
             // then have the actual path of the skybox, starting from the gamedir so that we can load the images
             // the reason why this is needed is because the skybox might be in "valve" folder instead
             // the relative path can stay the same but we need the absolute path to open the correct file
-            let absolute_paths: Vec<PathBuf> = local_paths
+            println!("game mod {}", identifier.game_mod);
+            let rstarst = get_game_mods_to_check(&identifier.game_mod);
+            println!("game mods to check {:?}", rstarst);
+            println!("skybox name {}", skyname);
+
+            let Some(absolute_paths) = local_paths
                 .iter()
-                .filter_map(|path| search_game_resource(&self.game_dir, &identifier.game_mod, path))
-                .collect();
+                .map(|path| {
+                    search_game_resource(
+                        &self.game_dir,
+                        &identifier.game_mod,
+                        path,
+                        // skybox searching is case insensitive
+                        false,
+                    )
+                })
+                .collect::<Option<Vec<_>>>()
+            else {
+                return Err(eyre!("cannot find all skybox textures"));
+            };
 
-            if absolute_paths.len() == 6 {
-                let images: Vec<_> = absolute_paths
-                    .iter()
-                    .filter_map(|path| std::fs::read(path).ok())
-                    .collect();
+            let images: Vec<_> = absolute_paths
+                .iter()
+                .map(|path| std::fs::read(path).map_err(eyre::Report::new))
+                .collect::<eyre::Result<Vec<_>>>()?;
 
-                if images.len() == 6 {
-                    local_paths
-                        .iter()
-                        .zip(images.into_iter())
-                        .for_each(|(path, image_bytes)| {
-                            resource_map.insert(path.display().to_string(), image_bytes);
-                        });
+            local_paths
+                .iter()
+                .zip(images.into_iter())
+                .for_each(|(path, image_bytes)| {
+                    resource_map.insert(path.display().to_string(), image_bytes);
+                });
+        }
+
+        // check if we need external wad
+        let textures_in_external_wad: Vec<String> = bsp
+            .textures
+            .iter()
+            .filter_map(|miptex| {
+                if miptex.is_external() {
+                    return miptex.texture_name.get_string_standard().into();
                 }
+
+                None
+            })
+            .collect();
+
+        let res_path = path_to_map.with_extension("res");
+        let mut wad_fallback_search = false;
+
+        if !textures_in_external_wad.is_empty() && res_path.exists() {
+            // naive check to see if it has .res file and if the .res includes wad.
+            // DO NOT TRUST .RES FILE.
+            // we should check if .res file contains all of the external textures we want.
+            // if it doesn't, have fall back to nuclear option where we check all wad files. VERY BAD.
+            // this is why the server should be responsible for making good .res file and per map .wad file.
+
+            let res_file = std::fs::read_to_string(res_path.as_path())?;
+
+            info!("Map has external textures and a .res file. Trying to find .wad files.");
+
+            let wad_relative_paths = res_file
+                .lines()
+                .filter(|line| line.contains(".wad"))
+                .map(|wad_relative_path| wad_relative_path.trim())
+                .collect::<Vec<_>>();
+
+            // open all the wad files first and then we check it later
+            let wad_paths = wad_relative_paths
+                .iter()
+                .filter_map(|path| {
+                    search_game_resource(
+                        &self.game_dir,
+                        &identifier.game_mod,
+                        &Path::new(path),
+                        true,
+                    )
+                })
+                .collect::<Vec<_>>();
+
+            // opening the files twice, but i don't think it will be a big concern, i hope
+            let wad_files_bytes = wad_paths
+                .iter()
+                .map(|path| std::fs::read(path).map_err(eyre::Report::new))
+                .collect::<eyre::Result<Vec<_>>>()?;
+
+            let wad_files: Vec<Wad> = wad_files_bytes
+                .iter()
+                .map(|bytes| Wad::from_bytes(bytes))
+                .collect::<eyre::Result<Vec<_>>>()?;
+
+            // we have to verify that all of our external textures are inside the listed wad files
+            let mut all_wad_textures = HashSet::new();
+
+            wad_files.iter().for_each(|wad| {
+                wad.entries.iter().for_each(|entry| {
+                    if let Some(miptex) = entry.file_entry.get_mip_tex() {
+                        all_wad_textures.insert(miptex.texture_name.get_string_standard());
+                    }
+                });
+            });
+
+            let can_find_all_textures_in_listed_wads = textures_in_external_wad
+                .iter()
+                .all(|texture| all_wad_textures.contains(texture));
+
+            if can_find_all_textures_in_listed_wads {
+                wad_relative_paths
+                    .into_iter()
+                    .zip(wad_files_bytes.into_iter())
+                    .for_each(|(path, bytes)| {
+                        resource_map.insert(path.to_owned(), bytes);
+                    });
+
+                info!("Can find all .wad files needed for external textures.");
+            } else {
+                info!(
+                    "Cannot find all .wad files needed for external textures. Falling back to read all .wad files."
+                );
+
+                wad_fallback_search = true;
+            }
+        }
+
+        if !textures_in_external_wad.is_empty() && (!res_path.exists() || wad_fallback_search) {
+            // the nuclear option where we have to scan everything
+            info!("Map has external textures. Searching through all .wad files to find them.");
+
+            let game_mods_to_check = get_game_mods_to_check(&identifier.game_mod);
+
+            let mut wad_files_required: Vec<PathBuf> = vec![];
+            let mut remaining_textures: HashSet<String> =
+                textures_in_external_wad.iter().cloned().collect();
+
+            // for each game mod, add all the wads possible
+            game_mods_to_check.iter().for_each(|game_mod| {
+                let dir_to_read = self.game_dir.join(game_mod);
+
+                info!("Checking {game_mod}");
+
+                // early exit
+                if remaining_textures.is_empty() {
+                    return;
+                }
+
+                let Ok(dir_reader) = std::fs::read_dir(dir_to_read.as_path()) else {
+                    info!(
+                        "Cannot read dir `{}` to check for .wad files",
+                        dir_to_read.display()
+                    );
+
+                    return;
+                };
+
+                let dir_entries = dir_reader
+                    .filter_map(|entry| entry.ok())
+                    .collect::<Vec<_>>();
+
+                // for every entry, check if it is a wad file then add it to our list
+                // TODO maybe short circuit this
+                dir_entries.iter().for_each(|entry| {
+                    // early exit
+                    if remaining_textures.is_empty() {
+                        return;
+                    }
+
+                    let path = entry.path();
+
+                    if !path.is_file() {
+                        return;
+                    }
+
+                    if path.extension().is_some_and(|ext| ext == "wad") {
+                        let Ok(wad) = Wad::from_file(path.as_path()) else {
+                            return;
+                        };
+
+                        wad.entries.iter().for_each(|entry| {
+                            // early exit
+                            if remaining_textures.is_empty() {
+                                return;
+                            }
+
+                            let Some(miptex) = entry.file_entry.get_mip_tex() else {
+                                return;
+                            };
+
+                            let texture_name = miptex.texture_name.get_string_standard();
+
+                            if remaining_textures.contains(&texture_name) {
+                                wad_files_required.push(path.to_owned());
+                                remaining_textures.remove(&texture_name);
+                            }
+                        });
+                    }
+                });
+            });
+
+            if !remaining_textures.is_empty() {
+                info!(
+                    "After searching through all game mod directories for the .wad file. It is conclusive that this map is missing textures."
+                );
+            } else {
+                // add the wad files to our resource
+                wad_files_required.iter().for_each(|path| {
+                    // file name is our relative path
+                    let file_name = path.file_name().unwrap().to_str().unwrap();
+
+                    let Ok(bytes) = std::fs::read(path) else {
+                        return;
+                    };
+
+                    resource_map.insert(file_name.to_owned(), bytes);
+                });
             }
         }
 
@@ -147,22 +357,59 @@ impl ResourceProvider for NativeResourceProvider {
 // the file path must start from gamemod and it shouldnt have anything in prefix except for gamemod
 // eg: cstrike/maps/de_dust2 works
 // eg: ./cstrike/maps/de_dust2 does not work
-fn search_game_resource(game_dir: &Path, game_mod: &str, relative_path: &Path) -> Option<PathBuf> {
-    let one_shot_path = game_dir.join(game_mod).join(relative_path);
+fn search_game_resource(
+    game_dir: &Path,
+    game_mod: &str,
+    relative_path: &Path,
+    case_sensitive: bool,
+) -> Option<PathBuf> {
+    let mut one_shot_path = game_dir.join(game_mod).join(relative_path);
+
+    if !case_sensitive {
+        case_insensitive_file_search(one_shot_path.as_path())
+            // need to assign like this
+            // do not exit early
+            .map(|res| one_shot_path = res);
+    }
 
     if one_shot_path.exists() {
         return one_shot_path.into();
     }
 
+    let game_mods_to_check = get_game_mods_to_check(game_mod);
+
+    for game_mod_to_check in game_mods_to_check {
+        let mut new_path = game_dir.join(game_mod_to_check).join(relative_path);
+
+        if !case_sensitive {
+            case_insensitive_file_search(new_path.as_path())
+                // need to assign like this
+                // do not exit early
+                .map(|res| new_path = res);
+        }
+
+        if new_path.exists() {
+            return Some(new_path);
+        }
+    }
+
+    None
+}
+
+// includes the original game_mod
+fn get_game_mods_to_check(game_mod: &str) -> Vec<String> {
     let is_valve = game_mod == "valve";
     let is_download = game_mod.ends_with("downloads");
-    let mut gamemods_to_check: Vec<String> = vec![];
+    let mut gamemods_to_check: Vec<String> = vec![game_mod.to_owned()]; // add our original game mod
 
     // if someone feeds in half life maps, check for valve_downloads because why not
     // otherwise, add valve to our list
     if is_valve {
         gamemods_to_check.push("value_downloads".to_string());
     } else {
+        // check main mod and then check valve
+        // it is usually guaranteed that downloads folder is very big and longer to check. Whatever.
+        gamemods_to_check.push("valve".to_string());
         if is_download {
             let without_download = game_mod.replace("_downloads", "");
 
@@ -173,15 +420,29 @@ fn search_game_resource(game_dir: &Path, game_mod: &str, relative_path: &Path) -
 
         // every else needs to check in with "valve"
         // but we add it last because we have to prioritize our game mod
-        gamemods_to_check.push("valve".to_string());
-        gamemods_to_check.push("value_downloads".to_string());
+        gamemods_to_check.push("valve_downloads".to_string());
     }
 
-    for gamemod_to_check in gamemods_to_check {
-        let new_path = game_dir.join(gamemod_to_check).join(relative_path);
+    gamemods_to_check
+}
 
-        if new_path.exists() {
-            return Some(new_path);
+// HOLY FUCKING RETARDS
+fn case_insensitive_file_search(path: &Path) -> Option<PathBuf> {
+    let path_parent = path.parent()?;
+    let path_file_name_normalized = path.file_name()?.to_str()?.to_lowercase();
+
+    for entry in std::fs::read_dir(path_parent).unwrap() {
+        let entry = entry.unwrap();
+        let entry_path = entry.path();
+
+        if !entry_path.is_file() {
+            continue;
+        }
+
+        let entry_name_normalized = entry_path.file_name()?.to_str()?.to_lowercase();
+
+        if entry_name_normalized == path_file_name_normalized {
+            return Some(entry_path);
         }
     }
 

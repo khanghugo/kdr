@@ -25,6 +25,9 @@ use crate::ghost::{GhostError, GhostInfo, get_ghost};
 
 pub mod bsp_resource;
 mod error;
+
+// making sure
+#[cfg(not(target_arch = "wasm32"))]
 pub mod native;
 
 const MODEL_ENTITIES: &[&str] = &["cycler_sprite", "env_sprite"];

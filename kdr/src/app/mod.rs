@@ -150,10 +150,10 @@ impl ApplicationHandler for App {
                 .block_on()
                 .unwrap();
 
-            // let resource_identifier = ResourceIdentifier {
-            //     map_name: "surf_cyberwave".to_owned(),
-            //     game_mod: "cstrike".to_owned(),
-            // };
+            let resource_identifier = ResourceIdentifier {
+                map_name: "crossfire".to_owned(),
+                game_mod: "cstrike".to_owned(),
+            };
 
             let resource = resource_loader
                 .get_resource(&resource_identifier)
@@ -180,7 +180,7 @@ impl ApplicationHandler for App {
                 playback_mode: replay::ReplayPlaybackMode::RealTime,
             });
 
-            // self.ghost = None;
+            self.ghost = None;
         }
 
         self.render_state.camera = Camera::default();

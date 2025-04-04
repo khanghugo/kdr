@@ -1,6 +1,7 @@
 use std::{array::from_fn, collections::HashMap};
 
 use image::RgbaImage;
+use wad::types::Wad;
 
 fn most_repeating_number<T>(a: &[T]) -> T
 where
@@ -79,7 +80,7 @@ pub fn vertex_uv(pos: &bsp::Vec3, texinfo: &bsp::TexInfo) -> [f32; 2] {
     ]
 }
 
-pub fn get_bsp_textures(bsp: &bsp::Bsp) -> Vec<RgbaImage> {
+pub fn get_bsp_textures(bsp: &bsp::Bsp, external_wads: &[Wad]) -> Vec<RgbaImage> {
     bsp.textures
         .iter()
         .map(|texture| {
@@ -91,13 +92,40 @@ pub fn get_bsp_textures(bsp: &bsp::Bsp) -> Vec<RgbaImage> {
                 None
             };
 
-            eightbpp_to_rgba8(
-                texture.mip_images[0].data.get_bytes(),
-                texture.palette.get_bytes(),
-                texture.width,
-                texture.height,
-                override_alpha,
-            )
+            // offset 0 means it is using external wad
+            if texture.mip_offsets[0] == 0 {
+                external_wads
+                    .iter()
+                    .find_map(|wad| {
+                        wad.entries.iter().find_map(|entry| {
+                            let Some(external_texture) = entry.file_entry.get_mip_tex() else {
+                                return None;
+                            };
+
+                            if external_texture.texture_name.get_string_standard() == texture_name {
+                                return Some(eightbpp_to_rgba8(
+                                    external_texture.mip_images[0].data.get_bytes(),
+                                    external_texture.palette.get_bytes(),
+                                    external_texture.width,
+                                    external_texture.height,
+                                    override_alpha,
+                                ));
+                            }
+
+                            None
+                        })
+                    })
+                    // TODO maybe do magenta black checker pattern
+                    .unwrap_or_else(|| panic!("cannot find texture name `{texture_name}`"))
+            } else {
+                eightbpp_to_rgba8(
+                    texture.mip_images[0].data.get_bytes(),
+                    texture.palette.get_bytes(),
+                    texture.width,
+                    texture.height,
+                    override_alpha,
+                )
+            }
         })
         .collect()
 }

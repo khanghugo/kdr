@@ -6,6 +6,7 @@ use std::{collections::HashMap, path::PathBuf};
 
 use cgmath::{Rad, Rotation3, Zero};
 use image::RgbaImage;
+use wad::types::Wad;
 
 use crate::{
     loader::MODEL_ENTITIES,
@@ -74,6 +75,11 @@ pub struct BspResource {
     pub entity_dictionary: EntityDictionary,
     // Make up the order until it works
     pub skybox: Vec<RgbaImage>,
+    // Some maps use external WAD textures.
+    // In native implementation, we can load multiple wad files just fine because client processing is cheap.
+    // But in web implementation, we have to make sure we only have 1 wad texture.
+    // This means, we have to pre-process all BSP files to have their own wad file if needed.
+    pub external_wad_textures: Vec<Wad>,
 }
 
 impl BspResource {
@@ -307,10 +313,20 @@ impl BspResource {
             }
         }
 
+        // find wad files
+        let wads: Vec<Wad> = resource
+            .resources
+            .iter()
+            .filter(|(k, _)| k.ends_with(".wad"))
+            .map(|(_, wad_bytes)| Wad::from_bytes(wad_bytes))
+            .collect::<eyre::Result<Vec<_>>>() // cool new thing i learned
+            .expect("cannot load all wad files");
+
         BspResource {
             bsp: resource.bsp,
             entity_dictionary,
             skybox,
+            external_wad_textures: wads,
         }
     }
 }
