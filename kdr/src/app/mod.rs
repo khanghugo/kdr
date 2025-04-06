@@ -151,7 +151,7 @@ impl ApplicationHandler for App {
                 .unwrap();
 
             let resource_identifier = ResourceIdentifier {
-                map_name: "crossfire".to_owned(),
+                map_name: "whatis".to_owned(),
                 game_mod: "cstrike".to_owned(),
             };
 
