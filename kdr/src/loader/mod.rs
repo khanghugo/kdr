@@ -17,7 +17,11 @@
 //!
 //! This means, all code in this client repo will think about not having access to file system even though it can be used natively.
 
-use std::{collections::HashMap, ffi::OsStr, path::Path};
+use std::{
+    collections::HashMap,
+    ffi::OsStr,
+    path::{Path, PathBuf},
+};
 
 use bsp_resource::BspResource;
 use error::ResourceProviderError;
@@ -26,7 +30,7 @@ use serde::Deserialize;
 use crate::ghost::{GhostError, GhostInfo, get_ghost};
 
 pub mod bsp_resource;
-mod error;
+pub(crate) mod error;
 
 #[cfg(not(target_arch = "wasm32"))]
 pub mod native;
@@ -41,7 +45,7 @@ const MODEL_ENTITIES: &[&str] = &["cycler_sprite", "env_sprite"];
 // don't touch this
 const SKYBOX_SUFFIXES: &[&str] = &["ft", "bk", "up", "dn", "rt", "lf"];
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 /// Map Identifier is sent from client to server to request files related to the map.
 pub struct ResourceIdentifier {
     /// Name of the map. It should not have the ".bsp" extension

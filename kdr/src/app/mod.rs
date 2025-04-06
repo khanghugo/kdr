@@ -1,35 +1,38 @@
-use std::sync::Arc;
+use core::panic;
+use std::{path::Path, sync::Arc};
 
+use ::tracing::warn;
 use constants::{WINDOW_HEIGHT, WINDOW_WIDTH};
+// pollster for native use only
+#[cfg(not(target_arch = "wasm32"))]
+use pollster::FutureExt;
+
 // can use this for both native and web
 use web_time::{Duration, Instant};
 
 use interaction::Key;
-use pollster::FutureExt;
 use replay::Replay;
 use winit::{
     application::ApplicationHandler,
     dpi::LogicalSize,
     event::WindowEvent,
-    event_loop::{ControlFlow, EventLoop},
+    event_loop::{ControlFlow, EventLoop, EventLoopProxy},
     window::Window,
 };
 
 #[cfg(target_arch = "wasm32")]
+use crate::utils::browser_console_log;
+#[cfg(target_arch = "wasm32")]
 use wasm_bindgen::JsCast;
 #[cfg(target_arch = "wasm32")]
-use winit::platform::web::WindowAttributesExtWebSys;
-
+use winit::platform::web::{EventLoopExtWebSys, WindowAttributesExtWebSys};
 pub mod constants;
 mod interaction;
 mod replay;
 
 use crate::{
-    loader::{ResourceIdentifier, ResourceProvider},
-    renderer::{
-        RenderContext, RenderState, camera::Camera, utils::maybe_web_debug_print,
-        world_buffer::WorldLoader,
-    },
+    loader::{Resource, ResourceIdentifier, ResourceProvider, error::ResourceProviderError},
+    renderer::{RenderContext, RenderState, camera::Camera, world_buffer::WorldLoader},
 };
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -38,12 +41,25 @@ use crate::loader::native::NativeResourceProvider;
 #[cfg(target_arch = "wasm32")]
 use crate::loader::web::WebResourceProvider;
 
+#[derive(Debug, thiserror::Error)]
+pub enum AppError {
+    #[error("Problems with resource provider: {source}")]
+    ProviderError { source: ResourceProviderError },
+}
+
+pub enum CustomEvent {
+    CreateRenderContex(RenderContext),
+    RequestResource(ResourceIdentifier),
+    ReceiveResource(Resource),
+    ErrorEvent(AppError),
+}
+
 // TODO restructure this
 // app might still be a general "app" that both native and web points to
 // the difference might be the "window" aka where the canvas is
 // though not sure how to handle loop, that is for my future self
 struct App {
-    graphic_context: Option<RenderContext>,
+    render_context: Option<RenderContext>,
     window: Option<Arc<Window>>,
 
     // time
@@ -61,12 +77,41 @@ struct App {
     // input
     keys: Key,
     mouse_right_hold: bool,
+
+    // resource provider
+    #[cfg(not(target_arch = "wasm32"))]
+    native_resource_provider: Option<NativeResourceProvider>,
+    #[cfg(target_arch = "wasm32")]
+    web_resource_provider: Option<WebResourceProvider>,
+
+    // https://github.com/Jelmerta/Kloenk/blob/main/src/application.rs
+    event_loop_proxy: EventLoopProxy<CustomEvent>,
 }
 
-impl Default for App {
-    fn default() -> Self {
+impl App {
+    pub fn new(
+        provider_uri: Option<String>,
+        event_loop: &winit::event_loop::EventLoop<CustomEvent>,
+    ) -> Self {
+        let provider = provider_uri.and_then(|provider_uri| {
+            #[cfg(not(target_arch = "wasm32"))]
+            {
+                let path = Path::new(provider_uri.as_str());
+                let native_provider = NativeResourceProvider::new(path);
+                return Some(native_provider);
+            }
+
+            #[cfg(target_arch = "wasm32")]
+            {
+                let web_provider = WebResourceProvider::new(provider_uri);
+                return Some(web_provider);
+            }
+
+            None
+        });
+
         Self {
-            graphic_context: Default::default(),
+            render_context: Default::default(),
             window: Default::default(),
             time: Duration::ZERO,
             last_time: Instant::now(),
@@ -75,11 +120,14 @@ impl Default for App {
             keys: Key::empty(),
             mouse_right_hold: false,
             ghost: None,
+            #[cfg(not(target_arch = "wasm32"))]
+            native_resource_provider: provider,
+            #[cfg(target_arch = "wasm32")]
+            web_resource_provider: provider,
+            event_loop_proxy: event_loop.create_proxy(),
         }
     }
-}
 
-impl App {
     /// Tick function modifies everything in the app including the rendering state.
     ///
     /// If there is any event going on every frame, it should be contained in this function.
@@ -99,7 +147,8 @@ impl App {
     }
 }
 
-impl ApplicationHandler for App {
+impl ApplicationHandler<CustomEvent> for App {
+    // this is better suited for native run, not for web
     fn resumed(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
         #[allow(unused_mut)]
         let mut window_attributes = Window::default_attributes().with_inner_size(LogicalSize {
@@ -115,13 +164,12 @@ impl ApplicationHandler for App {
             let document = window.document().unwrap();
             let canvas_element = document.get_element_by_id("canvas").unwrap();
 
-            crate::browser_console_log(format!("{:?}", canvas_element).as_str());
-            crate::browser_console_log("new message");
+            browser_console_log("new message aaaaa");
 
             // Append canvas to body if it's not already there
             let body = document.body().unwrap();
             if canvas_element.parent_node().is_none() {
-                crate::browser_console_log("cannot find <canvas id=\"canvas\">");
+                browser_console_log("cannot find <canvas id=\"canvas\">");
 
                 body.append_child(&canvas_element).unwrap();
             }
@@ -129,7 +177,7 @@ impl ApplicationHandler for App {
             let canvas: web_sys::HtmlCanvasElement = canvas_element.dyn_into().unwrap();
 
             if canvas.get_context("webgl2").is_err() {
-                crate::browser_console_log("<canvas> does not have webgl2 context");
+                browser_console_log("<canvas> does not have webgl2 context");
             }
 
             // TODO, make sure we have the element first before doing this?
@@ -139,92 +187,33 @@ impl ApplicationHandler for App {
         let window = event_loop.create_window(window_attributes).unwrap();
         let window = Arc::new(window);
 
-        maybe_web_debug_print(&format!("window size is {:?}", window.outer_size()));
+        let render_context_future = RenderContext::new(window.clone());
 
-        let render_context = pollster::block_on(RenderContext::new(window.clone()));
+        self.window = Some(window.clone());
 
-        #[cfg(not(target_arch = "wasm32"))]
-        {
-            let demo_path =
-                "/home/khang/bxt/game_isolated/cstrike/cc1036/c21_malle_enjoy_Mrjuice_0052.85.dem";
-            let demo_bytes = std::fs::read(demo_path).unwrap();
-
-            let resource_loader = NativeResourceProvider::new("/home/khang/bxt/game_isolated/");
-            let (resource_identifier, ghost) = resource_loader
-                .get_ghost_data(demo_path, &demo_bytes)
-                .block_on()
-                .unwrap();
-
-            let resource_identifier = ResourceIdentifier {
-                map_name: "c1a0.bsp".to_owned(),
-                game_mod: "valse".to_owned(),
-            };
-
-            let resource = resource_loader
-                .get_resource(&resource_identifier)
-                .block_on()
-                .unwrap()
-                .to_bsp_resource();
-
-            let world_buffer = WorldLoader::load_world(
-                &render_context.device(),
-                &render_context.queue(),
-                &resource,
-            );
-
-            self.render_state.world_buffer = vec![world_buffer];
-
-            self.render_state.skybox = render_context.skybox_loader.load_skybox(
-                &render_context.device(),
-                &render_context.queue(),
-                &resource.skybox,
-            );
-
-            self.ghost = Some(Replay {
-                ghost,
-                playback_mode: replay::ReplayPlaybackMode::RealTime,
-            });
-
-            self.ghost = None;
-        }
+        // must clone because wasm spawn_local will capture self
+        let event_loop_proxy = self.event_loop_proxy.clone();
+        let send_create_context_message = move |render_context: RenderContext| {
+            event_loop_proxy
+                .send_event(CustomEvent::CreateRenderContex(render_context))
+                .unwrap_or_else(|_| panic!("Failed to send creating render context event"));
+        };
 
         #[cfg(target_arch = "wasm32")]
         {
-            let resource_loader = WebResourceProvider::new("http://localhost:3001");
-
-            let resource_identifier = ResourceIdentifier {
-                map_name: "c1a0.bsp".to_owned(),
-                game_mod: "valve".to_owned(),
-            };
-
-            let resource = resource_loader
-                .get_resource(&resource_identifier)
-                .block_on() // this doesnt work, need to load these resources somewhere else
-                .unwrap()
-                .to_bsp_resource();
-
-            let world_buffer = WorldLoader::load_world(
-                &render_context.device(),
-                &render_context.queue(),
-                &resource,
-            );
-
-            self.render_state.world_buffer = vec![world_buffer];
-
-            self.render_state.skybox = render_context.skybox_loader.load_skybox(
-                &render_context.device(),
-                &render_context.queue(),
-                &resource.skybox,
-            );
-
-            self.ghost = None;
+            wasm_bindgen_futures::spawn_local(async move {
+                let render_context = render_context_future.await;
+                send_create_context_message(render_context);
+            });
         }
 
-        self.render_state.camera = Camera::default();
-        // now do stuffs
-
-        self.window = Some(window);
-        self.graphic_context = render_context.into();
+        // we can do it like wasm where we send message and what not?
+        // TOOD maybe follow the same thing in wasm so things look samey everywhere
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let render_context = render_context_future.block_on();
+            send_create_context_message(render_context);
+        }
     }
 
     fn device_event(
@@ -250,21 +239,28 @@ impl ApplicationHandler for App {
     ) {
         match event {
             WindowEvent::CloseRequested => {
-                drop(self.graphic_context.as_mut());
+                drop(self.render_context.as_mut());
 
                 event_loop.exit();
             }
             WindowEvent::RedrawRequested => {
                 self.tick();
 
-                self.graphic_context.as_mut().map(|res| {
+                self.render_context.as_mut().map(|res| {
                     // rendering world
                     res.render(&mut self.render_state);
-
-                    // TODO rendering GUI with egui or somethin??
                 });
 
+                #[cfg(target_arch = "wasm32")]
+                {
+                    browser_console_log("still running");
+                }
+
                 self.window.as_mut().map(|window| {
+                    #[cfg(target_arch = "wasm32")]
+                    {
+                        browser_console_log("has window");
+                    }
                     let fps = (1.0 / self.frame_time).round();
 
                     // rename window based on fps
@@ -300,10 +296,125 @@ impl ApplicationHandler for App {
                 // Thus, the position is clamped.
                 // Use raw input instead
             }
-            WindowEvent::Resized(new_size) => {
-                maybe_web_debug_print(&format!("new window resize to {:?}", new_size));
-            }
+            WindowEvent::Resized(new_size) => {}
             _ => (),
+        }
+    }
+
+    fn user_event(&mut self, event_loop: &winit::event_loop::ActiveEventLoop, event: CustomEvent) {
+        match event {
+            CustomEvent::CreateRenderContex(render_context) => {
+                #[cfg(target_arch = "wasm32")]
+                {
+                    browser_console_log("starting render context");
+                }
+                self.render_context = render_context.into();
+
+                self.event_loop_proxy
+                    .send_event(CustomEvent::RequestResource(ResourceIdentifier {
+                        map_name: "c1a0.bsp".to_string(),
+                        game_mod: "valve".to_string(),
+                    }))
+                    .unwrap_or_else(|_| panic!("cannot send debug request"));
+            }
+            CustomEvent::RequestResource(resource_identifier) => {
+                #[cfg(target_arch = "wasm32")]
+                let Some(resource_provider) = &self.web_resource_provider else {
+                    return;
+                };
+
+                #[cfg(not(target_arch = "wasm32"))]
+                let Some(resource_provider) = &self.native_resource_provider else {
+                    return;
+                };
+
+                // need to clone resource_provider because it is borrowed from self with &'1 lifetime
+                // meanwhile, the spawn_local has 'static lifetime
+                // resource_provider is just a url/path, so we are all good in cloning
+                let resource_provider = resource_provider.to_owned();
+
+                // let resource_identifier = ResourceIdentifier {
+                //     map_name: "c1a0.bsp".to_owned(),
+                //     game_mod: "valve".to_owned(),
+                // };
+
+                let event_loop_proxy = self.event_loop_proxy.clone();
+                let send_receive_message =
+                    move |res: Result<Resource, ResourceProviderError>| match res {
+                        Ok(resource) => {
+                            event_loop_proxy
+                                .send_event(CustomEvent::ReceiveResource(resource))
+                                .unwrap_or_else(|_| panic!("cannot send resource process request"));
+                        }
+                        Err(err) => event_loop_proxy
+                            .send_event(CustomEvent::ErrorEvent(AppError::ProviderError {
+                                source: err,
+                            }))
+                            .unwrap_or_else(|_| panic!("cannot send error")),
+                    };
+
+                #[cfg(target_arch = "wasm32")]
+                {
+                    wasm_bindgen_futures::spawn_local(async move {
+                        // resource identifier stays in here as well so no lifetime shenanigans can happen
+                        let resource_res =
+                            resource_provider.get_resource(&resource_identifier).await;
+                        send_receive_message(resource_res);
+                    });
+                }
+
+                #[cfg(not(target_arch = "wasm32"))]
+                {
+                    let resource = resource_provider
+                        .get_resource(&resource_identifier)
+                        .block_on();
+
+                    send_receive_message(resource);
+                }
+            }
+            CustomEvent::ReceiveResource(resource) => {
+                #[cfg(target_arch = "wasm32")]
+                {
+                    browser_console_log("received resource");
+                }
+
+                let Some(render_context) = &mut self.render_context else {
+                    return;
+                };
+
+                let bsp_resource = resource.to_bsp_resource();
+
+                let world_buffer = WorldLoader::load_world(
+                    &render_context.device(),
+                    &render_context.queue(),
+                    &bsp_resource,
+                );
+
+                self.render_state.world_buffer = vec![world_buffer];
+
+                self.render_state.skybox = render_context.skybox_loader.load_skybox(
+                    &render_context.device(),
+                    &render_context.queue(),
+                    &bsp_resource.skybox,
+                );
+
+                // self.ghost = Some(Replay {
+                //     ghost,
+                //     playback_mode: replay::ReplayPlaybackMode::RealTime,
+                // });
+
+                self.render_state.camera = Camera::default();
+
+                self.ghost = None;
+            }
+            CustomEvent::ErrorEvent(app_error) => {
+                #[cfg(target_arch = "wasm32")]
+                {
+                    browser_console_log(format!("{:?}", app_error).as_str());
+                }
+
+                warn!("{}", app_error.to_string());
+            }
         }
     }
 }
@@ -312,19 +423,39 @@ impl ApplicationHandler for App {
 #[cfg(not(target_arch = "wasm32"))]
 mod tracing;
 
-pub fn run_kdr() {
+/// When the app is initialized, we must already know the resource provider.
+///
+/// In case of native application, we can feed it in later. That is why the argument is optional.
+pub fn run_kdr(resource_provider_base: Option<String>) {
     #[cfg(not(target_arch = "wasm32"))]
     {
         tracing::ensure_logging_hooks();
     }
 
-    let event_loop = EventLoop::new().unwrap();
+    let Ok(event_loop) = EventLoop::<CustomEvent>::with_user_event().build() else {
+        #[cfg(target_arch = "wasm32")]
+        {
+            browser_console_log("cannto start evetn loop");
+        }
+        return;
+    };
+
     // When the current loop iteration finishes, immediately begin a new
     // iteration regardless of whether or not new events are available to
     // process. Preferred for applications that want to render as fast as
     // possible, like games.
     event_loop.set_control_flow(ControlFlow::Poll);
 
-    let mut a = App::default();
-    event_loop.run_app(&mut a).unwrap();
+    // https://github.com/Jelmerta/Kloenk/blob/main/src/main.rs
+    #[cfg(target_arch = "wasm32")]
+    {
+        let app = App::new(resource_provider_base, &event_loop);
+        event_loop.spawn_app(app);
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let mut app = App::new(resource_provider_base, &event_loop);
+        event_loop.run_app(&mut app).unwrap();
+    }
 }

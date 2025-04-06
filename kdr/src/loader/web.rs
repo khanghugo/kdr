@@ -14,6 +14,7 @@ const MAP_NAME_KEY: &str = "map_name";
 const GAME_MOD_KEY: &str = "game_mod";
 const REQUEST_ENDPOINT: &str = "request-map";
 
+#[derive(Debug, Clone)]
 pub struct WebResourceProvider {
     pub base_url: String,
 }

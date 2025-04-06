@@ -1782,6 +1782,7 @@ dependencies = [
  "tracing-tracy",
  "wad",
  "wasm-bindgen",
+ "wasm-bindgen-futures",
  "web-sys",
  "web-time",
  "wgpu",
