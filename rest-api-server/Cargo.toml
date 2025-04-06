@@ -5,6 +5,7 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
+actix-cors = "0.7.1"
 actix-web = "4.10.2"
 clap = { version = "4.5.32", features = ["derive"] }
 kdr = { path = "../kdr" }
@@ -15,3 +16,7 @@ tracing = "0.1.41"
 tracing-subscriber = "0.3.19"
 uuid = { version = "1.16.0", features = ["v4"] }
 zip = { version = "2.6.1", features = ["deflate"], default-features = false }
+
+[features]
+default = []
+cors = []

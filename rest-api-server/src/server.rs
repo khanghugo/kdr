@@ -1,6 +1,6 @@
 use actix_web::{App, HttpResponse, HttpServer, Responder, get, post, web};
 use kdr::loader::{ResourceIdentifier, native::NativeResourceProvider};
-use tracing::{info, info_span, span, warn};
+use tracing::{info, info_span, warn};
 use uuid::Uuid;
 
 use crate::{send_res::gchimp_resmake, utils::sanitize_identifier};
@@ -83,12 +83,20 @@ pub async fn start_server(
     let data = AppData { resource_provider };
 
     HttpServer::new(move || {
-        App::new()
+        #[cfg(feature = "cors")]
+        let cors = actix_cors::Cors::permissive();
+
+        let app = App::new()
             .service(hello)
             .service(echo)
             .service(request_map)
             .route("/hey", web::get().to(manual_hello))
-            .app_data(web::Data::new(data.clone()))
+            .app_data(web::Data::new(data.clone()));
+
+        #[cfg(feature = "cors")]
+        let app = app.wrap(cors);
+
+        app
     })
     .bind(("127.0.0.1", port))?
     .run()
