@@ -37,4 +37,35 @@ pub enum ResourceProviderError {
         #[source]
         source: std::io::Error,
     },
+
+    // platform specific error :()
+    #[cfg(target_arch = "wasm32")]
+    #[error("Cannot send POST map request: {source}")]
+    PostError {
+        #[source]
+        source: reqwest::Error,
+    },
+
+    #[cfg(target_arch = "wasm32")]
+    #[error("Error from response: {source}")]
+    ResponseError {
+        #[source]
+        source: reqwest::Error,
+    },
+
+    #[cfg(target_arch = "wasm32")]
+    #[error("Error from response bytes: {source}")]
+    ResponseBytesError {
+        #[source]
+        source: reqwest::Error,
+    },
+
+    #[error("Cannot decompress the zip file: {source}")]
+    ZipDecompress {
+        #[source]
+        source: zip::result::ZipError,
+    },
+
+    #[error("Cannot .bsp map file from archive")]
+    BspFromArchive,
 }
