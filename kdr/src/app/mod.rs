@@ -48,7 +48,8 @@ pub enum AppError {
 }
 
 pub enum CustomEvent {
-    CreateRenderContex(RenderContext),
+    CreateRenderContext(Arc<Window>),
+    FinishCreateRenderContext(RenderContext),
     RequestResource(ResourceIdentifier),
     ReceiveResource(Resource),
     ErrorEvent(AppError),
@@ -187,33 +188,10 @@ impl ApplicationHandler<CustomEvent> for App {
         let window = event_loop.create_window(window_attributes).unwrap();
         let window = Arc::new(window);
 
-        let render_context_future = RenderContext::new(window.clone());
-
         self.window = Some(window.clone());
-
-        // must clone because wasm spawn_local will capture self
-        let event_loop_proxy = self.event_loop_proxy.clone();
-        let send_create_context_message = move |render_context: RenderContext| {
-            event_loop_proxy
-                .send_event(CustomEvent::CreateRenderContex(render_context))
-                .unwrap_or_else(|_| panic!("Failed to send creating render context event"));
-        };
-
-        #[cfg(target_arch = "wasm32")]
-        {
-            wasm_bindgen_futures::spawn_local(async move {
-                let render_context = render_context_future.await;
-                send_create_context_message(render_context);
-            });
-        }
-
-        // we can do it like wasm where we send message and what not?
-        // TOOD maybe follow the same thing in wasm so things look samey everywhere
-        #[cfg(not(target_arch = "wasm32"))]
-        {
-            let render_context = render_context_future.block_on();
-            send_create_context_message(render_context);
-        }
+        self.event_loop_proxy
+            .send_event(CustomEvent::CreateRenderContext(window))
+            .unwrap_or_else(|_| warn!("Failed to send CreateRenderContext message"));
     }
 
     fn device_event(
@@ -303,11 +281,43 @@ impl ApplicationHandler<CustomEvent> for App {
 
     fn user_event(&mut self, event_loop: &winit::event_loop::ActiveEventLoop, event: CustomEvent) {
         match event {
-            CustomEvent::CreateRenderContex(render_context) => {
+            CustomEvent::CreateRenderContext(window) => {
                 #[cfg(target_arch = "wasm32")]
                 {
                     browser_console_log("starting render context");
                 }
+
+                let render_context_future = RenderContext::new(window.clone());
+
+                let event_loop_proxy = self.event_loop_proxy.clone();
+                let send_message = move |render_context: RenderContext| {
+                    event_loop_proxy
+                        .send_event(CustomEvent::FinishCreateRenderContext(render_context))
+                        .unwrap_or_else(|_| warn!("Failed to send FinishCreateRenderContext"));
+                };
+
+                #[cfg(target_arch = "wasm32")]
+                {
+                    wasm_bindgen_futures::spawn_local(async move {
+                        let render_context = render_context_future.await;
+                        send_message(render_context);
+                    });
+                }
+
+                // we can do it like wasm where we send message and what not?
+                // TOOD maybe follow the same thing in wasm so things look samey everywhere
+                #[cfg(not(target_arch = "wasm32"))]
+                {
+                    let render_context = render_context_future.block_on();
+                    send_message(render_context)
+                }
+            }
+            CustomEvent::FinishCreateRenderContext(render_context) => {
+                #[cfg(target_arch = "wasm32")]
+                {
+                    browser_console_log("finish creating render context");
+                }
+
                 self.render_context = render_context.into();
 
                 self.event_loop_proxy
@@ -315,7 +325,7 @@ impl ApplicationHandler<CustomEvent> for App {
                         map_name: "c1a0.bsp".to_string(),
                         game_mod: "valve".to_string(),
                     }))
-                    .unwrap_or_else(|_| panic!("cannot send debug request"));
+                    .unwrap_or_else(|_| warn!("cannot send debug request"));
             }
             CustomEvent::RequestResource(resource_identifier) => {
                 #[cfg(target_arch = "wasm32")]
@@ -344,13 +354,13 @@ impl ApplicationHandler<CustomEvent> for App {
                         Ok(resource) => {
                             event_loop_proxy
                                 .send_event(CustomEvent::ReceiveResource(resource))
-                                .unwrap_or_else(|_| panic!("cannot send resource process request"));
+                                .unwrap_or_else(|_| panic!("cannot send ReceiveResource"));
                         }
                         Err(err) => event_loop_proxy
                             .send_event(CustomEvent::ErrorEvent(AppError::ProviderError {
                                 source: err,
                             }))
-                            .unwrap_or_else(|_| panic!("cannot send error")),
+                            .unwrap_or_else(|_| panic!("cannot send AppError::ProviderError")),
                     };
 
                 #[cfg(target_arch = "wasm32")]
