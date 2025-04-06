@@ -2,10 +2,18 @@
 
 use std::num::NonZeroU64;
 
+use bytemuck::{Pod, Zeroable};
 use wgpu::util::DeviceExt;
 
 pub fn calculate_mipmap_count(width: u32, height: u32) -> u32 {
     (width.max(height) as f32).log2().floor() as u32 + 1
+}
+
+#[derive(Pod, Zeroable, Clone, Copy)]
+#[repr(C)]
+pub struct LayerUniform {
+    layer: u32,
+    _padding: [u32; 3],
 }
 
 /// Only works on texture array
@@ -50,7 +58,20 @@ impl<'a> MipMapGenerator<'a> {
                     ty: wgpu::BindingType::Buffer {
                         ty: wgpu::BufferBindingType::Uniform,
                         has_dynamic_offset: false,
-                        min_binding_size: NonZeroU64::new(4),
+                        // cannot do 4 minimum bytes
+                        // """
+                        // In the provided shader, the type given for group 0 binding 2 has a size of 4.
+                        // As the device does not support `DownlevelFlags::BUFFER_BINDINGS_NOT_16_BYTE_ALIGNED`,
+                        // the type must have a size that is a multiple of 16 bytes.
+                        // """
+                        // And when I tried 16 bytes.
+                        // """
+                        // Buffer structure size 32, added to one element of an unbound array, if it's the last field,
+                        // ended up greater than the given `min_binding_size`, which is 16
+                        // """
+                        // Whatever.
+                        // TODO give a shit
+                        min_binding_size: NonZeroU64::new(32),
                     },
                     count: None,
                 },
@@ -146,11 +167,16 @@ impl<'a> MipMapGenerator<'a> {
                     usage: None,
                 });
 
+                let layer_uniform = LayerUniform {
+                    layer,
+                    _padding: [0u32; 3],
+                };
+
                 let layer_uniform_buffer =
                     self.device
                         .create_buffer_init(&wgpu::util::BufferInitDescriptor {
                             label: Some("layer uniform buffer"),
-                            contents: bytemuck::cast_slice(&[layer as u32]),
+                            contents: bytemuck::cast_slice(&[layer_uniform, layer_uniform]),
                             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
                         });
 

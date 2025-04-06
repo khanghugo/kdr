@@ -30,6 +30,7 @@ var input_sampler: sampler;
 
 struct LayerUniform {
     layer: u32,
+    _padding: vec3<u32>,
 };
 
 @group(0) @binding(2)
