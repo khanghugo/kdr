@@ -20,6 +20,8 @@
 use std::{collections::HashMap, ffi::OsStr, path::Path};
 
 use bsp_resource::BspResource;
+use error::ResourceProviderError;
+use serde::Deserialize;
 
 use crate::ghost::{GhostError, GhostInfo, get_ghost};
 
@@ -37,6 +39,7 @@ const MODEL_ENTITIES: &[&str] = &["cycler_sprite", "env_sprite"];
 // don't touch this
 const SKYBOX_SUFFIXES: &[&str] = &["ft", "bk", "up", "dn", "rt", "lf"];
 
+#[derive(Debug, Deserialize)]
 /// Map Identifier is sent from client to server to request files related to the map.
 pub struct ResourceIdentifier {
     /// Name of the map. It should not have the ".bsp" extension
@@ -79,7 +82,10 @@ impl Resource {
 pub trait ResourceProvider {
     /// Gets map resource from given map identifier.
     // TODO: implement some sort of error handling with custom enum?
-    async fn get_resource(&self, identifier: &ResourceIdentifier) -> eyre::Result<Resource>;
+    async fn get_resource(
+        &self,
+        identifier: &ResourceIdentifier,
+    ) -> Result<Resource, ResourceProviderError>;
 
     /// The client should also be able to parse a replay and get the map name out of it.
     ///

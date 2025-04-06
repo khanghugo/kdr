@@ -4,23 +4,20 @@ use std::{
 };
 
 use bsp::Bsp;
-use eyre::eyre;
 use tracing::info;
 use wad::types::Wad;
 
-use crate::{
-    err,
-    loader::{MODEL_ENTITIES, ResourceMap},
-};
+use crate::loader::{MODEL_ENTITIES, ResourceMap};
 
-use super::{ResourceProvider, SKYBOX_SUFFIXES, fix_bsp_file_name};
+use super::{ResourceProvider, SKYBOX_SUFFIXES, error::ResourceProviderError, fix_bsp_file_name};
 
+#[derive(Debug, Clone)]
 /// Lots of extra work but it is worth it
 pub struct NativeResourceProvider {
     /// Path to the game directory aka /path/to/hl.exe
     ///
     /// This data should be provided so that a demo can be played regardless of wherever it is on the drive.
-    game_dir: PathBuf,
+    pub game_dir: PathBuf,
 }
 
 impl NativeResourceProvider {
@@ -44,23 +41,29 @@ impl ResourceProvider for NativeResourceProvider {
     async fn get_resource(
         &self,
         identifier: &super::ResourceIdentifier,
-    ) -> eyre::Result<super::Resource> {
+    ) -> Result<super::Resource, ResourceProviderError> {
         let map_name = fix_bsp_file_name(identifier.map_name.as_str());
         let map_relative_path = PathBuf::from("maps").join(map_name.as_str());
 
         info!("Requesting resources for {}", map_name);
 
         // need to properly search the bsp as well
-        let Some(path_to_map) = search_game_resource(
+        let path_to_map = search_game_resource(
             &self.game_dir,
             &identifier.game_mod,
             map_relative_path.as_path(),
             true,
-        ) else {
-            return err!("cannot find .bsp `{}`", map_name);
-        };
+        )
+        .ok_or_else(|| ResourceProviderError::CannotFindBsp {
+            bsp_name: map_name.to_owned(),
+        })?;
 
-        let bsp = Bsp::from_file(path_to_map.as_path())?;
+        let bsp = Bsp::from_file(path_to_map.as_path()).map_err(|op| {
+            ResourceProviderError::CannotParseBsp {
+                source: op,
+                bsp_name: map_name.to_owned(),
+            }
+        })?;
 
         let mut resource_map = ResourceMap::new();
 
@@ -130,7 +133,7 @@ impl ResourceProvider for NativeResourceProvider {
             // then have the actual path of the skybox, starting from the gamedir so that we can load the images
             // the reason why this is needed is because the skybox might be in "valve" folder instead
             // the relative path can stay the same but we need the absolute path to open the correct file
-            let Some(absolute_paths) = local_paths
+            let absolute_paths = local_paths
                 .iter()
                 .map(|path| {
                     search_game_resource(
@@ -142,14 +145,13 @@ impl ResourceProvider for NativeResourceProvider {
                     )
                 })
                 .collect::<Option<Vec<_>>>()
-            else {
-                return Err(eyre!("cannot find all skybox textures"));
-            };
+                .ok_or_else(|| ResourceProviderError::CannotFindSkyboxTextures)?;
 
             let images: Vec<_> = absolute_paths
                 .iter()
-                .map(|path| std::fs::read(path).map_err(eyre::Report::new))
-                .collect::<eyre::Result<Vec<_>>>()?;
+                .map(|path| std::fs::read(path))
+                .collect::<std::io::Result<Vec<_>>>()
+                .map_err(|op| ResourceProviderError::IOErrors { source: op })?;
 
             local_paths
                 .iter()
@@ -183,7 +185,12 @@ impl ResourceProvider for NativeResourceProvider {
             // if it doesn't, have fall back to nuclear option where we check all wad files. VERY BAD.
             // this is why the server should be responsible for making good .res file and per map .wad file.
 
-            let res_file = std::fs::read_to_string(res_path.as_path())?;
+            let res_file = std::fs::read_to_string(res_path.as_path()).map_err(|op| {
+                ResourceProviderError::IOError {
+                    source: op,
+                    path: res_path.to_owned(),
+                }
+            })?;
 
             info!("Map has external textures and a .res file. Trying to find .wad files.");
 
@@ -209,13 +216,21 @@ impl ResourceProvider for NativeResourceProvider {
             // opening the files twice, but i don't think it will be a big concern, i hope
             let wad_files_bytes = wad_paths
                 .iter()
-                .map(|path| std::fs::read(path).map_err(eyre::Report::new))
-                .collect::<eyre::Result<Vec<_>>>()?;
+                .map(|path| std::fs::read(path))
+                .collect::<std::io::Result<Vec<_>>>()
+                .map_err(|op| ResourceProviderError::IOErrors { source: op })?;
 
-            let wad_files: Vec<Wad> = wad_files_bytes
-                .iter()
-                .map(|bytes| Wad::from_bytes(bytes))
-                .collect::<eyre::Result<Vec<_>>>()?;
+            // sequential like this so that the server knows what is wrong when something happens
+            let mut wad_files = vec![];
+            for (bytes, wad_file_name) in wad_files_bytes.iter().zip(wad_relative_paths.iter()) {
+                let wad_file =
+                    Wad::from_bytes(bytes).map_err(|op| ResourceProviderError::CannotParseWad {
+                        source: op,
+                        wad_name: wad_file_name.to_string(),
+                    })?;
+
+                wad_files.push(wad_file);
+            }
 
             // we have to verify that all of our external textures are inside the listed wad files
             let mut all_wad_textures = HashSet::new();
@@ -350,10 +365,8 @@ impl ResourceProvider for NativeResourceProvider {
     }
 }
 
-// the file path must start from gamemod and it shouldnt have anything in prefix except for gamemod
-// eg: cstrike/maps/de_dust2 works
-// eg: ./cstrike/maps/de_dust2 does not work
-fn search_game_resource(
+// search through the game files by switching between different game mods just to makes sure
+pub fn search_game_resource(
     game_dir: &Path,
     game_mod: &str,
     relative_path: &Path,
