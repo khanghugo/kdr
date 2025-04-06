@@ -25,13 +25,18 @@ mod interaction;
 mod replay;
 
 use crate::{
-    ghost::get_ghost,
-    loader::{ResourceIdentifier, ResourceProvider, native::NativeResourceProvider},
+    loader::{ResourceIdentifier, ResourceProvider},
     renderer::{
         RenderContext, RenderState, camera::Camera, utils::maybe_web_debug_print,
         world_buffer::WorldLoader,
     },
 };
+
+#[cfg(not(target_arch = "wasm32"))]
+use crate::loader::native::NativeResourceProvider;
+
+#[cfg(target_arch = "wasm32")]
+use crate::loader::web::WebResourceProvider;
 
 // TODO restructure this
 // app might still be a general "app" that both native and web points to
@@ -138,7 +143,7 @@ impl ApplicationHandler for App {
 
         let render_context = pollster::block_on(RenderContext::new(window.clone()));
 
-        // load ghost and then bsp?
+        #[cfg(not(target_arch = "wasm32"))]
         {
             let demo_path =
                 "/home/khang/bxt/game_isolated/cstrike/cc1036/c21_malle_enjoy_Mrjuice_0052.85.dem";
@@ -151,8 +156,8 @@ impl ApplicationHandler for App {
                 .unwrap();
 
             let resource_identifier = ResourceIdentifier {
-                map_name: "whatis".to_owned(),
-                game_mod: "cstrike".to_owned(),
+                map_name: "c1a0.bsp".to_owned(),
+                game_mod: "valse".to_owned(),
             };
 
             let resource = resource_loader
@@ -179,6 +184,38 @@ impl ApplicationHandler for App {
                 ghost,
                 playback_mode: replay::ReplayPlaybackMode::RealTime,
             });
+
+            self.ghost = None;
+        }
+
+        #[cfg(target_arch = "wasm32")]
+        {
+            let resource_loader = WebResourceProvider::new("http://localhost:3001");
+
+            let resource_identifier = ResourceIdentifier {
+                map_name: "c1a0.bsp".to_owned(),
+                game_mod: "valve".to_owned(),
+            };
+
+            let resource = resource_loader
+                .get_resource(&resource_identifier)
+                .block_on() // this doesnt work, need to load these resources somewhere else
+                .unwrap()
+                .to_bsp_resource();
+
+            let world_buffer = WorldLoader::load_world(
+                &render_context.device(),
+                &render_context.queue(),
+                &resource,
+            );
+
+            self.render_state.world_buffer = vec![world_buffer];
+
+            self.render_state.skybox = render_context.skybox_loader.load_skybox(
+                &render_context.device(),
+                &render_context.queue(),
+                &resource.skybox,
+            );
 
             self.ghost = None;
         }
