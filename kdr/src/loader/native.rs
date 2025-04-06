@@ -440,7 +440,7 @@ fn case_insensitive_file_search(path: &Path) -> Option<PathBuf> {
     let path_parent = path.parent()?;
     let path_file_name_normalized = path.file_name()?.to_str()?.to_lowercase();
 
-    for entry in std::fs::read_dir(path_parent).unwrap() {
+    for entry in std::fs::read_dir(path_parent).ok()? {
         let entry = entry.unwrap();
         let entry_path = entry.path();
 
