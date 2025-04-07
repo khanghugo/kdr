@@ -30,7 +30,7 @@ use serde::Deserialize;
 use crate::ghost::{GhostError, GhostInfo, get_ghost};
 
 pub mod bsp_resource;
-pub(crate) mod error;
+pub mod error;
 
 #[cfg(not(target_arch = "wasm32"))]
 pub mod native;

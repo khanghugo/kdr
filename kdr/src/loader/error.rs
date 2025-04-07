@@ -10,7 +10,7 @@ pub enum ResourceProviderError {
     #[error("Cannot parse map `{bsp_name}`: {source}")]
     CannotParseBsp {
         #[source]
-        source: eyre::Report,
+        source: bsp::error::BspError,
         bsp_name: String,
     },
 
