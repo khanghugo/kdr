@@ -414,7 +414,7 @@ fn get_game_mods_to_check(game_mod: &str) -> Vec<String> {
     // if someone feeds in half life maps, check for valve_downloads because why not
     // otherwise, add valve to our list
     if is_valve {
-        gamemods_to_check.push("value_downloads".to_string());
+        gamemods_to_check.push("valve_downloads".to_string());
     } else {
         // check main mod and then check valve
         // it is usually guaranteed that downloads folder is very big and longer to check. Whatever.
