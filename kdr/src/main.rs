@@ -6,7 +6,7 @@ mod utils;
 
 #[cfg(not(target_arch = "wasm32"))]
 pub fn main() {
-    let what = Some("/WD1/half-life".to_string());
+    let what = Some("/home/khang/bxt/game_isolated/".to_string());
     app::run_kdr(what);
 }
 

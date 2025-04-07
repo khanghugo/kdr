@@ -43,14 +43,14 @@ web-time = "1.1.0"
 # for some FUCKING reasons, cant compile the rest of the zip library
 zip = { version = "2.6.1", features = ["deflate"], default-features = false }
 
-# let tracing in be in both crate because i am sick of this error
+# tracing in browser
 tracing = "0.1.41"
+tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
 
 # native specific dependencies
 # basically the tracing stuffs
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 tracing-tracy = { version = "0.11.4", optional = true }
-tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
 tracing-chrome = "0.7.2"
 pollster = "0.4.0"
 
@@ -74,6 +74,7 @@ console_error_panic_hook = "0.1.7"
 console_log = "1.0.0"
 reqwest = { version = "0.12.15", features = ["json"] }
 wasm-bindgen-futures = "0.4.50"
+tracing-wasm = "0.2.1"
 
 [lib]
 crate-type = ["cdylib", "rlib"]

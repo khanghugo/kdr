@@ -5,6 +5,8 @@ use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitEx
 
 // from bxt-rs src/utils/mod.rs
 // https://github.com/YaLTeR/bxt-rs/blob/608fa9ff4b0ebdece1acd975065efb586ba15e1b/src/utils/mod.rs#L54
+
+#[cfg(not(target_arch = "wasm32"))]
 fn setup_logging_hooks() {
     let only_message = tracing_subscriber::fmt::format::debug_fn(|writer, field, value| {
         if field.name() == "message" {
@@ -90,6 +92,17 @@ fn setup_logging_hooks() {
         .init();
 
     info!("hello tracing")
+}
+
+#[cfg(target_arch = "wasm32")]
+fn setup_logging_hooks() {
+    std::panic::set_hook(Box::new(console_error_panic_hook::hook));
+    tracing_wasm::set_as_global_default();
+
+    // You can configure WASM tracing further if needed
+    tracing_wasm::WASMLayerConfigBuilder::new()
+        .set_max_level(tracing::Level::DEBUG)
+        .build();
 }
 
 pub fn ensure_logging_hooks() {

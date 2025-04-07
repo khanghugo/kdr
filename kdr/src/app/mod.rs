@@ -229,16 +229,7 @@ impl ApplicationHandler<CustomEvent> for App {
                     res.render(&mut self.render_state);
                 });
 
-                #[cfg(target_arch = "wasm32")]
-                {
-                    browser_console_log("still running");
-                }
-
                 self.window.as_mut().map(|window| {
-                    #[cfg(target_arch = "wasm32")]
-                    {
-                        browser_console_log("has window");
-                    }
                     let fps = (1.0 / self.frame_time).round();
 
                     // rename window based on fps
@@ -322,7 +313,7 @@ impl ApplicationHandler<CustomEvent> for App {
 
                 self.event_loop_proxy
                     .send_event(CustomEvent::RequestResource(ResourceIdentifier {
-                        map_name: "c1a0.bsp".to_string(),
+                        map_name: "crossfire.bsp".to_string(),
                         game_mod: "valve".to_string(),
                     }))
                     .unwrap_or_else(|_| warn!("cannot send debug request"));
@@ -429,18 +420,13 @@ impl ApplicationHandler<CustomEvent> for App {
     }
 }
 
-// "rustc: cannot declare a non-inline module inside a block unless it has a path attribute"
-#[cfg(not(target_arch = "wasm32"))]
 mod tracing;
 
 /// When the app is initialized, we must already know the resource provider.
 ///
 /// In case of native application, we can feed it in later. That is why the argument is optional.
 pub fn run_kdr(resource_provider_base: Option<String>) {
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        tracing::ensure_logging_hooks();
-    }
+    tracing::ensure_logging_hooks();
 
     let Ok(event_loop) = EventLoop::<CustomEvent>::with_user_event().build() else {
         #[cfg(target_arch = "wasm32")]
