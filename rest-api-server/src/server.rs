@@ -3,7 +3,10 @@ use kdr::loader::{ResourceIdentifier, native::NativeResourceProvider};
 use tracing::{info, info_span, warn};
 use uuid::Uuid;
 
-use crate::{send_res::gchimp_resmake, utils::sanitize_identifier};
+use crate::{
+    send_res::{gchimp_resmake_way, native_way},
+    utils::sanitize_identifier,
+};
 
 #[derive(Debug, Clone)]
 // The state doesn't change after starting the server so this works nicely.
@@ -48,7 +51,7 @@ async fn request_map(
         return HttpResponse::BadRequest().body("Invalid resource identifier.");
     };
 
-    match gchimp_resmake(&sanitized_identifier, &data.resource_provider) {
+    match native_way(&sanitized_identifier, &data.resource_provider).await {
         Ok(bytes) => {
             let file_name = sanitized_identifier.map_name.replace(".bsp", ".zip");
 

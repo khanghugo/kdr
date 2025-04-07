@@ -32,9 +32,12 @@
 use std::path::PathBuf;
 
 use kdr::loader::{
-    ResourceIdentifier,
+    ResourceIdentifier, ResourceProvider,
+    error::ResourceProviderError,
     native::{NativeResourceProvider, search_game_resource},
 };
+
+use crate::utils::{WasmFile, zip_files};
 
 #[derive(Debug, thiserror::Error)]
 pub enum ServerError {
@@ -47,9 +50,16 @@ pub enum ServerError {
         source: std::io::Error,
         path: PathBuf,
     },
+
+    #[error("Cannot fetch resources: {source}")]
+    ResourceProviderError {
+        #[source]
+        source: ResourceProviderError,
+    },
 }
 
-pub fn gchimp_resmake(
+/// Sends the map_name.zip next to map_name.bsp and it won't even check for the .bsp
+pub async fn gchimp_resmake_way(
     // identifier should already be sanitized at this point
     identifier: &ResourceIdentifier,
     resource_provider: &NativeResourceProvider,
@@ -69,6 +79,38 @@ pub fn gchimp_resmake(
         source: op,
         path: zip_file_path,
     })?;
+
+    Ok(zip_bytes)
+}
+
+pub async fn native_way(
+    identifier: &ResourceIdentifier,
+    resource_provider: &NativeResourceProvider,
+) -> Result<Vec<u8>, ServerError> {
+    let resources = resource_provider
+        .get_resource(identifier)
+        .await
+        .map_err(|op| ServerError::ResourceProviderError { source: op })?;
+
+    let mut wasm_files: Vec<WasmFile> = vec![];
+
+    // bsp is not inside resource
+    let bsp_path = format!("maps/{}", identifier.map_name);
+    let bsp_bytes = resources.bsp.write_to_bytes();
+
+    wasm_files.push(WasmFile {
+        name: bsp_path,
+        bytes: bsp_bytes,
+    });
+
+    resources.resources.into_iter().for_each(|(key, value)| {
+        wasm_files.push(WasmFile {
+            name: key,
+            bytes: value,
+        });
+    });
+
+    let zip_bytes = zip_files(wasm_files);
 
     Ok(zip_bytes)
 }
