@@ -3,6 +3,7 @@ pub mod error;
 mod parser;
 mod types;
 mod utils;
+mod writer;
 
 pub use parser::parse_bsp;
 pub use types::Bsp;
