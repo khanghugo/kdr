@@ -104,8 +104,6 @@ impl App {
                 let web_provider = WebResourceProvider::new(provider_uri);
                 return Some(web_provider);
             }
-
-            None
         });
 
         Self {
@@ -261,12 +259,11 @@ impl ApplicationHandler<CustomEvent> for App {
                 // Thus, the position is clamped.
                 // Use raw input instead
             }
-            WindowEvent::Resized(new_size) => {}
             _ => (),
         }
     }
 
-    fn user_event(&mut self, event_loop: &winit::event_loop::ActiveEventLoop, event: CustomEvent) {
+    fn user_event(&mut self, _event_loop: &winit::event_loop::ActiveEventLoop, event: CustomEvent) {
         match event {
             CustomEvent::CreateRenderContext(window) => {
                 info!("Creating a render context");
@@ -409,6 +406,7 @@ mod tracing;
 /// When the app is initialized, we must already know the resource provider.
 ///
 /// In case of native application, we can feed it in later. That is why the argument is optional.
+#[allow(unused)]
 pub fn run_kdr(resource_provider_base: Option<String>) {
     tracing::ensure_logging_hooks();
 

@@ -1,4 +1,4 @@
-use std::{array::from_fn, collections::HashMap};
+use std::collections::HashMap;
 
 use image::RgbaImage;
 use wad::types::Wad;
