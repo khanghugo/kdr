@@ -1,7 +1,6 @@
-use core::panic;
 use std::{path::Path, sync::Arc};
 
-use ::tracing::warn;
+use ::tracing::{info, warn};
 use constants::{WINDOW_HEIGHT, WINDOW_WIDTH};
 // pollster for native use only
 #[cfg(not(target_arch = "wasm32"))]
@@ -158,17 +157,16 @@ impl ApplicationHandler<CustomEvent> for App {
         // need to pass window into web <canvas>
         #[cfg(target_arch = "wasm32")]
         {
+            info!("Attaching <canvas> to winit Window");
             // Get the canvas from the DOM
             let window = web_sys::window().unwrap();
             let document = window.document().unwrap();
             let canvas_element = document.get_element_by_id("canvas").unwrap();
 
-            browser_console_log("new message aaaaa");
-
             // Append canvas to body if it's not already there
             let body = document.body().unwrap();
             if canvas_element.parent_node().is_none() {
-                browser_console_log("cannot find <canvas id=\"canvas\">");
+                warn!("cannot find <canvas id=\"canvas\">");
 
                 body.append_child(&canvas_element).unwrap();
             }
@@ -176,7 +174,7 @@ impl ApplicationHandler<CustomEvent> for App {
             let canvas: web_sys::HtmlCanvasElement = canvas_element.dyn_into().unwrap();
 
             if canvas.get_context("webgl2").is_err() {
-                browser_console_log("<canvas> does not have webgl2 context");
+                warn!("<canvas> does not have webgl2 context");
             }
 
             // TODO, make sure we have the element first before doing this?
@@ -271,10 +269,7 @@ impl ApplicationHandler<CustomEvent> for App {
     fn user_event(&mut self, event_loop: &winit::event_loop::ActiveEventLoop, event: CustomEvent) {
         match event {
             CustomEvent::CreateRenderContext(window) => {
-                #[cfg(target_arch = "wasm32")]
-                {
-                    browser_console_log("starting render context");
-                }
+                info!("Creating a render context");
 
                 let render_context_future = RenderContext::new(window.clone());
 
@@ -302,10 +297,7 @@ impl ApplicationHandler<CustomEvent> for App {
                 }
             }
             CustomEvent::FinishCreateRenderContext(render_context) => {
-                #[cfg(target_arch = "wasm32")]
-                {
-                    browser_console_log("finish creating render context");
-                }
+                info!("Finish creating a render context");
 
                 self.render_context = render_context.into();
 
@@ -317,6 +309,8 @@ impl ApplicationHandler<CustomEvent> for App {
                     .unwrap_or_else(|_| warn!("cannot send debug request"));
             }
             CustomEvent::RequestResource(resource_identifier) => {
+                info!("Requesting resources: {:?}", resource_identifier);
+
                 #[cfg(target_arch = "wasm32")]
                 let Some(resource_provider) = &self.web_resource_provider else {
                     return;
@@ -343,13 +337,13 @@ impl ApplicationHandler<CustomEvent> for App {
                         Ok(resource) => {
                             event_loop_proxy
                                 .send_event(CustomEvent::ReceiveResource(resource))
-                                .unwrap_or_else(|_| panic!("cannot send ReceiveResource"));
+                                .unwrap_or_else(|_| warn!("cannot send ReceiveResource"));
                         }
                         Err(err) => event_loop_proxy
                             .send_event(CustomEvent::ErrorEvent(AppError::ProviderError {
                                 source: err,
                             }))
-                            .unwrap_or_else(|_| panic!("cannot send AppError::ProviderError")),
+                            .unwrap_or_else(|_| warn!("cannot send AppError::ProviderError")),
                     };
 
                 #[cfg(target_arch = "wasm32")]
@@ -372,10 +366,7 @@ impl ApplicationHandler<CustomEvent> for App {
                 }
             }
             CustomEvent::ReceiveResource(resource) => {
-                #[cfg(target_arch = "wasm32")]
-                {
-                    browser_console_log("received resource");
-                }
+                info!("Received resources");
 
                 let Some(render_context) = &mut self.render_context else {
                     return;
@@ -407,12 +398,7 @@ impl ApplicationHandler<CustomEvent> for App {
                 self.ghost = None;
             }
             CustomEvent::ErrorEvent(app_error) => {
-                #[cfg(target_arch = "wasm32")]
-                {
-                    browser_console_log(format!("{:?}", app_error).as_str());
-                }
-
-                warn!("{}", app_error.to_string());
+                warn!("Error: {}", app_error.to_string());
             }
         }
     }
