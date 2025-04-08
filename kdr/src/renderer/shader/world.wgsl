@@ -3,11 +3,11 @@ struct VertexOut {
     @location(0) world_position: vec3f,
     @location(1) tex_coord: vec2f,
     @location(2) normal: vec3f,
-    @location(3) layer_idx: u32,
-    @location(4) model_idx: u32,
-    @location(5) type_: u32,
+    @location(3) @interpolate(flat) layer_idx: u32,
+    @location(4) @interpolate(flat) model_idx: u32,
+    @location(5) @interpolate(flat) type_: u32,
     @location(6) data_a: vec3f,
-    @location(7) data_b: vec2u,
+    @location(7) @interpolate(flat) data_b: vec2u,
 };
 
 @group(0) @binding(0)
@@ -28,7 +28,7 @@ fn skybox_mask_vs(
     @location(4) @interpolate(flat) model_idx: u32,
     @location(5) @interpolate(flat) type_: u32,
     @location(6) data_a: vec3f,
-    @location(7) data_b: vec2u,
+    @location(7) @interpolate(flat) data_b: vec2u,
 ) -> VertexOut {
     var output: VertexOut;
 
@@ -75,7 +75,7 @@ fn vs_main(
     @location(4) @interpolate(flat) model_idx: u32,
     @location(5) @interpolate(flat) type_: u32,
     @location(6) data_a: vec3f,
-    @location(7) data_b: vec2u,
+    @location(7) @interpolate(flat) data_b: vec2u,
 ) -> VertexOut {
     var output: VertexOut;
 
@@ -222,7 +222,14 @@ fn calculate_base_color(
 
     if type_ == 0 {
         // this is bsp vertex
-        let is_sky = data_b[1];
+        let is_sky = data_b[1] == 1;
+
+        // it doesn't matter if we discard sky here or not
+        // in the skybox pass, the stencil will write over fragments behind it regardless
+        // just draw it anyway so depth test is updated
+        // if is_sky {
+        //     discard;
+        // }
 
         let lightmap_coord = vec2f(data_a[0], data_a[1]);
         let light = textureSample(lightmap, lightmap_sampler, lightmap_coord).rgb
@@ -294,7 +301,7 @@ fn fs_opaque(
     @location(4) @interpolate(flat) model_idx: u32,
     @location(5) @interpolate(flat) type_: u32,
     @location(6) data_a: vec3f,
-    @location(7) data_b: vec2u,
+    @location(7) @interpolate(flat) data_b: vec2u,
 ) -> @location(0) vec4f {
     let color = calculate_base_color(position, tex_coord, normal, layer_idx, model_idx, type_, data_a, data_b);
 
@@ -317,13 +324,9 @@ fn fs_transparent(
     @location(4) @interpolate(flat) model_idx: u32,
     @location(5) @interpolate(flat) type_: u32,
     @location(6) data_a: vec3f,
-    @location(7) data_b: vec2u,
+    @location(7) @interpolate(flat) data_b: vec2u,
 ) -> FragOutput {
     // let is_opposite = dot(normal, normalize(world_position - camera_pos)) > 0.0;
-
-    // if is_opposite {
-    //     discard;
-    // }
 
     let color = calculate_base_color(position, tex_coord, normal, layer_idx, model_idx, type_, data_a, data_b);
 
