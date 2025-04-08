@@ -90,8 +90,6 @@ fn setup_logging_hooks() {
         // https://github.com/tokio-rs/tracing/issues/1817
         .with(term_layer)
         .init();
-
-    info!("hello tracing")
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -99,7 +97,6 @@ fn setup_logging_hooks() {
     std::panic::set_hook(Box::new(console_error_panic_hook::hook));
     tracing_wasm::set_as_global_default();
 
-    // You can configure WASM tracing further if needed
     tracing_wasm::WASMLayerConfigBuilder::new()
         .set_max_level(tracing::Level::DEBUG)
         .build();
@@ -108,4 +105,6 @@ fn setup_logging_hooks() {
 pub fn ensure_logging_hooks() {
     static ONCE: Once = Once::new();
     ONCE.call_once(setup_logging_hooks);
+
+    info!("hello tracing")
 }
