@@ -117,7 +117,7 @@ impl RenderContext {
         // edit limits
         let mut limits =
             wgpu::Limits::downlevel_webgl2_defaults().using_resolution(adapter.limits());
-        limits.max_texture_array_layers = 256;
+        limits.max_texture_array_layers = 1024;
         // this is for mvp matrices
         limits.max_uniform_buffer_binding_size = (4 * 4 * 4) // 1 matrix4x4f
             * MAX_MVP; // 512 entities at 32.8 KB
@@ -191,7 +191,7 @@ impl RenderContext {
             .unwrap();
 
         let config = wgpu::SurfaceConfiguration {
-            present_mode: wgpu::PresentMode::Fifo, // to mailbox later
+            present_mode: wgpu::PresentMode::AutoVsync,
             ..config
         };
 
@@ -275,67 +275,6 @@ impl RenderContext {
                 .write_buffer(&self.camera_buffer.position, 0, pos_bytes);
         }
 
-        let dummy_texture = self.device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("dummy_texture"),
-            size: wgpu::Extent3d {
-                width: 1,
-                height: 1,
-                depth_or_array_layers: 1,
-            },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: wgpu::TextureFormat::Rgba8UnormSrgb,
-            usage: wgpu::TextureUsages::TEXTURE_BINDING,
-            view_formats: &[],
-        });
-
-        let dummy_view = dummy_texture.create_view(&wgpu::TextureViewDescriptor::default());
-        let dummy_sampler = self
-            .device
-            .create_sampler(&wgpu::SamplerDescriptor::default());
-
-        // Create bind group layout
-        let dummy_bgl = self
-            .device
-            .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                label: Some("dummy_bgl"),
-                entries: &[
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 0,
-                        visibility: wgpu::ShaderStages::empty(),
-                        ty: wgpu::BindingType::Texture {
-                            sample_type: wgpu::TextureSampleType::Float { filterable: false },
-                            view_dimension: wgpu::TextureViewDimension::D2,
-                            multisampled: false,
-                        },
-                        count: None,
-                    },
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 1,
-                        visibility: wgpu::ShaderStages::empty(),
-                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::NonFiltering),
-                        count: None,
-                    },
-                ],
-            });
-
-        // Create actual bind groups
-        let dummy_texture_bg = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("dummy_texture_bg"),
-            layout: &dummy_bgl,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(&dummy_view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::Sampler(&dummy_sampler),
-                },
-            ],
-        });
-
         state.draw_call = 0;
 
         // UPDATE: no more z pre pass, it is more troubling than it is worth it
@@ -412,16 +351,16 @@ impl RenderContext {
             };
 
             let mut opaque_pass = encoder.begin_render_pass(&opaque_pass_descriptor);
-
             opaque_pass.set_pipeline(&self.world_opaque_render_pipeline);
-            opaque_pass.set_bind_group(0, &self.camera_buffer.bind_group, &[]);
 
             state.world_buffer.iter().for_each(|world_buffer| {
-                opaque_pass.set_bind_group(3, &world_buffer.bsp_lightmap.bind_group, &[]);
                 opaque_pass.set_bind_group(1, &world_buffer.mvp_buffer.bind_group, &[]);
+                opaque_pass.set_bind_group(3, &world_buffer.bsp_lightmap.bind_group, &[]);
 
                 world_buffer.opaque.iter().for_each(|batch| {
                     state.draw_call += 1;
+
+                    opaque_pass.set_bind_group(0, &self.camera_buffer.bind_group, &[]);
 
                     // texture array
                     opaque_pass.set_bind_group(
@@ -433,6 +372,7 @@ impl RenderContext {
                     opaque_pass.set_vertex_buffer(0, batch.vertex_buffer.slice(..));
                     opaque_pass
                         .set_index_buffer(batch.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
+
                     opaque_pass.draw_indexed(0..batch.index_count as u32, 0, 0..1);
                 });
             });
@@ -519,9 +459,6 @@ impl RenderContext {
                 rpass.set_bind_group(0, &self.camera_buffer.bind_group, &[]);
                 rpass.set_bind_group(1, &skybox_buffer.bind_group, &[]);
 
-                rpass.set_bind_group(2, &dummy_texture_bg, &[]);
-                rpass.set_bind_group(3, &dummy_texture_bg, &[]);
-
                 rpass.set_pipeline(&self.skybox_loader.pipeline);
                 // VERY IMPORTANT
                 rpass.set_stencil_reference(1);
@@ -554,13 +491,13 @@ impl RenderContext {
             };
 
             let mut transparent_pass = encoder.begin_render_pass(&transparent_pass_descriptor);
-
             transparent_pass.set_pipeline(&self.world_transparent_render_pipeline);
+
             transparent_pass.set_bind_group(0, &self.camera_buffer.bind_group, &[]);
 
             state.world_buffer.iter().for_each(|world_buffer| {
-                transparent_pass.set_bind_group(3, &world_buffer.bsp_lightmap.bind_group, &[]);
                 transparent_pass.set_bind_group(1, &world_buffer.mvp_buffer.bind_group, &[]);
+                transparent_pass.set_bind_group(3, &world_buffer.bsp_lightmap.bind_group, &[]);
 
                 world_buffer.transparent.iter().for_each(|batch| {
                     state.draw_call += 1;
@@ -575,6 +512,7 @@ impl RenderContext {
                     transparent_pass.set_vertex_buffer(0, batch.vertex_buffer.slice(..));
                     transparent_pass
                         .set_index_buffer(batch.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
+
                     transparent_pass.draw_indexed(0..batch.index_count as u32, 0, 0..1);
                 });
             });
