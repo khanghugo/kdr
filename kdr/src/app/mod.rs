@@ -30,16 +30,14 @@ pub mod constants;
 mod interaction;
 mod replay;
 
-use crate::{
-    loader::{Resource, ResourceIdentifier, ResourceProvider, error::ResourceProviderError},
-    renderer::{RenderContext, RenderState, camera::Camera, world_buffer::WorldLoader},
-};
+use crate::renderer::{RenderContext, RenderState, camera::Camera, world_buffer::WorldLoader};
+use loader::{Resource, ResourceIdentifier, ResourceProvider, error::ResourceProviderError};
 
 #[cfg(not(target_arch = "wasm32"))]
-use crate::loader::native::NativeResourceProvider;
+use loader::native::NativeResourceProvider;
 
 #[cfg(target_arch = "wasm32")]
-use crate::loader::web::WebResourceProvider;
+use loader::web::WebResourceProvider;
 
 #[derive(Debug, thiserror::Error)]
 pub enum AppError {
@@ -313,7 +311,7 @@ impl ApplicationHandler<CustomEvent> for App {
 
                 self.event_loop_proxy
                     .send_event(CustomEvent::RequestResource(ResourceIdentifier {
-                        map_name: "crossfire.bsp".to_string(),
+                        map_name: "boot_camp.bsp".to_string(),
                         game_mod: "valve".to_string(),
                     }))
                     .unwrap_or_else(|_| warn!("cannot send debug request"));

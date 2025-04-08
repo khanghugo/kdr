@@ -24,9 +24,9 @@ fn skybox_mask_vs(
     @location(0) pos: vec3f,
     @location(1) tex_coord: vec2f,
     @location(2) normal: vec3f,
-    @location(3) layer_idx: u32,
-    @location(4) model_idx: u32,
-    @location(5) type_: u32,
+    @location(3) @interpolate(flat) layer_idx: u32,
+    @location(4) @interpolate(flat) model_idx: u32,
+    @location(5) @interpolate(flat) type_: u32,
     @location(6) data_a: vec3f,
     @location(7) data_b: vec2u,
 ) -> VertexOut {
@@ -71,9 +71,9 @@ fn vs_main(
     @location(0) pos: vec3f,
     @location(1) tex_coord: vec2f,
     @location(2) normal: vec3f,
-    @location(3) layer_idx: u32,
-    @location(4) model_idx: u32,
-    @location(5) type_: u32,
+    @location(3) @interpolate(flat) layer_idx: u32,
+    @location(4) @interpolate(flat) model_idx: u32,
+    @location(5) @interpolate(flat) type_: u32,
     @location(6) data_a: vec3f,
     @location(7) data_b: vec2u,
 ) -> VertexOut {
@@ -95,13 +95,6 @@ fn vs_main(
 
     return output;
 }
-
-// fragment
-@group(2) @binding(0) var texture: texture_2d_array<f32>;
-@group(2) @binding(1) var linear_sampler: sampler;
-@group(2) @binding(2) var nearest_sampler: sampler;
-@group(3) @binding(0) var lightmap: texture_2d<f32>;
-@group(3) @binding(1) var lightmap_sampler: sampler;
 
 fn gamma_correct(color: vec3f) -> vec3f {
     let gamma: f32 = 1.6;
@@ -203,6 +196,13 @@ fn nearest_aa_filtering(_uv: vec2f, layer_idx: u32) -> vec4f {
     return textureSample(texture, linear_sampler, uv, layer_idx);
 }
 
+// fragment
+@group(2) @binding(0) var texture: texture_2d_array<f32>;
+@group(2) @binding(1) var linear_sampler: sampler;
+@group(2) @binding(2) var nearest_sampler: sampler;
+@group(3) @binding(0) var lightmap: texture_2d<f32>;
+@group(3) @binding(1) var lightmap_sampler: sampler;
+
 fn calculate_base_color(
     position: vec4f,
     tex_coord: vec2f,
@@ -215,8 +215,8 @@ fn calculate_base_color(
 ) -> vec4f {
     var albedo: vec4f;
 
-    // albedo = textureSample(texture, linear_sampler, tex_coord, layer_idx);
-    albedo = bicubic_filtering(tex_coord, layer_idx);
+    albedo = textureSample(texture, linear_sampler, tex_coord, layer_idx);
+    // albedo = bicubic_filtering(tex_coord, layer_idx);
     // albedo = nearest_aa_filtering(tex_coord, layer_idx);
     // albedo = pixel_art_filter2(tex_coord, layer_idx);
 
@@ -290,9 +290,9 @@ fn fs_opaque(
     @location(0) world_position: vec3f,
     @location(1) tex_coord: vec2f,
     @location(2) normal: vec3f,
-    @location(3) layer_idx: u32,
-    @location(4) model_idx: u32,
-    @location(5) type_: u32,
+    @location(3) @interpolate(flat) layer_idx: u32,
+    @location(4) @interpolate(flat) model_idx: u32,
+    @location(5) @interpolate(flat) type_: u32,
     @location(6) data_a: vec3f,
     @location(7) data_b: vec2u,
 ) -> @location(0) vec4f {
@@ -313,9 +313,9 @@ fn fs_transparent(
     @location(0) world_position: vec3f,
     @location(1) tex_coord: vec2f,
     @location(2) normal: vec3f,
-    @location(3) layer_idx: u32,
-    @location(4) model_idx: u32,
-    @location(5) type_: u32,
+    @location(3) @interpolate(flat) layer_idx: u32,
+    @location(4) @interpolate(flat) model_idx: u32,
+    @location(5) @interpolate(flat) type_: u32,
     @location(6) data_a: vec3f,
     @location(7) data_b: vec2u,
 ) -> FragOutput {

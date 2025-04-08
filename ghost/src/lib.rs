@@ -1,8 +1,4 @@
-use std::{
-    ffi::{OsStr, OsString},
-    path::{Path, PathBuf},
-    str::from_utf8,
-};
+use std::{ffi::OsStr, path::Path, str::from_utf8};
 
 use dem::{open_demo_from_bytes, types::Demo};
 pub use error::GhostError;
@@ -65,4 +61,25 @@ pub fn get_ghost<'a>(
 
     // get ghost galore
     get_ghost::get_ghost(path, ghost_blob).map_err(|err| GhostError::GhostParse { source: err })
+}
+
+#[macro_export]
+macro_rules! err {
+    ($e: ident) => {{
+        use eyre::eyre;
+
+        Err(eyre!($e))
+    }};
+
+    ($format_string: literal) => {{
+        use eyre::eyre;
+
+        Err(eyre!($format_string))
+    }};
+
+    ($($arg:tt)*) => {{
+        use eyre::eyre;
+
+        Err(eyre!($($arg)*))
+    }};
 }

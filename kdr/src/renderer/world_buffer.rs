@@ -4,7 +4,7 @@ use bytemuck_derive::{Pod, Zeroable};
 use image::RgbaImage;
 use wgpu::util::DeviceExt;
 
-use crate::loader::bsp_resource::{BspResource, CustomRender, EntityModel, WorldEntity};
+use loader::bsp_resource::{BspResource, CustomRender, EntityModel, WorldEntity};
 
 use super::{
     bsp_lightmap::LightMapAtlasBuffer,

@@ -31,7 +31,7 @@
 
 use std::path::PathBuf;
 
-use kdr::loader::{
+use loader::{
     ResourceIdentifier, ResourceProvider,
     error::ResourceProviderError,
     native::{NativeResourceProvider, search_game_resource},

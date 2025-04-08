@@ -7,7 +7,7 @@ use bsp::Bsp;
 use tracing::info;
 use wad::types::Wad;
 
-use crate::loader::{MODEL_ENTITIES, ResourceMap};
+use crate::{MODEL_ENTITIES, ResourceMap};
 
 use super::{ResourceProvider, SKYBOX_SUFFIXES, error::ResourceProviderError, fix_bsp_file_name};
 

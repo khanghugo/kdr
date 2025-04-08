@@ -1,6 +1,6 @@
 use std::{io::Write, path::Path};
 
-use kdr::loader::ResourceIdentifier;
+use loader::ResourceIdentifier;
 use tracing::{Level, info};
 use tracing_subscriber::FmtSubscriber;
 use zip::{ZipWriter, write::SimpleFileOptions};

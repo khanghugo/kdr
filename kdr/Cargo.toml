@@ -9,6 +9,8 @@ edition.workspace = true
 bsp = { path = "../bsp" }
 wad = { path = "../wad" }
 mdl = { path = "../mdl" }
+ghost = { path = "../ghost" }
+loader = { path = "../loader" }
 
 bytemuck = { version = "1.21.0" }
 # default bytemuck traits aren't available inside base bytemuck when compile wasm32, for some reasons
@@ -30,18 +32,11 @@ bitflags = "2.8.0"
 guillotiere = "0.6.2"
 eyre = "0.6.12"
 rayon = "1.10.0"
-dem = "0.2.3"
-serde = { version = "1.0.219", features = ["derive"] }
-serde_json = "1.0.140"
-nom = "7.1.3"
 thiserror = "2.0.12"
 
 # std::time::Instant panics in wasm32 and I don't like to repeat the exact same work that this crate already does
 # this crates re-exports std::time when not compiling to wasm32 so this one can just be used every where.
 web-time = "1.1.0"
-
-# for some FUCKING reasons, cant compile the rest of the zip library
-zip = { version = "2.6.1", features = ["deflate"], default-features = false }
 
 # tracing in browser
 tracing = "0.1.41"
@@ -72,7 +67,6 @@ web-sys = { version = "0.3.77", features = [
 wasm-bindgen = "0.2.100"
 console_error_panic_hook = "0.1.7"
 console_log = "1.0.0"
-reqwest = { version = "0.12.15", features = ["json"] }
 wasm-bindgen-futures = "0.4.50"
 tracing-wasm = "0.2.1"
 

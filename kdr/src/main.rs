@@ -1,6 +1,4 @@
 mod app;
-mod ghost;
-pub mod loader;
 mod renderer;
 mod utils;
 

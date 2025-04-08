@@ -1,8 +1,5 @@
 //! This `lib.rs` is for exporting symbols to `wasm32`.
 mod app;
-mod ghost;
-// This is public so that the REST API process can re-use its native functions.
-pub mod loader;
 mod renderer;
 mod utils;
 

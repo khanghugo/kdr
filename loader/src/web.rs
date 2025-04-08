@@ -6,7 +6,7 @@ use std::{
 use bsp::Bsp;
 use zip::ZipArchive;
 
-use crate::loader::{error::ResourceProviderError, fix_bsp_file_name};
+use crate::{error::ResourceProviderError, fix_bsp_file_name};
 
 use super::ResourceProvider;
 

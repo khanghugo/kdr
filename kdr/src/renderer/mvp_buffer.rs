@@ -1,6 +1,7 @@
+use loader::bsp_resource::WorldEntity;
 use wgpu::util::DeviceExt;
 
-use crate::{app::constants::MAX_MVP, loader::bsp_resource::WorldEntity};
+use crate::app::constants::MAX_MVP;
 
 // this should work for bsp as well because we will have func_rotating_door and whatever
 pub struct MvpBuffer {

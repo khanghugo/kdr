@@ -25,9 +25,8 @@ use std::{
 
 use bsp_resource::BspResource;
 use error::ResourceProviderError;
+use ghost::{GhostError, GhostInfo, get_ghost};
 use serde::Deserialize;
-
-use crate::ghost::{GhostError, GhostInfo, get_ghost};
 
 pub mod bsp_resource;
 pub mod error;

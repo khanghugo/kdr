@@ -1,5 +1,5 @@
 use actix_web::{App, HttpResponse, HttpServer, Responder, get, post, web};
-use kdr::loader::{ResourceIdentifier, native::NativeResourceProvider};
+use loader::{ResourceIdentifier, native::NativeResourceProvider};
 use tracing::{info, info_span, warn};
 use uuid::Uuid;
 

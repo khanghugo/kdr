@@ -1,6 +1,5 @@
 use cgmath::Deg;
-
-use crate::ghost::GhostInfo;
+use ghost::GhostInfo;
 
 use super::App;
 

@@ -5,13 +5,11 @@
 use std::{collections::HashMap, path::PathBuf};
 
 use cgmath::{Rad, Rotation3, Zero};
+use common::{BspAngles, build_mvp_from_origin_angles, get_idle_sequence_origin_angles};
 use image::RgbaImage;
 use wad::types::Wad;
 
-use crate::{
-    loader::MODEL_ENTITIES,
-    utils::{BspAngles, build_mvp_from_origin_angles, get_idle_sequence_origin_angles},
-};
+use crate::MODEL_ENTITIES;
 
 use super::{Resource, SKYBOX_SUFFIXES};
 

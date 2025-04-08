@@ -4,7 +4,7 @@
 use std::sync::LazyLock;
 
 use clap::Parser;
-use kdr::loader::native::NativeResourceProvider;
+use loader::native::NativeResourceProvider;
 use server::start_server;
 use utils::start_tracing;
 

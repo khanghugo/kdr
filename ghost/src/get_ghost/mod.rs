@@ -1,10 +1,8 @@
 use std::array::from_fn;
 use std::ffi::OsStr;
-use std::path::{Path, PathBuf};
-use std::str::from_utf8;
+use std::path::Path;
 
 use dem::types::Demo;
-use dem::{open_demo, open_demo_from_bytes};
 use glam::{FloatExt, Vec3};
 
 use crate::err;
