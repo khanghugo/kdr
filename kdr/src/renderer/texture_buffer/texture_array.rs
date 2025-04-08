@@ -45,10 +45,15 @@ impl TextureArrayBuffer {
     }
 }
 
+use std::sync::{Arc, LazyLock, Mutex};
+
 use eyre::eyre;
 use image::RgbaImage;
+use tracing::warn;
 
 use super::mipmap::{MipMapGenerator, calculate_mipmap_count};
+
+static TEXTURE_ARRAY_COUNT: LazyLock<Arc<Mutex<u32>>> = LazyLock::new(|| Arc::new(Mutex::new(0)));
 
 // this is assuming that they all have the same dimensions
 pub fn create_texture_array(
@@ -60,6 +65,27 @@ pub fn create_texture_array(
     if textures.is_empty() {
         return Err(eyre!("texture array length is 0"));
     }
+
+    let gles_cube_texture_fix = textures.len() == 6 || textures.len() == 1;
+
+    if gles_cube_texture_fix {
+        warn!(
+            "Creating a texture array with {} images. \
+If backend is GLES, an additional image is added to the array to avoid being interpreted as a cube texture. \
+This is an ongoing issue in wgpu (https://github.com/gfx-rs/wgpu/issues/4081).",
+            textures.len()
+        );
+    }
+
+    // wgpu fix
+    let texture_len = textures.len();
+    let texture_len = if texture_len == 6 {
+        7
+    } else if texture_len == 1 {
+        2
+    } else {
+        texture_len
+    };
 
     let tex0 = &textures[0];
     let (width, height) = tex0.dimensions();
@@ -77,12 +103,24 @@ pub fn create_texture_array(
 
     let power_level = (width.min(height) as f32).log2();
 
+    let get_texture_array_label = || {
+        let mut texture_array_count = TEXTURE_ARRAY_COUNT.lock().unwrap();
+
+        let label = format!("texture array {}", texture_array_count);
+
+        *texture_array_count += 1;
+
+        label
+    };
+
+    let label = get_texture_array_label();
+
     let texture_descriptor = wgpu::TextureDescriptor {
-        label: Some("texture array descriptor"),
+        label: Some(label.as_str()),
         size: wgpu::Extent3d {
             width,
             height,
-            depth_or_array_layers: textures.len() as u32,
+            depth_or_array_layers: texture_len as u32,
         },
         mip_level_count,
         sample_count: 1,
@@ -125,10 +163,15 @@ pub fn create_texture_array(
             );
         });
 
+    // An additional image should be added here. However, things just automagically work. so there is no need.
+    // if gles_cube_texture_fix {
+    //     // add a dummy image
+    // }
+
     mipmap_generator.generate_mipmaps_texture_array(
         &texture_array,
         mip_level_count,
-        textures.len() as u32,
+        texture_len as u32,
     );
 
     // bind layout
@@ -166,7 +209,7 @@ pub fn create_texture_array(
         base_mip_level: 0,
         mip_level_count: Some(mip_level_count),
         base_array_layer: 0,
-        array_layer_count: None,
+        array_layer_count: Some(texture_len as u32),
         usage: None,
     });
 
