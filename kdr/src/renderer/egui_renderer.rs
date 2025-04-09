@@ -2,8 +2,6 @@
 
 use tracing::warn;
 
-mod hello_world;
-
 pub struct EguiRenderer {
     state: egui_winit::State,
     renderer: egui_wgpu::Renderer,
@@ -137,7 +135,6 @@ impl EguiRenderer {
         self.begin_frame(window);
 
         // draw stuffs code
-        self.hello_world();
 
         self.end_frame_and_draw(
             device,

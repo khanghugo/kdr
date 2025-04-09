@@ -1,6 +1,5 @@
 //! This `lib.rs` is for exporting symbols to `wasm32`.
 mod app;
-mod overlay;
 mod renderer;
 mod utils;
 

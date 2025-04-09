@@ -18,6 +18,7 @@ use crate::app::constants::MAX_MVP;
 
 pub mod bsp_lightmap;
 pub mod camera;
+pub mod egui_renderer;
 pub mod finalize;
 pub mod mvp_buffer;
 pub mod oit;

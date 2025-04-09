@@ -29,9 +29,9 @@ pub mod constants;
 mod interaction;
 mod replay;
 
-use crate::{
-    overlay::EguiRenderer,
-    renderer::{RenderContext, RenderState, camera::Camera, world_buffer::WorldLoader},
+use crate::renderer::{
+    RenderContext, RenderState, camera::Camera, egui_renderer::EguiRenderer,
+    world_buffer::WorldLoader,
 };
 use loader::{Resource, ResourceIdentifier, ResourceProvider, error::ResourceProviderError};
 
@@ -250,7 +250,6 @@ impl ApplicationHandler<CustomEvent> for App {
                     .texture
                     .create_view(&wgpu::TextureViewDescriptor::default());
 
-                // let dimensions = window.inner_size();
                 let screen_descriptor = egui_wgpu::ScreenDescriptor {
                     size_in_pixels: [
                         render_context.surface_config().width,
