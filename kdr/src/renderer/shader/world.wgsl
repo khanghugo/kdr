@@ -17,7 +17,7 @@ var<uniform> camera_proj: mat4x4f;
 @group(0) @binding(2)
 var<uniform> camera_pos: vec3f;
 @group(1) @binding(0)
-var<uniform> model_view_array: array<mat4x4f, 256>; // make sure to match the max entity count
+var<uniform> model_view_array: array<mat4x4f, 512>; // make sure to match the max entity count
 
 @vertex
 fn skybox_mask_vs(
@@ -215,14 +215,18 @@ fn calculate_base_color(
 ) -> vec4f {
     var albedo: vec4f;
 
-    albedo = textureSample(texture, linear_sampler, tex_coord, layer_idx);
-    // albedo = bicubic_filtering(tex_coord, layer_idx);
+    // albedo = textureSample(texture, linear_sampler, tex_coord, layer_idx);
+    albedo = bicubic_filtering(tex_coord, layer_idx);
     // albedo = nearest_aa_filtering(tex_coord, layer_idx);
     // albedo = pixel_art_filter2(tex_coord, layer_idx);
 
     if type_ == 0 {
         // this is bsp vertex
-        let is_sky = data_b[1] == 1;
+        let is_trigger = data_b[1] == 2;
+
+        if is_trigger {
+            return albedo;
+        }
 
         // it doesn't matter if we discard sky here or not
         // in the skybox pass, the stencil will write over fragments behind it regardless
@@ -305,7 +309,12 @@ fn fs_opaque(
 ) -> @location(0) vec4f {
     let color = calculate_base_color(position, tex_coord, normal, layer_idx, model_idx, type_, data_a, data_b);
 
-    return color;
+    // at this stage, the fragment is either discarded or it is fully opaque
+    // hardcode alpha 1.0 here just to be safe
+    // there are some alpha tested textures that are misused will have alpha 0 instead
+    // even though they are not rendermode 4
+    // should not do this inside the calculate_base_color because it is also used for transparent fragments
+    return vec4(color.rgb, 1.0);
 }
 
 // WBOIT resolve

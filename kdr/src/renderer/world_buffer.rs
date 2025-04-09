@@ -524,6 +524,12 @@ struct ProcessBspFaceData<'a> {
     texture_layer_index: usize,
     face: &'a bsp::Face,
     custom_render: Option<&'a CustomRender>,
+    /// 0: Normal bsp face such as opaque and transparent face
+    ///
+    /// 1: Sky
+    ///
+    /// 2: Trigger brush
+    type_: u32,
 }
 
 // Returns (opaque batch lookup, transparent batch lookup)
@@ -554,11 +560,13 @@ fn create_batch_lookups(
         match &entity.model {
             EntityModel::Bsp
             | EntityModel::OpaqueEntityBrush(_)
-            | EntityModel::TransparentEntityBrush(_) => {
+            | EntityModel::TransparentEntityBrush(_)
+            | EntityModel::TriggerBrush(_) => {
                 let bsp_model_index = match &entity.model {
                     EntityModel::Bsp => 0,
                     EntityModel::OpaqueEntityBrush((x, _)) => *x,
                     EntityModel::TransparentEntityBrush((x, _)) => *x,
+                    EntityModel::TriggerBrush(x) => *x,
                     _ => unreachable!(),
                 };
 
@@ -568,6 +576,9 @@ fn create_batch_lookups(
                 let face_count = model.face_count as usize;
 
                 let faces = &bsp.faces[first_face..(first_face + face_count)];
+
+                // trigger will have no render effect
+                let is_trigger = matches!(entity.model, EntityModel::TriggerBrush(_));
 
                 // TODO: custom render for sprite and model, just pull this out of this scope
                 let custom_render = if is_transparent {
@@ -598,12 +609,26 @@ fn create_batch_lookups(
                             .get(&(0, texinfo.texture_index as usize))
                             .expect("cannot get world texture");
 
+                        let texture_name = bsp.textures[texinfo.texture_index as usize]
+                            .texture_name
+                            .get_string_standard();
+                        let is_sky = texture_name == "SKY";
+
+                        let face_type = if is_sky {
+                            1
+                        } else if is_trigger {
+                            2
+                        } else {
+                            0
+                        };
+
                         let face_data = ProcessBspFaceData {
                             bsp_face_index,
                             world_entity_index,
                             texture_layer_index: *layer_idx,
                             face,
                             custom_render,
+                            type_: face_type,
                         };
 
                         let (vertices, indices) = process_bsp_face(face_data, bsp, lightmap);
@@ -742,6 +767,7 @@ fn process_bsp_face(
         custom_render,
         world_entity_index,
         texture_layer_index,
+        type_,
     } = face_data;
 
     let face_vertices = face_vertices(face, bsp);
@@ -750,11 +776,6 @@ fn process_bsp_face(
 
     let normal = bsp.planes[face.plane as usize].normal;
     let texinfo = &bsp.texinfo[face.texinfo as usize];
-
-    let texture_name = bsp.textures[texinfo.texture_index as usize]
-        .texture_name
-        .get_string_standard();
-    let is_sky = if texture_name == "SKY" { 1 } else { 0 };
 
     // uv
     let miptex = &bsp.textures[texinfo.texture_index as usize];
@@ -823,7 +844,7 @@ fn process_bsp_face(
             model_idx: world_entity_index as u32,
             type_: 0,
             data_a: [lightmap_coord[0], lightmap_coord[1], renderamt],
-            data_b: [rendermode as u32, is_sky],
+            data_b: [rendermode as u32, type_],
         })
         .collect();
 

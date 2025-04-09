@@ -27,6 +27,12 @@ pub enum EntityModel {
     OpaqueEntityBrush((i32, CustomRender)),
     /// Data inside is Bsp Model Index, Custom Render properties
     TransparentEntityBrush((i32, CustomRender)),
+    /// Trigger brushes have different rendering properties that we need to handle.
+    ///
+    /// First of all, due to our code, renderamt for trigger brushes will be 0. This causes hall of mirror effect.
+    ///
+    /// Not only that, they don't have light map.
+    TriggerBrush(i32),
     // Data stored inside is the model name to get it from the `models` hash map inside [`BspResource`].
     Mdl(String),
     // TODO: implement sprite loading, sprite will likely be inside transparent buffer
@@ -123,6 +129,7 @@ impl BspResource {
                     return;
                 };
 
+                let is_trigger = classname.starts_with("trigger_");
                 let is_entity_brush = model_path.starts_with("*");
                 let is_valid_model_displaying_entity = MODEL_ENTITIES.contains(&classname.as_str());
                 let is_sprite = !is_entity_brush
@@ -160,13 +167,16 @@ impl BspResource {
                             renderamt
                         }
                     })
+                    // renderamt is defaulted to be 0.0 everywhere in the code
+                    // in the case of trigger, they don't have any light map and they aren't even opaque brush
+                    // that would be handled inside shader instead
                     .unwrap_or(0.0);
                 let renderfx = entity
                     .get("renderfx")
                     .and_then(|renderfx| renderfx.parse::<i32>().ok())
                     .unwrap_or(0);
 
-                if is_entity_brush {
+                if is_entity_brush && !is_trigger {
                     let is_opaque = [0, 4].contains(&rendermode) || renderamt == 255.0;
                     let bsp_model_index = model_path[1..]
                         .parse::<i32>()
@@ -211,6 +221,26 @@ impl BspResource {
                             },
                         );
                     }
+
+                    return;
+                }
+
+                if is_trigger {
+                    let bsp_model_index = model_path[1..]
+                        .parse::<i32>()
+                        .expect("brush model index is not a number");
+
+                    let angles = cgmath::Quaternion::zero();
+
+                    entity_dictionary.insert(
+                        bsp_entity_index,
+                        WorldEntity {
+                            world_index: assign_world_index(),
+                            model: EntityModel::TriggerBrush(bsp_model_index),
+                            origin,
+                            angles,
+                        },
+                    );
 
                     return;
                 }
