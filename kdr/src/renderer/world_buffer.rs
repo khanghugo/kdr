@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use bytemuck_derive::{Pod, Zeroable};
 use image::RgbaImage;
+use tracing::{info, warn};
 use wgpu::util::DeviceExt;
 
 use loader::bsp_resource::{BspResource, CustomRender, EntityModel, WorldEntity};
@@ -388,9 +389,11 @@ impl WorldLoader {
         queue: &wgpu::Queue,
         resource: &BspResource,
     ) -> (WorldTextureLookupTable, Vec<TextureArrayBuffer>) {
-        // key is world entity index
+        // key is the entity name
         // value is the texture array inside that model associated with that world entity
-        let mut entity_textures: HashMap<usize, Vec<RgbaImage>> = HashMap::new();
+        // So, if we have multiple models, they all will have the same key and the same textures
+        // In the case of worldspawn, just call it "worldspawn".
+        let mut entity_textures: HashMap<String, Vec<RgbaImage>> = HashMap::new();
 
         // insert textures
         resource
@@ -400,12 +403,20 @@ impl WorldLoader {
                 EntityModel::Bsp => {
                     // hardcoded for all bsp brushes to use textures from worldspawn
                     entity_textures.insert(
-                        entity.world_index,
+                        "worldspawn".to_string(),
                         get_bsp_textures(&resource.bsp, &resource.external_wad_textures),
                     );
                 }
-                EntityModel::Mdl(ref mdl) => {
-                    entity_textures.insert(entity.world_index, get_mdl_textures(&mdl));
+                EntityModel::Mdl(ref mdl_name) => {
+                    if entity_textures.contains_key(mdl_name) {
+                        return;
+                    }
+
+                    let Some(mdl_data) = resource.model_lookup.get(mdl_name) else {
+                        return;
+                    };
+
+                    entity_textures.insert(mdl_name.to_string(), get_mdl_textures(&mdl_data));
                 }
                 EntityModel::Sprite => {
                     todo!("cannot load sprite at the moment")
@@ -416,15 +427,30 @@ impl WorldLoader {
 
         // looking up which texture array to use from dimensions
         // key is dimensions
-        // value is Vec<(entity index, texture indices)>
-        let mut texture_arrays_look_up: HashMap<(u32, u32), Vec<(usize, usize)>> = HashMap::new();
+        // value is Vec<(model name, texture indices)>
+        // So, we have to somehow later translate that model name to world entity index
+        let mut texture_arrays_look_up: HashMap<(u32, u32), Vec<(String, usize)>> = HashMap::new();
 
-        // here we build the first look up table
-        // we still don't know what the bucket idx is but we do know bucket texture idx
-        // to fix that, we just have to iterate through the hashmap and do some comparisons (hopefully cheap)
-        entity_textures
+        // We only care about models that have textures
+        let entities_with_textures_names = resource
+            .entity_dictionary
             .iter()
-            .for_each(|(&world_entity_index, textures)| {
+            .filter_map(|(_, entity)| match entity.model {
+                EntityModel::Bsp => Some(("worldspawn", entity.world_index)),
+                EntityModel::Mdl(ref name) => Some((name, entity.world_index)),
+                EntityModel::Sprite => todo!("not implemented for sprite loading"),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+
+        // iterate over entities with textures, again, we want to make sure that the value is (world entity index, _)
+        entities_with_textures_names
+            .iter()
+            .for_each(|(model_name, _)| {
+                let Some(textures) = entity_textures.get(*model_name) else {
+                    return;
+                };
+
                 textures
                     .iter()
                     .enumerate()
@@ -432,7 +458,7 @@ impl WorldLoader {
                         texture_arrays_look_up
                             .entry(texture.dimensions())
                             .or_insert(vec![])
-                            .push((world_entity_index, texture_idx));
+                            .push((model_name.to_string(), texture_idx));
                     });
             });
 
@@ -442,15 +468,27 @@ impl WorldLoader {
         // value is (texture array buffer index, index of the texture in the texture array buffer)
         let mut lookup_table: WorldTextureLookupTable = HashMap::new();
 
+        // Now, our look up table will have more entries than our texture arrays.
+        // So, make that work somehow.
+        // I won't even begin to explain the fuckery this is. No LLM usage by the way.
         let texture_arrays: Vec<TextureArrayBuffer> = texture_arrays_look_up
             .iter()
             .enumerate()
             .map(|(bucket_idx, (_, texture_indices))| {
                 // add the texture indices into our lookup table
                 texture_indices.iter().enumerate().for_each(
-                    |(layer_idx, &(world_entity_idx, texture_idx))| {
-                        lookup_table
-                            .insert((world_entity_idx, texture_idx), (bucket_idx, layer_idx));
+                    |(layer_idx, (model_name, texture_idx))| {
+                        // in this, we already have our vector of entites with model name
+                        // just iterate over it to find them and add them here
+                        entities_with_textures_names
+                            .iter()
+                            .filter(|(curr_model_name, _)| *curr_model_name == model_name)
+                            .for_each(|(_, entity_world_index)| {
+                                lookup_table.insert(
+                                    (*entity_world_index, *texture_idx),
+                                    (bucket_idx, layer_idx),
+                                );
+                            });
                     },
                 );
 
@@ -466,6 +504,15 @@ impl WorldLoader {
                 create_texture_array(device, queue, &ref_vec).expect("cannot make texture array")
             })
             .collect();
+
+        let texture_count: usize = entity_textures.iter().map(|(_, v)| v.len()).sum();
+
+        info!(
+            "Created {} texture arrays of {} textures with {} entities look up",
+            texture_arrays.len(),
+            texture_count,
+            lookup_table.len()
+        );
 
         (lookup_table, texture_arrays)
     }
@@ -578,7 +625,12 @@ fn create_batch_lookups(
                 // create_bsp_batch_lookup(bsp)
             }
             // for some reasons this is inline but the bsp face is not
-            EntityModel::Mdl(mdl) => {
+            EntityModel::Mdl(mdl_name) => {
+                let Some(mdl) = resource.model_lookup.get(mdl_name) else {
+                    warn!("Cannot find model `{mdl_name}` to create a batch lookup");
+
+                    return;
+                };
                 mdl.bodyparts.iter().for_each(|bodypart| {
                     bodypart.models.iter().for_each(|model| {
                         model.meshes.iter().for_each(|mesh| {

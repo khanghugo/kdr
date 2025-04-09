@@ -17,11 +17,7 @@
 //!
 //! This means, all code in this client repo will think about not having access to file system even though it can be used natively.
 
-use std::{
-    collections::HashMap,
-    ffi::OsStr,
-    path::{Path, PathBuf},
-};
+use std::{collections::HashMap, ffi::OsStr, path::Path};
 
 use bsp_resource::BspResource;
 use error::ResourceProviderError;

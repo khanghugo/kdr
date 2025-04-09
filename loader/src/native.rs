@@ -4,7 +4,7 @@ use std::{
 };
 
 use bsp::Bsp;
-use tracing::info;
+use tracing::{info, warn};
 use wad::types::Wad;
 
 use crate::{MODEL_ENTITIES, ResourceMap};
@@ -87,18 +87,23 @@ impl ResourceProvider for NativeResourceProvider {
                 continue;
             }
 
+            // check if resource already exists
+            if resource_map.contains_key(model_path) {
+                continue;
+            }
+
             let Some(model_absolute_path) = search_game_resource(
                 &self.game_dir,
                 &identifier.game_mod,
                 Path::new(model_path),
                 true,
             ) else {
-                println!("cannot find model `{model_path}`");
+                warn!("cannot find model `{model_path}`");
                 continue;
             };
 
             let Ok(model_bytes) = std::fs::read(model_absolute_path.as_path()) else {
-                println!("cannot load model {}", model_absolute_path.display());
+                warn!("cannot load model {}", model_absolute_path.display());
                 continue;
             };
 

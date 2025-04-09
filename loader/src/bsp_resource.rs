@@ -7,6 +7,7 @@ use std::{collections::HashMap, path::PathBuf};
 use cgmath::{Rad, Rotation3, Zero};
 use common::{BspAngles, build_mvp_from_origin_angles, get_idle_sequence_origin_angles};
 use image::RgbaImage;
+use tracing::warn;
 use wad::types::Wad;
 
 use crate::MODEL_ENTITIES;
@@ -26,8 +27,8 @@ pub enum EntityModel {
     OpaqueEntityBrush((i32, CustomRender)),
     /// Data inside is Bsp Model Index, Custom Render properties
     TransparentEntityBrush((i32, CustomRender)),
-    // For convenient sake, store the model inside this.
-    Mdl(mdl::Mdl),
+    // Data stored inside is the model name to get it from the `models` hash map inside [`BspResource`].
+    Mdl(String),
     // TODO: implement sprite loading, sprite will likely be inside transparent buffer
     Sprite,
 }
@@ -78,6 +79,10 @@ pub struct BspResource {
     // But in web implementation, we have to make sure we only have 1 wad texture.
     // This means, we have to pre-process all BSP files to have their own wad file if needed.
     pub external_wad_textures: Vec<Wad>,
+    // All model entities point here to reuse the model data. With this, we won't have duplicated texture data.
+    // There is still duplicated vertex data though but those are cheaper than textures.
+    // Key is model path. Value is model data.
+    pub model_lookup: HashMap<String, mdl::Mdl>,
 }
 
 impl BspResource {
@@ -92,6 +97,7 @@ impl BspResource {
         };
 
         let mut entity_dictionary = EntityDictionary::new();
+        let mut model_lookup = HashMap::new();
 
         resource
             .bsp
@@ -210,17 +216,27 @@ impl BspResource {
                 }
 
                 if is_mdl {
-                    let Some(mdl_bytes) = resource.resources.get(model_path) else {
-                        println!("cannot find '{}' from fetched resources", model_path);
+                    let is_model_loaded = model_lookup.contains_key(model_path);
 
-                        return;
-                    };
+                    // cannot do hashmap.or_insert_with becuase we won't be able to exit
+                    if !is_model_loaded {
+                        let Some(mdl_bytes) = resource.resources.get(model_path) else {
+                            warn!("cannot find '{}' from fetched resources", model_path);
+                            return;
+                        };
 
-                    let Ok(mdl) = mdl::Mdl::open_from_bytes(mdl_bytes) else {
-                        println!("cannot parse model '{}'", model_path);
+                        let Ok(mdl) = mdl::Mdl::open_from_bytes(mdl_bytes) else {
+                            warn!("cannot parse model '{}'", model_path);
+                            return;
+                        };
 
-                        return;
-                    };
+                        model_lookup.insert(model_path.to_string(), mdl);
+                    }
+
+                    let mdl = model_lookup
+                        .get(model_path)
+                        // this this should always work
+                        .expect("cannot get recently inserted model.");
 
                     let (idle_origin, idle_angles) = get_idle_sequence_origin_angles(&mdl);
                     let idle_angles = idle_angles.get_world_angles();
@@ -252,7 +268,7 @@ impl BspResource {
                         bsp_entity_index,
                         WorldEntity {
                             world_index: assign_world_index(),
-                            model: EntityModel::Mdl(mdl),
+                            model: EntityModel::Mdl(model_path.to_string()),
                             origin: new_origin,
                             angles: new_angles,
                         },
@@ -325,6 +341,7 @@ impl BspResource {
             entity_dictionary,
             skybox,
             external_wad_textures: wads,
+            model_lookup,
         }
     }
 }
