@@ -1,7 +1,7 @@
 use cgmath::Deg;
 use ghost::GhostInfo;
 
-use super::App;
+use super::AppState;
 
 /// How a replay is played.
 pub enum ReplayPlaybackMode {
@@ -22,7 +22,7 @@ pub struct Replay {
     pub playback_mode: ReplayPlaybackMode,
 }
 
-impl App {
+impl AppState {
     pub fn replay_tick(&mut self) {
         let Some(replay) = &self.ghost else { return };
 

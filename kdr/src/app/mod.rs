@@ -27,6 +27,7 @@ use wasm_bindgen::JsCast;
 use winit::platform::web::{EventLoopExtWebSys, WindowAttributesExtWebSys};
 pub mod constants;
 mod interaction;
+mod overlay;
 mod replay;
 
 use crate::renderer::{
@@ -56,15 +57,8 @@ pub enum CustomEvent {
     ErrorEvent(AppError),
 }
 
-// TODO restructure this
-// app might still be a general "app" that both native and web points to
-// the difference might be the "window" aka where the canvas is
-// though not sure how to handle loop, that is for my future self
-struct App {
-    render_context: Option<RenderContext>,
-    egui_renderer: Option<EguiRenderer>,
-    window: Option<Arc<Window>>,
-
+// Decouples states from App so that we can impl specific stuffs that affect states without affecting App.
+struct AppState {
     // time
     time: Duration,
     last_time: Instant,
@@ -80,6 +74,34 @@ struct App {
     // input
     keys: Key,
     mouse_right_hold: bool,
+
+    debug: u32,
+}
+
+impl Default for AppState {
+    fn default() -> Self {
+        Self {
+            time: Duration::ZERO,
+            last_time: Instant::now(),
+            frame_time: 1.,
+            render_state: Default::default(),
+            keys: Key::empty(),
+            mouse_right_hold: false,
+            ghost: None,
+            debug: 0,
+        }
+    }
+}
+
+// TODO restructure this
+// app might still be a general "app" that both native and web points to
+// the difference might be the "window" aka where the canvas is
+// though not sure how to handle loop, that is for my future self
+struct App {
+    render_context: Option<RenderContext>,
+    egui_renderer: Option<EguiRenderer>,
+    window: Option<Arc<Window>>,
+    state: AppState,
 
     // resource provider
     #[cfg(not(target_arch = "wasm32"))]
@@ -115,13 +137,7 @@ impl App {
             render_context: Default::default(),
             egui_renderer: None,
             window: Default::default(),
-            time: Duration::ZERO,
-            last_time: Instant::now(),
-            frame_time: 1.,
-            render_state: Default::default(),
-            keys: Key::empty(),
-            mouse_right_hold: false,
-            ghost: None,
+            state: Default::default(),
             #[cfg(not(target_arch = "wasm32"))]
             native_resource_provider: provider,
             #[cfg(target_arch = "wasm32")]
@@ -136,16 +152,16 @@ impl App {
     pub fn tick(&mut self) {
         self.delta_update();
 
-        self.interaction_tick();
-        self.replay_tick();
+        self.state.interaction_tick();
+        self.state.replay_tick();
     }
 
     fn delta_update(&mut self) {
         let now = Instant::now();
-        let diff = now.duration_since(self.last_time);
-        self.frame_time = diff.as_secs_f32();
-        self.last_time = now;
-        self.time += diff;
+        let diff = now.duration_since(self.state.last_time);
+        self.state.frame_time = diff.as_secs_f32();
+        self.state.last_time = now;
+        self.state.time += diff;
     }
 }
 
@@ -203,7 +219,7 @@ impl ApplicationHandler<CustomEvent> for App {
         // Mainly for mouse movement
         match event {
             winit::event::DeviceEvent::MouseMotion { delta } => {
-                self.handle_mouse_movement(delta);
+                self.state.handle_mouse_movement(delta);
             }
             _ => (),
         }
@@ -226,7 +242,7 @@ impl ApplicationHandler<CustomEvent> for App {
             WindowEvent::RedrawRequested => {
                 self.tick();
 
-                let Some(ref mut window) = self.window else {
+                let Some(ref window) = self.window else {
                     warn!("Redraw requested without window");
                     return;
                 };
@@ -259,9 +275,15 @@ impl ApplicationHandler<CustomEvent> for App {
                 };
 
                 {
-                    render_context.render(&mut self.render_state, &mut encoder, &swapchain_view);
+                    render_context.render(
+                        &mut self.state.render_state,
+                        &mut encoder,
+                        &swapchain_view,
+                    );
 
                     if let Some(ref mut egui_renderer) = self.egui_renderer {
+                        let draw_function = self.state.draw_egui();
+
                         egui_renderer.render(
                             render_context.device(),
                             render_context.queue(),
@@ -269,23 +291,30 @@ impl ApplicationHandler<CustomEvent> for App {
                             window,
                             &swapchain_view,
                             screen_descriptor,
+                            draw_function,
                         );
                     } else {
                         warn!("Redraw requested without egui renderer. Skipped rendering egui");
                     };
                 }
 
-                let fps = (1.0 / self.frame_time).round();
+                let fps = (1.0 / self.state.frame_time).round();
 
                 // rename window based on fps
                 window.set_title(
-                    format!("FPS: {}. Draw calls: {}", fps, self.render_state.draw_call).as_str(),
+                    format!(
+                        "FPS: {}. Draw calls: {}. State {}",
+                        fps, self.state.render_state.draw_call, self.state.debug
+                    )
+                    .as_str(),
                 );
 
                 // update
                 render_context.queue().submit(Some(encoder.finish()));
                 swapchain_texture.present();
                 window.request_redraw();
+
+                // self.hello_world(self.egui_renderer.as_mut().unwrap().context());
             }
             // window event inputs are focused so we need to be here
             WindowEvent::KeyboardInput {
@@ -293,14 +322,20 @@ impl ApplicationHandler<CustomEvent> for App {
                 event,
                 is_synthetic: _,
             } => {
-                self.handle_keyboard_input(event.physical_key, event.state);
+                self.state
+                    .handle_keyboard_input(event.physical_key, event.state);
             }
             WindowEvent::MouseInput {
                 device_id: _,
                 state,
                 button,
             } => {
-                self.handle_mouse_input(button, state);
+                let Some(window) = &self.window else {
+                    warn!("Attempting to handle mouse input without window");
+                    return;
+                };
+
+                self.state.handle_mouse_input(button, state, window);
             }
             WindowEvent::CursorMoved {
                 device_id: _,
@@ -468,9 +503,9 @@ impl ApplicationHandler<CustomEvent> for App {
                     &bsp_resource,
                 );
 
-                self.render_state.world_buffer = vec![world_buffer];
+                self.state.render_state.world_buffer = vec![world_buffer];
 
-                self.render_state.skybox = render_context.skybox_loader.load_skybox(
+                self.state.render_state.skybox = render_context.skybox_loader.load_skybox(
                     &render_context.device(),
                     &render_context.queue(),
                     &bsp_resource.skybox,
@@ -481,9 +516,9 @@ impl ApplicationHandler<CustomEvent> for App {
                 //     playback_mode: replay::ReplayPlaybackMode::RealTime,
                 // });
 
-                self.render_state.camera = Camera::default();
+                self.state.render_state.camera = Camera::default();
 
-                self.ghost = None;
+                self.state.ghost = None;
             }
             CustomEvent::ErrorEvent(app_error) => {
                 warn!("Error: {}", app_error.to_string());

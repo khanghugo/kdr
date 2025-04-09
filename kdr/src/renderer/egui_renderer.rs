@@ -131,10 +131,12 @@ impl EguiRenderer {
         window: &winit::window::Window,
         window_surface_view: &wgpu::TextureView,
         screen_descriptor: egui_wgpu::ScreenDescriptor,
+        mut draw_function: impl FnMut(&egui::Context) -> (),
     ) {
         self.begin_frame(window);
 
         // draw stuffs code
+        draw_function(self.context());
 
         self.end_frame_and_draw(
             device,

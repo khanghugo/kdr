@@ -7,7 +7,7 @@ use winit::{
 };
 
 use super::{
-    App,
+    AppState,
     constants::{CAM_SPEED, CAM_TURN, SENSITIVITY},
 };
 
@@ -29,7 +29,7 @@ bitflags! {
     }
 }
 
-impl App {
+impl AppState {
     fn forward(&mut self) {
         self.render_state
             .camera
@@ -207,26 +207,29 @@ impl App {
         }
     }
 
-    pub fn handle_mouse_input(&mut self, mouse_button: &MouseButton, state: &ElementState) {
+    pub fn handle_mouse_input(
+        &mut self,
+        mouse_button: &MouseButton,
+        state: &ElementState,
+        window: &winit::window::Window,
+    ) {
         match mouse_button {
             MouseButton::Right => self.mouse_right_hold = state.is_pressed(),
             _ => (),
         }
 
-        self.window.as_mut().map(|window| {
-            if self.mouse_right_hold {
-                // behave like bspguy
-                window.set_cursor_visible(false);
+        if self.mouse_right_hold {
+            // behave like bspguy
+            window.set_cursor_visible(false);
 
-                // lock mode is better than confined
-                // lock mode doesnt allow cursor to move
-                // confined clamps the position
-                let _ = window.set_cursor_grab(CursorGrabMode::Locked);
-            } else {
-                window.set_cursor_visible(true);
-                let _ = window.set_cursor_grab(CursorGrabMode::None);
-            }
-        });
+            // lock mode is better than confined
+            // lock mode doesnt allow cursor to move
+            // confined clamps the position
+            let _ = window.set_cursor_grab(CursorGrabMode::Locked);
+        } else {
+            window.set_cursor_visible(true);
+            let _ = window.set_cursor_grab(CursorGrabMode::None);
+        }
     }
 
     pub fn handle_mouse_movement(&mut self, (x, y): (f64, f64)) {
