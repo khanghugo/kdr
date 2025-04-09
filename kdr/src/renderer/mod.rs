@@ -37,6 +37,7 @@ pub struct RenderContext {
     world_transparent_render_pipeline: wgpu::RenderPipeline,
     swapchain_format: wgpu::TextureFormat,
     surface: wgpu::Surface<'static>,
+    surface_config: wgpu::SurfaceConfiguration,
     oit_resolver: OITResolver,
     camera_buffer: CameraBuffer,
     render_targets: RenderTargets,
@@ -86,7 +87,7 @@ impl RenderContext {
         };
 
         let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
-            backends: wgpu::Backends::VULKAN // native windows/linux
+            backends: wgpu::Backends::GL // native windows/linux
             | wgpu::Backends::GL, // webgpu doesnt work well on modern browsers, yet TODO: come back in 2 years
             flags: wgpu::InstanceFlags::default(),
             backend_options: wgpu::BackendOptions {
@@ -234,6 +235,7 @@ impl RenderContext {
             queue,
             swapchain_format,
             surface,
+            surface_config: config,
             world_z_prepass_render_pipeline,
             world_opaque_render_pipeline,
             world_skybox_mask_render_pipeline,
@@ -248,11 +250,12 @@ impl RenderContext {
         }
     }
 
-    pub fn render(&mut self, state: &mut RenderState) {
-        let mut encoder = self
-            .device
-            .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
-
+    pub fn render(
+        &mut self,
+        state: &mut RenderState,
+        encoder: &mut wgpu::CommandEncoder,
+        swapchain_view: &wgpu::TextureView,
+    ) {
         // update camera buffer
         {
             let view = state.camera.view();
@@ -544,26 +547,18 @@ impl RenderContext {
         {
             self.post_processing.execute(
                 &self.device,
-                &mut encoder,
+                encoder,
                 &self.render_targets.main_texture,
                 &self.render_targets.composite_texture,
             );
         }
 
-        let swapchain_surface_texture = self.surface.get_current_texture().unwrap();
-
         // writes to surface view because simply blitting doesn's work
         // surface texture does not have COPY_DST
         {
-            let swapchain_view = swapchain_surface_texture
-                .texture
-                .create_view(&wgpu::TextureViewDescriptor::default());
             self.finalize_render_pipeline
-                .finalize_to_swapchain(&mut encoder, &swapchain_view);
+                .finalize_to_swapchain(encoder, &swapchain_view);
         }
-
-        self.queue.submit(Some(encoder.finish()));
-        swapchain_surface_texture.present();
     }
 
     pub fn device(&self) -> &wgpu::Device {
@@ -572,5 +567,19 @@ impl RenderContext {
 
     pub fn queue(&self) -> &wgpu::Queue {
         &self.queue
+    }
+
+    pub fn surface_config(&self) -> &wgpu::SurfaceConfiguration {
+        &self.surface_config
+    }
+
+    pub fn surface_texture(&self) -> wgpu::SurfaceTexture {
+        self.surface
+            .get_current_texture()
+            .expect("cannot get surface texture")
+    }
+
+    pub fn swapchain_format(&self) -> &wgpu::TextureFormat {
+        &self.swapchain_format
     }
 }

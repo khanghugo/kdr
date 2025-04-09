@@ -29,7 +29,10 @@ pub mod constants;
 mod interaction;
 mod replay;
 
-use crate::renderer::{RenderContext, RenderState, camera::Camera, world_buffer::WorldLoader};
+use crate::{
+    overlay::EguiRenderer,
+    renderer::{RenderContext, RenderState, camera::Camera, world_buffer::WorldLoader},
+};
 use loader::{Resource, ResourceIdentifier, ResourceProvider, error::ResourceProviderError};
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -47,6 +50,7 @@ pub enum AppError {
 pub enum CustomEvent {
     CreateRenderContext(Arc<Window>),
     FinishCreateRenderContext(RenderContext),
+    CreateEgui,
     RequestResource(ResourceIdentifier),
     ReceiveResource(Resource),
     ErrorEvent(AppError),
@@ -58,6 +62,7 @@ pub enum CustomEvent {
 // though not sure how to handle loop, that is for my future self
 struct App {
     render_context: Option<RenderContext>,
+    egui_renderer: Option<EguiRenderer>,
     window: Option<Arc<Window>>,
 
     // time
@@ -108,6 +113,7 @@ impl App {
 
         Self {
             render_context: Default::default(),
+            egui_renderer: None,
             window: Default::default(),
             time: Duration::ZERO,
             last_time: Instant::now(),
@@ -209,7 +215,9 @@ impl ApplicationHandler<CustomEvent> for App {
         _window_id: winit::window::WindowId,
         event: winit::event::WindowEvent,
     ) {
-        match event {
+        // pass event into egui after this match
+        //
+        match &event {
             WindowEvent::CloseRequested => {
                 drop(self.render_context.as_mut());
 
@@ -218,22 +226,67 @@ impl ApplicationHandler<CustomEvent> for App {
             WindowEvent::RedrawRequested => {
                 self.tick();
 
-                self.render_context.as_mut().map(|res| {
-                    // rendering world
-                    res.render(&mut self.render_state);
-                });
+                let Some(ref mut window) = self.window else {
+                    warn!("Redraw requested without window");
+                    return;
+                };
 
-                self.window.as_mut().map(|window| {
-                    let fps = (1.0 / self.frame_time).round();
+                let Some(ref mut render_context) = self.render_context else {
+                    warn!("Redraw requested without render context");
 
-                    // rename window based on fps
-                    window.set_title(
-                        format!("FPS: {}. Draw calls: {}", fps, self.render_state.draw_call)
-                            .as_str(),
-                    );
-                    // update
+                    // need to request redraw even if there's nothing to draw until there's something to draw
+                    // definitely not an insanity strat
                     window.request_redraw();
-                });
+
+                    return;
+                };
+
+                let mut encoder = render_context
+                    .device()
+                    .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+
+                let swapchain_texture = render_context.surface_texture();
+                let swapchain_view = swapchain_texture
+                    .texture
+                    .create_view(&wgpu::TextureViewDescriptor::default());
+
+                // let dimensions = window.inner_size();
+                let screen_descriptor = egui_wgpu::ScreenDescriptor {
+                    size_in_pixels: [
+                        render_context.surface_config().width,
+                        render_context.surface_config().height,
+                    ],
+                    pixels_per_point: window.scale_factor() as f32,
+                };
+
+                {
+                    render_context.render(&mut self.render_state, &mut encoder, &swapchain_view);
+
+                    if let Some(ref mut egui_renderer) = self.egui_renderer {
+                        egui_renderer.render(
+                            render_context.device(),
+                            render_context.queue(),
+                            &mut encoder,
+                            window,
+                            &swapchain_view,
+                            screen_descriptor,
+                        );
+                    } else {
+                        warn!("Redraw requested without egui renderer. Skipped rendering egui");
+                    };
+                }
+
+                let fps = (1.0 / self.frame_time).round();
+
+                // rename window based on fps
+                window.set_title(
+                    format!("FPS: {}. Draw calls: {}", fps, self.render_state.draw_call).as_str(),
+                );
+
+                // update
+                render_context.queue().submit(Some(encoder.finish()));
+                swapchain_texture.present();
+                window.request_redraw();
             }
             // window event inputs are focused so we need to be here
             WindowEvent::KeyboardInput {
@@ -260,6 +313,15 @@ impl ApplicationHandler<CustomEvent> for App {
                 // Use raw input instead
             }
             _ => (),
+        }
+
+        let Some(ref window) = self.window else {
+            warn!("Passing window events to egui without window");
+            return;
+        };
+
+        if let Some(egui_renderer) = &mut self.egui_renderer {
+            egui_renderer.handle_input(window, &event);
         }
     }
 
@@ -294,16 +356,46 @@ impl ApplicationHandler<CustomEvent> for App {
                 }
             }
             CustomEvent::FinishCreateRenderContext(render_context) => {
-                info!("Finish creating a render context");
+                info!("Finished creating a render context");
 
                 self.render_context = render_context.into();
 
+                // create egui after render context is done initializing
+                self.event_loop_proxy
+                    .send_event(CustomEvent::CreateEgui)
+                    .unwrap_or_else(|_| warn!("cannot send creating egui renderer request"));
+
                 self.event_loop_proxy
                     .send_event(CustomEvent::RequestResource(ResourceIdentifier {
-                        map_name: "boot_camp.bsp".to_string(),
+                        map_name: "c1a0.bsp".to_string(),
                         game_mod: "valve".to_string(),
                     }))
                     .unwrap_or_else(|_| warn!("cannot send debug request"));
+            }
+            CustomEvent::CreateEgui => {
+                info!("Creating egui renderer");
+
+                let Some(ref window) = self.window else {
+                    warn!("Window is not initialized. Cannot create egui renderer");
+                    return;
+                };
+
+                let Some(ref render_context) = self.render_context else {
+                    warn!("Render context is not initialized. Cannot create egui renderer");
+                    return;
+                };
+
+                let egui_renderer = EguiRenderer::new(
+                    render_context.device(),
+                    render_context.swapchain_format().clone(),
+                    None,
+                    1,
+                    window,
+                );
+
+                self.egui_renderer = egui_renderer.into();
+
+                info!("Finished creating egui renderer");
             }
             CustomEvent::RequestResource(resource_identifier) => {
                 info!("Requesting resources: {:?}", resource_identifier);
@@ -411,10 +503,8 @@ pub fn run_kdr(resource_provider_base: Option<String>) {
     tracing::ensure_logging_hooks();
 
     let Ok(event_loop) = EventLoop::<CustomEvent>::with_user_event().build() else {
-        #[cfg(target_arch = "wasm32")]
-        {
-            browser_console_log("cannto start evetn loop");
-        }
+        warn!("Cannot start event loop");
+        warn!("Must restart the app");
         return;
     };
 

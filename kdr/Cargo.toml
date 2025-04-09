@@ -25,8 +25,6 @@ image = { version = "0.25.5", default-features = false, features = [
     "jpeg",
     "tga",
 ] }
-wgpu = { version = "24.0.3", features = ["webgl"] }
-winit = { version = "0.30.9", features = [] }
 
 bitflags = "2.8.0"
 guillotiere = "0.6.2"
@@ -41,6 +39,16 @@ web-time = "1.1.0"
 # tracing in browser
 tracing = "0.1.41"
 tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
+
+# egui integration
+# need these crates along with the original crates
+egui = "0.31.1"
+egui-wgpu = { version = "0.31.1", features = ["winit"] }
+# disable all featurse but have winit enable
+# need to disable arboards, which is important to compile to wasm32
+egui-winit = { version = "0.31.1", default-features = false }
+wgpu = { version = "24.0.3", features = ["webgl"] }
+winit = { version = "0.30.9", features = [] }
 
 # native specific dependencies
 # basically the tracing stuffs

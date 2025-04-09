@@ -1,4 +1,5 @@
 mod app;
+mod overlay;
 mod renderer;
 mod utils;
 

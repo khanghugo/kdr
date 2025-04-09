@@ -207,7 +207,7 @@ impl App {
         }
     }
 
-    pub fn handle_mouse_input(&mut self, mouse_button: MouseButton, state: ElementState) {
+    pub fn handle_mouse_input(&mut self, mouse_button: &MouseButton, state: &ElementState) {
         match mouse_button {
             MouseButton::Right => self.mouse_right_hold = state.is_pressed(),
             _ => (),
