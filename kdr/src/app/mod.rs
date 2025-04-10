@@ -10,7 +10,7 @@ use pollster::FutureExt;
 // can use this for both native and web
 use web_time::{Duration, Instant};
 
-use interaction::Key;
+use movement::Key;
 use replay::{Replay, ReplayPlaybackMode};
 use winit::{
     application::ApplicationHandler,
@@ -27,7 +27,7 @@ use wasm_bindgen::JsCast;
 #[cfg(target_arch = "wasm32")]
 use winit::platform::web::{EventLoopExtWebSys, WindowAttributesExtWebSys};
 pub mod constants;
-mod interaction;
+mod movement;
 mod overlay;
 mod replay;
 
