@@ -78,7 +78,7 @@ fn simen_wrbot_line(i: &str) -> IResult<&str, SimenGhostFrame> {
         )),
         |(pitch, yaw, posx, posy, posz, velx, vely, velz, buttons, move1, move2)| SimenGhostFrame {
             frame: GhostFrame {
-                frametime: None,
+                frametime: Some(0.010000001),
                 origin: Vec3::from_array([posx, posy, posz]),
                 viewangles: Vec3::from_array([pitch, yaw, 0.]),
                 buttons: buttons.into(),

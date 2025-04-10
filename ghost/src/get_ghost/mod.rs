@@ -41,7 +41,7 @@ pub fn get_ghost<'a>(
 pub struct GhostFrame {
     pub origin: Vec3,
     pub viewangles: Vec3,
-    pub frametime: Option<f64>,
+    pub frametime: Option<f32>,
     pub buttons: Option<u32>,
     pub anim: Option<GhostFrameAnim>,
     pub fov: Option<f32>,
@@ -69,7 +69,7 @@ impl GhostInfo {
     /// Returns an interpolated [`GhostFrame`] based on current time.
     ///
     /// Takes an optional argument to force frametime.
-    pub fn get_frame(&self, time: f64, frametime: Option<f64>) -> Option<GhostFrame> {
+    pub fn get_frame(&self, time: f32, frametime: Option<f32>) -> Option<GhostFrame> {
         let frame0 = self.frames.first()?;
 
         // No frame time, not sure how to accumulate correctly
@@ -77,8 +77,8 @@ impl GhostInfo {
             return None;
         }
 
-        let mut from_time = 0f64;
-        let mut to_time = 0f64;
+        let mut from_time = 0f32;
+        let mut to_time = 0f32;
         let mut to_index = 0usize;
 
         for (index, frame) in self.frames.iter().enumerate() {
@@ -151,8 +151,8 @@ impl GhostInfo {
     }
 
     /// Returns the frame index from a given time.
-    pub fn get_frame_index(&self, time: f64, frametime: Option<f64>) -> usize {
-        let mut to_time = 0f64;
+    pub fn get_frame_index(&self, time: f32, frametime: Option<f32>) -> usize {
+        let mut to_time = 0f32;
         let mut to_index = 0usize;
 
         for (index, frame) in self.frames.iter().enumerate() {
@@ -185,6 +185,22 @@ impl GhostInfo {
     //     }
     //     self
     // }
+
+    // Returns a closure that we can re-use
+    // This closure can also take in an argument in case the ghost doesn't have frame time.
+    pub fn get_ghost_length(&self) -> Box<dyn Fn(f32) -> f32 + '_> {
+        let has_frametime = self.frames[0].frametime.is_none();
+        let maybe_total_length: f32 = self.frames.iter().filter_map(|frame| frame.frametime).sum();
+
+        let no_frametime = move |frametime: f32| frametime * self.frames.len() as f32;
+        let yes_frametime = move |_: f32| maybe_total_length;
+
+        if has_frametime {
+            return Box::new(yes_frametime);
+        } else {
+            return Box::new(no_frametime);
+        }
+    }
 }
 
 /// Difference between curr and next

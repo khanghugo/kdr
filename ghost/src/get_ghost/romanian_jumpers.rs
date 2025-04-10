@@ -32,7 +32,7 @@ pub fn romanian_jumpers_ghost_parse(filename: &str, file: &str) -> eyre::Result<
             .frames
             .iter()
             .map(|ghost| GhostFrame {
-                frametime: Some(ghost.frametime as f64),
+                frametime: Some(ghost.frametime),
                 origin: Vec3::from_array([ghost.origin[0], -ghost.origin[2], ghost.origin[1]]),
                 viewangles: Vec3::from_array([ghost.viewangles[0], ghost.viewangles[1], 0.]),
                 buttons: ghost.buttons.into(),

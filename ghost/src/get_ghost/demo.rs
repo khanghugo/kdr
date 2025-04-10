@@ -147,8 +147,8 @@ pub fn demo_ghost_parse(filename: &str, demo: &Demo) -> eyre::Result<GhostInfo> 
                 Some(GhostFrame {
                     origin: Vec3::from_array(origin),
                     viewangles: Vec3::from_array(viewangles),
-                    frametime: Some(frame.time as f64), /* time here is accummulative, will fix
-                                                         * after */
+                    frametime: Some(frame.time), /* time here is accummulative, will fix
+                                                  * after */
                     buttons: None,
                     anim: Some(GhostFrameAnim {
                         sequence,
