@@ -119,7 +119,7 @@ impl RenderContext {
         // edit limits
         let mut limits =
             wgpu::Limits::downlevel_webgl2_defaults().using_resolution(adapter.limits());
-        limits.max_texture_array_layers = 1024;
+        limits.max_texture_array_layers = 512;
         // this is for mvp matrices
         limits.max_uniform_buffer_binding_size = (4 * 4 * 4) // 1 matrix4x4f
             * MAX_MVP; // 512 entities at 32.8 KB
