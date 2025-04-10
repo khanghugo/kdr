@@ -88,7 +88,7 @@ impl RenderContext {
         };
 
         let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
-            backends: wgpu::Backends::GL // native windows/linux
+            backends: wgpu::Backends::VULKAN // native windows/linux
             | wgpu::Backends::GL, // webgpu doesnt work well on modern browsers, yet TODO: come back in 2 years
             flags: wgpu::InstanceFlags::default(),
             backend_options: wgpu::BackendOptions {
@@ -193,7 +193,7 @@ impl RenderContext {
             .unwrap();
 
         let config = wgpu::SurfaceConfiguration {
-            present_mode: wgpu::PresentMode::AutoVsync,
+            present_mode: wgpu::PresentMode::Fifo,
             ..config
         };
 

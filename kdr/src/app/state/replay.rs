@@ -24,12 +24,12 @@ pub struct Replay {
 
 impl AppState {
     pub fn replay_tick(&mut self) {
-        let Some(replay) = &self.ghost else { return };
+        let Some(replay) = &self.replay else { return };
 
         match replay.playback_mode {
             ReplayPlaybackMode::Immediate(_) => todo!("not planned for now until the recorder"),
             ReplayPlaybackMode::RealTime => {
-                let Some(frame) = replay.ghost.get_frame(self.time.as_secs_f64(), None) else {
+                let Some(frame) = replay.ghost.get_frame(self.time, None) else {
                     return;
                 };
 

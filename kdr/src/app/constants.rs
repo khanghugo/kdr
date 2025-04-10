@@ -6,3 +6,5 @@ pub const MAX_MVP: u32 = 512;
 
 pub const WINDOW_WIDTH: i32 = 1280;
 pub const WINDOW_HEIGHT: i32 = 960;
+
+pub const DEFAULT_FRAMETIME: f32 = 0.010000001;

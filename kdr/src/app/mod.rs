@@ -46,6 +46,8 @@ use loader::web::WebResourceProvider;
 pub enum AppError {
     #[error("Problems with resource provider: {source}")]
     ProviderError { source: ResourceProviderError },
+    #[error("No resource provider found")]
+    NoProvider,
 }
 
 pub enum CustomEvent {
@@ -66,7 +68,7 @@ pub enum CustomEvent {
 struct App {
     render_context: Option<RenderContext>,
     egui_renderer: Option<EguiRenderer>,
-    window: Option<Arc<Window>>,
+
     state: AppState,
 
     // resource provider
@@ -102,9 +104,8 @@ impl App {
         let event_loop_proxy = event_loop.create_proxy();
 
         Self {
-            render_context: Default::default(),
+            render_context: None,
             egui_renderer: None,
-            window: Default::default(),
             state: AppState::new(event_loop_proxy.clone()),
             #[cfg(not(target_arch = "wasm32"))]
             native_resource_provider: provider,
@@ -154,7 +155,7 @@ impl ApplicationHandler<CustomEvent> for App {
         let window = event_loop.create_window(window_attributes).unwrap();
         let window = Arc::new(window);
 
-        self.window = Some(window.clone());
+        self.state.window = Some(window.clone());
         self.event_loop_proxy
             .send_event(CustomEvent::CreateRenderContext(window))
             .unwrap_or_else(|_| warn!("Failed to send CreateRenderContext message"));
@@ -192,7 +193,7 @@ impl ApplicationHandler<CustomEvent> for App {
             WindowEvent::RedrawRequested => {
                 self.state.tick();
 
-                let Some(ref window) = self.window else {
+                let Some(window) = self.state.window.clone() else {
                     warn!("Redraw requested without window");
                     return;
                 };
@@ -238,7 +239,7 @@ impl ApplicationHandler<CustomEvent> for App {
                             render_context.device(),
                             render_context.queue(),
                             &mut encoder,
-                            window,
+                            &window,
                             &swapchain_view,
                             screen_descriptor,
                             draw_function,
@@ -281,12 +282,7 @@ impl ApplicationHandler<CustomEvent> for App {
                 state,
                 button,
             } => {
-                let Some(window) = &self.window else {
-                    warn!("Attempting to handle mouse input without window");
-                    return;
-                };
-
-                self.state.handle_mouse_input(button, state, window);
+                self.state.handle_mouse_input(button, state);
             }
             WindowEvent::CursorMoved {
                 device_id: _,
@@ -300,13 +296,15 @@ impl ApplicationHandler<CustomEvent> for App {
             _ => (),
         }
 
-        let Some(ref window) = self.window else {
+        let Some(window) = self.state.window.clone() else {
             warn!("Passing window events to egui without window");
             return;
         };
 
-        if let Some(egui_renderer) = &mut self.egui_renderer {
-            egui_renderer.handle_input(window, &event);
+        if let Some(egui_renderer) = self.egui_renderer.as_mut() {
+            // let a = egui_renderer.;
+            egui_renderer.handle_input(&window, &event);
+            egui_renderer.context();
         }
     }
 
@@ -360,7 +358,7 @@ impl ApplicationHandler<CustomEvent> for App {
             CustomEvent::CreateEgui => {
                 info!("Creating egui renderer");
 
-                let Some(ref window) = self.window else {
+                let Some(window) = self.state.window.clone() else {
                     warn!("Window is not initialized. Cannot create egui renderer");
                     return;
                 };
@@ -375,7 +373,7 @@ impl ApplicationHandler<CustomEvent> for App {
                     render_context.swapchain_format().clone(),
                     None,
                     1,
-                    window,
+                    &window,
                 );
 
                 self.egui_renderer = egui_renderer.into();
@@ -399,11 +397,6 @@ impl ApplicationHandler<CustomEvent> for App {
                 // meanwhile, the spawn_local has 'static lifetime
                 // resource_provider is just a url/path, so we are all good in cloning
                 let resource_provider = resource_provider.to_owned();
-
-                // let resource_identifier = ResourceIdentifier {
-                //     map_name: "c1a0.bsp".to_owned(),
-                //     game_mod: "valve".to_owned(),
-                // };
 
                 let event_loop_proxy = self.event_loop_proxy.clone();
                 let send_receive_message =
@@ -520,7 +513,11 @@ impl ApplicationHandler<CustomEvent> for App {
                     #[cfg(not(target_arch = "wasm32"))]
                     let Some(provider) = &self.native_resource_provider else {
                         warn!("Cannot find native resource provider");
-                        // TODO send to error
+
+                        self.event_loop_proxy
+                            .send_event(CustomEvent::ErrorEvent(AppError::NoProvider))
+                            .unwrap_or_else(|_| warn!("Failed to send NoProvider"));
+
                         return;
                     };
 
@@ -562,17 +559,19 @@ impl ApplicationHandler<CustomEvent> for App {
                             send_message(identifier, ghost);
                         });
                     }
+                } else {
+                    warn!("Bad resource: {}", file_path.display());
                 }
             }
             CustomEvent::ReceivedGhostRequest(identifier, ghost) => {
                 info!("Finished processing .dem. Loading replay");
 
-                self.state.ghost = Some(Replay {
+                self.state.replay = Some(Replay {
                     ghost,
                     playback_mode: ReplayPlaybackMode::RealTime,
                 });
 
-                self.state.time = Duration::from_secs(0);
+                self.state.time = 0.;
 
                 self.event_loop_proxy
                     .send_event(CustomEvent::RequestResource(identifier))
