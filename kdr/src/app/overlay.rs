@@ -1,79 +1,110 @@
 //! egui UI
 
-use tracing::info;
+use std::time::Duration;
 
-use super::AppState;
+use futures::FutureExt;
+use rfd::AsyncFileDialog;
+
+use super::{AppState, CustomEvent};
 
 impl AppState {
+    pub fn trigger_file_dialogue(&mut self) {
+        let future = AsyncFileDialog::new()
+            .add_filter("BSP/DEM", &["bsp", "dem"])
+            .pick_file();
+
+        self.file_dialogue_future = Some(Box::pin(future))
+    }
+
+    pub fn state_poll(&mut self) -> Option<CustomEvent> {
+        // only read the file name, yet to have the bytes
+        if let Some(future) = &mut self.file_dialogue_future {
+            if let Some(file_handle) = future.now_or_never() {
+                self.selected_file = file_handle.map(|f| {
+                    #[cfg(not(target_arch = "wasm32"))]
+                    let result = f.path().display().to_string();
+
+                    #[cfg(target_arch = "wasm32")]
+                    let result = f.file_name();
+
+                    self.file_bytes_future = Some(Box::pin(async move {
+                        let bytes = f.read().await;
+                        bytes
+                    }));
+
+                    return result;
+                });
+
+                self.file_dialogue_future = None;
+            }
+        }
+
+        // now have the bytes
+        if let Some(future) = &mut self.file_bytes_future {
+            if let Some(file_bytes) = future.now_or_never() {
+                self.selected_file_bytes = file_bytes.into();
+                self.file_bytes_future = None;
+
+                // only new file when we have the bytes
+                return Some(CustomEvent::NewFileSelected);
+            }
+        }
+
+        None
+    }
+
     pub fn draw_egui(&mut self) -> impl FnMut(&egui::Context) -> () {
         |context| {
-            self.hello_world(context);
-            self.hello_world2(context);
+            self.main_ui(context);
         }
     }
 
-    pub fn hello_world(&mut self, context: &egui::Context) {
-        egui::Window::new("winit + egui + wgpu says hello!")
+    pub fn main_ui(&mut self, context: &egui::Context) {
+        let title_name = self.selected_file.clone().unwrap_or("kdr".to_string());
+
+        egui::Window::new(title_name)
             .resizable(true)
             .vscroll(true)
             .default_open(false)
             .show(context, |ui| {
-                ui.label("Label!");
-
-                if ui.button("Button!").clicked() {
-                    println!("boom!")
-                }
-
-                ui.separator();
-
                 ui.horizontal(|ui| {
-                    ui.label(format!("Pixels per point: {}", context.pixels_per_point()));
+                    ui.label("File: ");
 
-                    if ui.button("-").clicked() {
-                        // state.scale_factor = (state.scale_factor - 0.1).max(0.3);
+                    let mut read_only = self.selected_file.clone().unwrap_or("".to_string());
 
-                        info!("hello minus");
-                    }
+                    // need to do like this so it cant be editted and it looks cool
+                    ui.add_enabled_ui(false, |ui| {
+                        ui.add(
+                            egui::TextEdit::singleline(&mut read_only)
+                                .hint_text("Choose .bsp or .dem"),
+                        );
+                    });
 
-                    if ui.button("+").clicked() {
-                        info!("hello plus");
-                        self.debug += 1;
-
-                        // state.scale_factor = (state.scale_factor + 0.1).min(3.0);
+                    if ui.button("Select File").clicked() {
+                        self.trigger_file_dialogue();
                     }
                 });
-            });
-    }
-
-    pub fn hello_world2(&mut self, context: &egui::Context) {
-        egui::Window::new("hello world2")
-            .resizable(true)
-            .vscroll(true)
-            .default_open(false)
-            .show(context, |ui| {
-                ui.label("Label!");
-
-                if ui.button("Button!").clicked() {
-                    println!("boom!")
-                }
 
                 ui.separator();
 
-                ui.horizontal(|ui| {
-                    ui.label(format!("Pixels per point: {}", context.pixels_per_point()));
+                ui.add_enabled_ui(self.ghost.is_some(), |ui| {
+                    ui.label("Demo Player Controls");
 
-                    if ui.button("-").clicked() {
-                        // state.scale_factor = (state.scale_factor - 0.1).max(0.3);
+                    ui.horizontal(|ui| {
+                        if ui.button("-5").clicked() {
+                            self.time -= Duration::from_secs(5);
+                        }
 
-                        info!("hello minus");
-                    }
+                        let pause_button = egui::Button::new("Pause").selected(self.paused);
 
-                    if ui.button("+").clicked() {
-                        info!("hello plus");
-                        self.debug += 1;
+                        if ui.add(pause_button).clicked() {
+                            self.paused = !self.paused;
+                        }
 
-                        // state.scale_factor = (state.scale_factor + 0.1).min(3.0);
-                    }
+                        if ui.button("+5").clicked() {
+                            self.time += Duration::from_secs(5);
+                        }
+                    });
                 });
             });
     }

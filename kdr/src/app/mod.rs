@@ -1,7 +1,8 @@
-use std::{path::Path, sync::Arc};
+use std::{path::Path, pin::Pin, sync::Arc};
 
 use ::tracing::{info, warn};
 use constants::{WINDOW_HEIGHT, WINDOW_WIDTH};
+use ghost::GhostInfo;
 // pollster for native use only
 #[cfg(not(target_arch = "wasm32"))]
 use pollster::FutureExt;
@@ -10,7 +11,7 @@ use pollster::FutureExt;
 use web_time::{Duration, Instant};
 
 use interaction::Key;
-use replay::Replay;
+use replay::{Replay, ReplayPlaybackMode};
 use winit::{
     application::ApplicationHandler,
     dpi::LogicalSize,
@@ -54,6 +55,8 @@ pub enum CustomEvent {
     CreateEgui,
     RequestResource(ResourceIdentifier),
     ReceiveResource(Resource),
+    NewFileSelected,
+    ReceivedGhostRequest(ResourceIdentifier, GhostInfo),
     ErrorEvent(AppError),
 }
 
@@ -63,6 +66,7 @@ struct AppState {
     time: Duration,
     last_time: Instant,
     frame_time: f32,
+    paused: bool,
 
     // stuffs
     // TODO future render state might need to be optional so that we can reload map or something?? not sure
@@ -70,16 +74,19 @@ struct AppState {
     render_state: RenderState,
     // optional ghost because we might just want to render bsp
     ghost: Option<Replay>,
+    selected_file: Option<String>,
+    // need ot be Option just to confirm that there is no file.
+    selected_file_bytes: Option<Vec<u8>>,
+    file_dialogue_future: Option<Pin<Box<dyn Future<Output = Option<rfd::FileHandle>> + 'static>>>,
+    file_bytes_future: Option<Pin<Box<dyn Future<Output = Vec<u8>> + 'static>>>,
 
     // input
     keys: Key,
     mouse_right_hold: bool,
-
-    debug: u32,
 }
 
-impl Default for AppState {
-    fn default() -> Self {
+impl AppState {
+    fn new(event_loop_proxy: EventLoopProxy<CustomEvent>) -> Self {
         Self {
             time: Duration::ZERO,
             last_time: Instant::now(),
@@ -88,8 +95,30 @@ impl Default for AppState {
             keys: Key::empty(),
             mouse_right_hold: false,
             ghost: None,
-            debug: 0,
+            selected_file: None,
+            selected_file_bytes: None,
+            file_dialogue_future: None,
+            file_bytes_future: None,
+            paused: false,
         }
+    }
+
+    /// Tick function modifies everything in the app including the rendering state.
+    ///
+    /// If there is any event going on every frame, it should be contained in this function.
+    pub fn tick(&mut self) {
+        self.delta_update();
+
+        self.interaction_tick();
+        self.replay_tick();
+    }
+
+    fn delta_update(&mut self) {
+        let now = Instant::now();
+        let diff = now.duration_since(self.last_time);
+        self.frame_time = diff.as_secs_f32();
+        self.last_time = now;
+        self.time += diff;
     }
 }
 
@@ -133,35 +162,19 @@ impl App {
             }
         });
 
+        let event_loop_proxy = event_loop.create_proxy();
+
         Self {
             render_context: Default::default(),
             egui_renderer: None,
             window: Default::default(),
-            state: Default::default(),
+            state: AppState::new(event_loop_proxy.clone()),
             #[cfg(not(target_arch = "wasm32"))]
             native_resource_provider: provider,
             #[cfg(target_arch = "wasm32")]
             web_resource_provider: provider,
-            event_loop_proxy: event_loop.create_proxy(),
+            event_loop_proxy,
         }
-    }
-
-    /// Tick function modifies everything in the app including the rendering state.
-    ///
-    /// If there is any event going on every frame, it should be contained in this function.
-    pub fn tick(&mut self) {
-        self.delta_update();
-
-        self.state.interaction_tick();
-        self.state.replay_tick();
-    }
-
-    fn delta_update(&mut self) {
-        let now = Instant::now();
-        let diff = now.duration_since(self.state.last_time);
-        self.state.frame_time = diff.as_secs_f32();
-        self.state.last_time = now;
-        self.state.time += diff;
     }
 }
 
@@ -240,7 +253,7 @@ impl ApplicationHandler<CustomEvent> for App {
                 event_loop.exit();
             }
             WindowEvent::RedrawRequested => {
-                self.tick();
+                self.state.tick();
 
                 let Some(ref window) = self.window else {
                     warn!("Redraw requested without window");
@@ -303,8 +316,8 @@ impl ApplicationHandler<CustomEvent> for App {
                 // rename window based on fps
                 window.set_title(
                     format!(
-                        "FPS: {}. Draw calls: {}. State {}",
-                        fps, self.state.render_state.draw_call, self.state.debug
+                        "FPS: {}. Draw calls: {}",
+                        fps, self.state.render_state.draw_call
                     )
                     .as_str(),
                 );
@@ -314,7 +327,12 @@ impl ApplicationHandler<CustomEvent> for App {
                 swapchain_texture.present();
                 window.request_redraw();
 
-                // self.hello_world(self.egui_renderer.as_mut().unwrap().context());
+                // polling the states every redraw request
+                if let Some(event) = self.state.state_poll() {
+                    self.event_loop_proxy.send_event(event).unwrap_or_else(|_| {
+                        warn!("Cannot send event message after polling states")
+                    });
+                }
             }
             // window event inputs are focused so we need to be here
             WindowEvent::KeyboardInput {
@@ -399,12 +417,12 @@ impl ApplicationHandler<CustomEvent> for App {
                     .send_event(CustomEvent::CreateEgui)
                     .unwrap_or_else(|_| warn!("cannot send creating egui renderer request"));
 
-                self.event_loop_proxy
-                    .send_event(CustomEvent::RequestResource(ResourceIdentifier {
-                        map_name: "c1a0.bsp".to_string(),
-                        game_mod: "valve".to_string(),
-                    }))
-                    .unwrap_or_else(|_| warn!("cannot send debug request"));
+                // self.event_loop_proxy
+                //     .send_event(CustomEvent::RequestResource(ResourceIdentifier {
+                //         map_name: "chk_section.bsp".to_string(),
+                //         game_mod: "cstrike_downloads".to_string(),
+                //     }))
+                //     .unwrap_or_else(|_| warn!("cannot send debug request"));
             }
             CustomEvent::CreateEgui => {
                 info!("Creating egui renderer");
@@ -511,14 +529,121 @@ impl ApplicationHandler<CustomEvent> for App {
                     &bsp_resource.skybox,
                 );
 
-                // self.ghost = Some(Replay {
-                //     ghost,
-                //     playback_mode: replay::ReplayPlaybackMode::RealTime,
-                // });
-
                 self.state.render_state.camera = Camera::default();
 
-                self.state.ghost = None;
+                // ghost is loaded first so dont do this
+                // self.state.ghost = None;
+            }
+            CustomEvent::NewFileSelected => {
+                let Some(file_path) = &self.state.selected_file else {
+                    warn!("New file is said to be selected but no new file found");
+                    return;
+                };
+
+                let Some(file_bytes) = &self.state.selected_file_bytes else {
+                    warn!("New file bytes are not loaded");
+                    return;
+                };
+
+                let file_path = Path::new(file_path);
+
+                let Some(file_extension) = file_path.extension() else {
+                    warn!("New file does not contain an extension");
+                    return;
+                };
+
+                if file_extension == "bsp" {
+                    info!("Received .bsp from file dialogue");
+
+                    let possible_game_mod = file_path
+                        .parent() // maps folder
+                        .and_then(|path| path.parent()) // game mod
+                        .and_then(|path| path.file_name())
+                        .and_then(|osstr| osstr.to_str())
+                        .unwrap_or("unknown");
+
+                    let bsp_name = file_path.file_name().unwrap().to_str().unwrap();
+
+                    let resource_identifier = ResourceIdentifier {
+                        map_name: bsp_name.to_string(),
+                        game_mod: possible_game_mod.to_string(),
+                    };
+
+                    self.event_loop_proxy
+                        .send_event(CustomEvent::RequestResource(resource_identifier))
+                        .unwrap_or_else(|_| {
+                            warn!("Cannot send resource request message after file dialogue")
+                        });
+                } else if file_extension == "dem" {
+                    info!("Received .dem from file dialogue. Processing .dem");
+
+                    let event_loop_proxy = self.event_loop_proxy.clone();
+                    let send_message = move |identifier, ghost| {
+                        event_loop_proxy
+                            .send_event(CustomEvent::ReceivedGhostRequest(identifier, ghost))
+                            .unwrap_or_else(|_| warn!("Failed to send ReceivedGhostRequest"));
+                    };
+
+                    #[cfg(not(target_arch = "wasm32"))]
+                    let Some(provider) = &self.native_resource_provider else {
+                        warn!("Cannot find native resource provider");
+                        // TODO send to error
+                        return;
+                    };
+
+                    #[cfg(target_arch = "wasm32")]
+                    let Some(provider) = &self.web_resource_provider else {
+                        warn!("Cannot find web resource provider");
+                        // TODO send to error
+                        return;
+                    };
+
+                    let provider = provider.clone();
+                    let file_path = file_path.to_owned();
+                    let file_bytes = file_bytes.to_owned();
+
+                    #[cfg(not(target_arch = "wasm32"))]
+                    {
+                        let Ok((identifier, ghost)) =
+                            provider.get_ghost_data(file_path, file_bytes).block_on()
+                        else {
+                            warn!("Cannot load ghost data");
+                            // TODO send error here
+                            return;
+                        };
+
+                        send_message(identifier, ghost);
+                    }
+
+                    #[cfg(target_arch = "wasm32")]
+                    {
+                        wasm_bindgen_futures::spawn_local(async move {
+                            let Ok((identifier, ghost)) =
+                                provider.get_ghost_data(file_path, &file_bytes).await
+                            else {
+                                warn!("Cannot load ghost data");
+                                // TODO send error here
+                                return;
+                            };
+
+                            send_message(identifier, ghost);
+                        });
+                    }
+                }
+            }
+            CustomEvent::ReceivedGhostRequest(identifier, ghost) => {
+                info!("Finished processing .dem. Loading replay");
+
+                self.state.ghost = Some(Replay {
+                    ghost,
+                    playback_mode: ReplayPlaybackMode::RealTime,
+                });
+
+                self.state.time = Duration::from_secs(0);
+
+                self.event_loop_proxy
+                    .send_event(CustomEvent::RequestResource(identifier))
+                    .unwrap_or_else(|_| warn!("Failed to send RequestResource"));
             }
             CustomEvent::ErrorEvent(app_error) => {
                 warn!("Error: {}", app_error.to_string());
