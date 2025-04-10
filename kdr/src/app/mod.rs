@@ -1,8 +1,12 @@
-use std::{path::Path, pin::Pin, sync::Arc};
+use std::{path::Path, sync::Arc};
 
 use ::tracing::{info, warn};
 use constants::{WINDOW_HEIGHT, WINDOW_WIDTH};
 use ghost::GhostInfo;
+use state::{
+    AppState,
+    replay::{Replay, ReplayPlaybackMode},
+};
 // pollster for native use only
 #[cfg(not(target_arch = "wasm32"))]
 use pollster::FutureExt;
@@ -10,8 +14,6 @@ use pollster::FutureExt;
 // can use this for both native and web
 use web_time::{Duration, Instant};
 
-use movement::Key;
-use replay::{Replay, ReplayPlaybackMode};
 use winit::{
     application::ApplicationHandler,
     dpi::LogicalSize,
@@ -27,13 +29,10 @@ use wasm_bindgen::JsCast;
 #[cfg(target_arch = "wasm32")]
 use winit::platform::web::{EventLoopExtWebSys, WindowAttributesExtWebSys};
 pub mod constants;
-mod movement;
-mod overlay;
-mod replay;
+mod state;
 
 use crate::renderer::{
-    RenderContext, RenderState, camera::Camera, egui_renderer::EguiRenderer,
-    world_buffer::WorldLoader,
+    RenderContext, camera::Camera, egui_renderer::EguiRenderer, world_buffer::WorldLoader,
 };
 use loader::{Resource, ResourceIdentifier, ResourceProvider, error::ResourceProviderError};
 
@@ -58,71 +57,6 @@ pub enum CustomEvent {
     NewFileSelected,
     ReceivedGhostRequest(ResourceIdentifier, GhostInfo),
     ErrorEvent(AppError),
-}
-
-// Decouples states from App so that we can impl specific stuffs that affect states without affecting App.
-struct AppState {
-    // time
-    time: Duration,
-    last_time: Instant,
-    frame_time: f32,
-    paused: bool,
-
-    // stuffs
-    // TODO future render state might need to be optional so that we can reload map or something?? not sure
-    // like we can start the app with nothing going on and hten drag and rdop the map 🤤
-    render_state: RenderState,
-    // optional ghost because we might just want to render bsp
-    ghost: Option<Replay>,
-    selected_file: Option<String>,
-    // need ot be Option just to confirm that there is no file.
-    selected_file_bytes: Option<Vec<u8>>,
-    file_dialogue_future: Option<Pin<Box<dyn Future<Output = Option<rfd::FileHandle>> + 'static>>>,
-    file_bytes_future: Option<Pin<Box<dyn Future<Output = Vec<u8>> + 'static>>>,
-
-    // input
-    keys: Key,
-    mouse_right_hold: bool,
-
-    event_loop_proxy: EventLoopProxy<CustomEvent>,
-}
-
-impl AppState {
-    fn new(event_loop_proxy: EventLoopProxy<CustomEvent>) -> Self {
-        Self {
-            time: Duration::ZERO,
-            last_time: Instant::now(),
-            frame_time: 1.,
-            render_state: Default::default(),
-            keys: Key::empty(),
-            mouse_right_hold: false,
-            ghost: None,
-            selected_file: None,
-            selected_file_bytes: None,
-            file_dialogue_future: None,
-            file_bytes_future: None,
-            paused: false,
-            event_loop_proxy,
-        }
-    }
-
-    /// Tick function modifies everything in the app including the rendering state.
-    ///
-    /// If there is any event going on every frame, it should be contained in this function.
-    pub fn tick(&mut self) {
-        self.delta_update();
-
-        self.interaction_tick();
-        self.replay_tick();
-    }
-
-    fn delta_update(&mut self) {
-        let now = Instant::now();
-        let diff = now.duration_since(self.last_time);
-        self.frame_time = diff.as_secs_f32();
-        self.last_time = now;
-        self.time += diff;
-    }
 }
 
 // TODO restructure this

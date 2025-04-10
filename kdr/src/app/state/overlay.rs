@@ -1,12 +1,10 @@
 //! egui UI
 
-use std::time::Duration;
-
 use futures::FutureExt;
 use rfd::AsyncFileDialog;
 use tracing::warn;
 
-use super::{AppState, CustomEvent};
+use super::*;
 
 impl AppState {
     pub fn trigger_file_dialogue(&mut self) {

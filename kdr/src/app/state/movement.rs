@@ -6,10 +6,9 @@ use winit::{
     window::CursorGrabMode,
 };
 
-use super::{
-    AppState,
-    constants::{CAM_SPEED, CAM_TURN, SENSITIVITY},
-};
+use crate::app::constants::{CAM_SPEED, CAM_TURN, SENSITIVITY};
+
+use super::*;
 
 #[derive(Debug, Clone, Copy)]
 pub struct Key(u32);

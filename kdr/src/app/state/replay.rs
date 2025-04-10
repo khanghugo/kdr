@@ -1,7 +1,7 @@
 use cgmath::Deg;
 use ghost::GhostInfo;
 
-use super::AppState;
+use super::*;
 
 /// How a replay is played.
 pub enum ReplayPlaybackMode {
