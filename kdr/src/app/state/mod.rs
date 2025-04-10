@@ -4,7 +4,7 @@ use std::{pin::Pin, sync::Arc};
 use super::Instant;
 
 use futures::FutureExt;
-use movement::Key;
+use input::InputState;
 use overlay::UIState;
 use replay::Replay;
 use rfd::AsyncFileDialog;
@@ -41,11 +41,7 @@ pub struct AppState {
     file_dialogue_future: Option<Pin<Box<dyn Future<Output = Option<rfd::FileHandle>> + 'static>>>,
     file_bytes_future: Option<Pin<Box<dyn Future<Output = Vec<u8>> + 'static>>>,
 
-    // input
-    keys: Key,
-    mouse_right_hold: bool,
-
-    // ui states
+    input_state: InputState,
     ui_state: UIState,
 
     event_loop_proxy: EventLoopProxy<CustomEvent>,
@@ -62,9 +58,6 @@ impl AppState {
             paused: false,
 
             render_state: Default::default(),
-
-            keys: Key::empty(),
-            mouse_right_hold: false,
             replay: None,
 
             selected_file: None,
@@ -72,6 +65,7 @@ impl AppState {
             file_dialogue_future: None,
             file_bytes_future: None,
 
+            input_state: InputState::default(),
             ui_state: UIState { enabled: true },
 
             event_loop_proxy,
