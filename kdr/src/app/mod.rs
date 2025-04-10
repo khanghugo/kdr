@@ -599,11 +599,11 @@ pub fn run_kdr(resource_provider_base: Option<String>) {
         return;
     };
 
-    // When the current loop iteration finishes, immediately begin a new
-    // iteration regardless of whether or not new events are available to
-    // process. Preferred for applications that want to render as fast as
-    // possible, like games.
-    event_loop.set_control_flow(ControlFlow::Poll);
+    // Must be Wait if we don't want CPU bottleneck on the web.
+    // On native, we draw fast enough that it is basically a synchronous task.
+    // However, on the web, we might request redraw even though the other frame isn't done drawing.
+    // This leads to abysmal performance.
+    event_loop.set_control_flow(ControlFlow::Wait);
 
     // https://github.com/Jelmerta/Kloenk/blob/main/src/main.rs
     #[cfg(target_arch = "wasm32")]
