@@ -598,10 +598,6 @@ impl ApplicationHandler<CustomEvent> for App {
                         return;
                     };
 
-                    let provider = provider.clone();
-                    let file_path = file_path.to_owned();
-                    let file_bytes = file_bytes.to_owned();
-
                     #[cfg(not(target_arch = "wasm32"))]
                     {
                         let Ok((identifier, ghost)) =
@@ -617,6 +613,10 @@ impl ApplicationHandler<CustomEvent> for App {
 
                     #[cfg(target_arch = "wasm32")]
                     {
+                        let provider = provider.clone();
+                        let file_path = file_path.to_owned();
+                        let file_bytes = file_bytes.to_owned();
+
                         wasm_bindgen_futures::spawn_local(async move {
                             let Ok((identifier, ghost)) =
                                 provider.get_ghost_data(file_path, &file_bytes).await
