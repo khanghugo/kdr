@@ -4,6 +4,7 @@ use std::time::Duration;
 
 use futures::FutureExt;
 use rfd::AsyncFileDialog;
+use tracing::warn;
 
 use super::{AppState, CustomEvent};
 
@@ -16,7 +17,7 @@ impl AppState {
         self.file_dialogue_future = Some(Box::pin(future))
     }
 
-    pub fn state_poll(&mut self) -> Option<CustomEvent> {
+    pub fn state_poll(&mut self) {
         // only read the file name, yet to have the bytes
         if let Some(future) = &mut self.file_dialogue_future {
             if let Some(file_handle) = future.now_or_never() {
@@ -46,11 +47,11 @@ impl AppState {
                 self.file_bytes_future = None;
 
                 // only new file when we have the bytes
-                return Some(CustomEvent::NewFileSelected);
+                self.event_loop_proxy
+                    .send_event(CustomEvent::NewFileSelected)
+                    .unwrap_or_else(|_| warn!("Cannot send NewFileSelected"));
             }
         }
-
-        None
     }
 
     pub fn draw_egui(&mut self) -> impl FnMut(&egui::Context) -> () {

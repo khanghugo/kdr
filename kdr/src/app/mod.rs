@@ -83,6 +83,8 @@ struct AppState {
     // input
     keys: Key,
     mouse_right_hold: bool,
+
+    event_loop_proxy: EventLoopProxy<CustomEvent>,
 }
 
 impl AppState {
@@ -100,6 +102,7 @@ impl AppState {
             file_dialogue_future: None,
             file_bytes_future: None,
             paused: false,
+            event_loop_proxy,
         }
     }
 
@@ -328,11 +331,7 @@ impl ApplicationHandler<CustomEvent> for App {
                 window.request_redraw();
 
                 // polling the states every redraw request
-                if let Some(event) = self.state.state_poll() {
-                    self.event_loop_proxy.send_event(event).unwrap_or_else(|_| {
-                        warn!("Cannot send event message after polling states")
-                    });
-                }
+                self.state.state_poll();
             }
             // window event inputs are focused so we need to be here
             WindowEvent::KeyboardInput {
