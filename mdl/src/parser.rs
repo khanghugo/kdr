@@ -185,8 +185,10 @@ fn parse_animation_frame_values(br: &[u8], read_count: usize) -> IResult<Vec<u16
         let mut j = 0;
 
         while j < run[1] && i < read_count {
-            let idx = (run[0] - 1).min(j);
-            values[i] = vals[idx as usize];
+            if !vals.is_empty() {
+                let idx = (run[0] - 1).min(j);
+                values[i] = vals[idx as usize];
+            }
 
             i += 1;
             j += 1;
