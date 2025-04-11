@@ -177,9 +177,9 @@ impl PostProcessingModule for Bloom {
     }
 
     fn new(
-        device: &wgpu::Device,
-        input_texture_format: wgpu::TextureFormat,
-        fullscreen_tri_vertex_shader: &FullScrenTriVertexShader,
+        _device: &wgpu::Device,
+        _input_texture_format: wgpu::TextureFormat,
+        _fullscreen_tri_vertex_shader: &FullScrenTriVertexShader,
     ) -> Self {
         panic!("this shouldn't be used")
     }

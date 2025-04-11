@@ -8,7 +8,7 @@ use render_targets::RenderTargets;
 use skybox::{SkyboxBuffer, SkyboxLoader};
 use utils::FullScrenTriVertexShader;
 use winit::window::Window;
-use world_buffer::{WorldBuffer, WorldLoader};
+use world_buffer::{WorldBuffer, WorldLoader, WorldPushConstants};
 
 // need this to have window.canvas()
 #[cfg(target_arch = "wasm32")]
@@ -44,7 +44,7 @@ pub struct RenderContext {
     render_targets: RenderTargets,
     finalize_render_pipeline: FinalizeRenderPipeline,
     fullscreen_tri_vertex_shader: FullScrenTriVertexShader,
-    post_processing: PostProcessing,
+    pub post_processing: PostProcessing,
     pub skybox_loader: SkyboxLoader,
 }
 
@@ -59,6 +59,7 @@ pub struct RenderState {
     pub skybox: Option<SkyboxBuffer>,
 
     pub camera: Camera,
+    pub render_options: RenderOptions,
 
     // debug
     pub draw_call: usize,
@@ -71,6 +72,27 @@ impl Default for RenderState {
             skybox: None,
             draw_call: 0,
             world_buffer: vec![],
+            render_options: RenderOptions::default(),
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+pub struct RenderOptions {
+    pub render_nodraw: bool,
+    // TODO, eh, make it better?
+    pub render_beyond_sky: bool,
+    pub render_skybox: bool,
+    pub render_transparent: bool,
+}
+
+impl Default for RenderOptions {
+    fn default() -> Self {
+        Self {
+            render_nodraw: false,
+            render_beyond_sky: false,
+            render_skybox: true,
+            render_transparent: true,
         }
     }
 }
@@ -123,13 +145,15 @@ impl RenderContext {
         // this is for mvp matrices
         limits.max_uniform_buffer_binding_size = (4 * 4 * 4) // 1 matrix4x4f
             * MAX_MVP; // 512 entities at 32.8 KB
+        limits.max_push_constant_size = 128; // TODO may not be working
         // end limits
 
         let (device, queue) = adapter
             .request_device(
                 &wgpu::DeviceDescriptor {
                     label: None,
-                    required_features: wgpu::Features::DEPTH32FLOAT_STENCIL8,
+                    required_features: wgpu::Features::DEPTH32FLOAT_STENCIL8
+                        | wgpu::Features::PUSH_CONSTANTS,
                     required_limits: limits,
                     memory_hints: wgpu::MemoryHints::MemoryUsage,
                 },
@@ -330,6 +354,16 @@ impl RenderContext {
         //     });
         // }
 
+        let world_push_constants = WorldPushConstants {
+            render_nodraw: if state.render_options.render_nodraw {
+                1
+            } else {
+                0
+            },
+        };
+
+        let push_data = bytemuck::bytes_of(&world_push_constants);
+
         // world opaque pass
         if true {
             let opaque_pass_descriptor = wgpu::RenderPassDescriptor {
@@ -348,7 +382,11 @@ impl RenderContext {
                         load: wgpu::LoadOp::Clear(1.0),
                         store: wgpu::StoreOp::Store,
                     }),
-                    stencil_ops: None,
+                    // need to clear stencils here because skybox mask doesn't write over it
+                    stencil_ops: Some(wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(0),
+                        store: wgpu::StoreOp::Store,
+                    }),
                 }),
                 timestamp_writes: None,
                 occlusion_query_set: None,
@@ -356,6 +394,9 @@ impl RenderContext {
 
             let mut opaque_pass = encoder.begin_render_pass(&opaque_pass_descriptor);
             opaque_pass.set_pipeline(&self.world_opaque_render_pipeline);
+
+            // there are two set_push_constants method. WTF?
+            opaque_pass.set_push_constants(wgpu::ShaderStages::FRAGMENT, 0, push_data);
 
             state.world_buffer.iter().for_each(|world_buffer| {
                 opaque_pass.set_bind_group(1, &world_buffer.mvp_buffer.bind_group, &[]);
@@ -383,7 +424,7 @@ impl RenderContext {
         }
 
         // skybox mask
-        if true {
+        if state.render_options.render_skybox {
             state.world_buffer.iter().for_each(|world_buffer| {
                 let Some(batch_idx) = world_buffer.skybrush_batch_index else {
                     return;
@@ -400,7 +441,8 @@ impl RenderContext {
                             store: wgpu::StoreOp::Store,
                         }),
                         stencil_ops: Some(wgpu::Operations {
-                            // clear stencil please
+                            // even though this step has "Clear", it can't clear stencil
+                            // need to clear stencil in skybox pass step
                             load: wgpu::LoadOp::Clear(0),
                             store: wgpu::StoreOp::Store,
                         }),
@@ -433,7 +475,7 @@ impl RenderContext {
         }
 
         // skybox pass
-        if true {
+        if state.render_options.render_skybox {
             if let Some(ref skybox_buffer) = state.skybox {
                 let skybox_pass_descriptor = wgpu::RenderPassDescriptor {
                     label: Some("skybox pass descriptor"),
@@ -478,7 +520,8 @@ impl RenderContext {
 
         // world transparent pass
         // if resolve pass runs but this pass does not, the result image is black
-        if true {
+        // UPDATE, fake news, can skip this and resolve
+        if state.render_options.render_transparent {
             let transparent_pass_descriptor = wgpu::RenderPassDescriptor {
                 label: Some("world transparent pass descriptor"),
                 color_attachments: &self.oit_resolver.render_pass_color_attachments(),
@@ -523,7 +566,7 @@ impl RenderContext {
         }
 
         // oit resolve
-        if true {
+        if state.render_options.render_transparent {
             let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("oit resolve pass"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -546,7 +589,7 @@ impl RenderContext {
         // must be enabled because finalize is sending composite to swapchain
         // composite is empty at this moment
         {
-            self.post_processing.execute(
+            self.post_processing.run_post_processing_effects(
                 &self.device,
                 encoder,
                 &self.render_targets.main_texture,

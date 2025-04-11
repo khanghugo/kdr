@@ -1,10 +1,22 @@
 //! egui UI
-use crate::app::constants::DEFAULT_FRAMETIME;
+use crate::app::constants::{DEFAULT_FRAMETIME, DEFAULT_NOCLIP_SPEED, DEFAULT_SENSITIVITY};
 
 use super::*;
 
 pub struct UIState {
     pub enabled: bool,
+}
+
+// awkward......
+// directly affecting the rendering state, welp
+// need to maintain the state in the UI and then send that to the renderer
+// and then the renderer will send the state back to the UI
+#[derive(Clone, Copy, Default)]
+pub struct PostProcessingState {
+    pub kuwahara: bool,
+    pub bloom: bool,
+    pub chromatic_aberration: bool,
+    pub gray_scale: bool,
 }
 
 impl AppState {
@@ -105,6 +117,7 @@ impl AppState {
             .default_open(true)
             .collapsible(true)
             .show(ctx, |ui| {
+                // file
                 ui.horizontal(|ui| {
                     ui.label("File: ");
 
@@ -123,6 +136,7 @@ impl AppState {
                     }
                 });
 
+                // replay info
                 if let Some(replay) = &self.replay {
                     ui.separator();
 
@@ -131,7 +145,8 @@ impl AppState {
                     ui.vertical(|ui| {
                         let playback_mode = match replay.playback_mode {
                             replay::ReplayPlaybackMode::Immediate(_) => "Immediate",
-                            replay::ReplayPlaybackMode::RealTime => "Real-Time",
+                            replay::ReplayPlaybackMode::Interpolated => "Interpolated",
+                            replay::ReplayPlaybackMode::FrameAccurate => "Frame Accurate",
                         };
 
                         ui.label(format!("Ghost name: {}", replay.ghost.ghost_name));
@@ -146,8 +161,100 @@ impl AppState {
                     });
                 }
 
+                // settings
                 ui.separator();
 
+                // usual movement settings
+                ui.horizontal(|ui| {
+                    let sensitivity_slider =
+                        egui::DragValue::new(&mut self.input_state.sensitivity)
+                            .range(0.05..=6.0)
+                            .speed(0.0125)
+                            .max_decimals(4);
+                    let noclip_speed_slider =
+                        egui::DragValue::new(&mut self.input_state.noclip_speed)
+                            .range(0.0..=4000.0)
+                            .speed(10);
+
+                    ui.label("Sensitivity:");
+                    let response = ui.add(sensitivity_slider);
+
+                    if response.clicked_by(egui::PointerButton::Middle) {
+                        self.input_state.sensitivity = DEFAULT_SENSITIVITY;
+                    }
+
+                    ui.label("Speed:");
+                    let response = ui.add(noclip_speed_slider).on_hover_text(
+                        "You can press CTRL/SHIFT while moving to go slower/faster!!",
+                    );
+
+                    if response.clicked_by(egui::PointerButton::Middle) {
+                        self.input_state.noclip_speed = DEFAULT_NOCLIP_SPEED;
+                    }
+
+                    ui.checkbox(&mut self.input_state.free_cam, "Free cam");
+                });
+
+                // post processing settings
+                ui.horizontal(|ui| {
+                    ui.label("Effects: ");
+
+                    let kuwahara_response =
+                        ui.checkbox(&mut self.post_processing_state.kuwahara, "Kuwahara");
+                    let bloom_response =
+                        ui.checkbox(&mut self.post_processing_state.bloom, "Bloom");
+                    let cr_response = ui.checkbox(
+                        &mut self.post_processing_state.chromatic_aberration,
+                        "Chromatic Aberration",
+                    );
+                    let gs_response =
+                        ui.checkbox(&mut self.post_processing_state.gray_scale, "Gray Scale");
+
+                    if kuwahara_response.clicked()
+                        || bloom_response.clicked()
+                        || cr_response.clicked()
+                        || gs_response.clicked()
+                    {
+                        self.event_loop_proxy
+                            .send_event(CustomEvent::ReceivePostProcessingUpdate(
+                                self.post_processing_state,
+                            ))
+                            .unwrap_or_else(|_| {
+                                warn!("Failed to send ReceivePostProcessingUpdate")
+                            });
+                    }
+                });
+
+                // render options
+                ui.horizontal(|ui| {
+                    // pub render_nodraw: bool,
+                    // // TODO, eh, make it better?
+                    // pub render_beyond_sky: bool,
+                    // pub render_skybox: bool,
+                    // pub render_transparent: bool,
+                    ui.label("Render:");
+
+                    ui.checkbox(
+                        &mut self.render_state.render_options.render_nodraw,
+                        "No Draw Textures",
+                    );
+                    ui.checkbox(
+                        &mut self.render_state.render_options.render_beyond_sky,
+                        "Beyond Sky",
+                    )
+                    .on_hover_text("Currently not working");
+                    ui.checkbox(
+                        &mut self.render_state.render_options.render_skybox,
+                        "Skybox",
+                    );
+                    ui.checkbox(
+                        &mut self.render_state.render_options.render_transparent,
+                        "Transparency",
+                    );
+                });
+
+                // watermark
+                ui.separator();
                 ui.vertical_centered(|ui| {
                     ui.hyperlink_to("kdr on GitHub", "https://github.com/khanghugo/kdr");
                 });

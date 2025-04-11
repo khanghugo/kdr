@@ -15,9 +15,14 @@ mod kuwahara;
 mod pp_trait;
 
 pub struct PostProcessing {
-    effects: Vec<PostEffect>,
+    // effect and whether it is enabled or not
+    // the reason why we do a vector in the first place is that it is easier to ping pong the effect
+    // and the intermediate texture is correctly drawn over
+    // doing individual effect stacking by name works, but that means the pipeline will run over nothing
+    // that means we have to blit the image for no reasons
+    // maybe that is good? i dont know, but i dont like extra work on gpu here
+    effects: Vec<(bool, PostEffect)>,
     intermediate_textures: [wgpu::Texture; 2],
-    intermediate_views: [wgpu::TextureView; 2],
 }
 
 impl Drop for PostProcessing {
@@ -28,10 +33,10 @@ impl Drop for PostProcessing {
 }
 
 pub enum PostEffect {
-    GrayScale(GrayScale),
-    Bloom(Bloom),
     Kuwahara(Kuwahara),
+    Bloom(Bloom),
     ChromaticAberration(ChromaticAberration),
+    GrayScale(GrayScale),
 }
 
 impl PostProcessing {
@@ -42,7 +47,7 @@ impl PostProcessing {
         input_texture_format: wgpu::TextureFormat,
         fullscreen_tri_vertex_shader: &FullScrenTriVertexShader,
         // i dont like reasoning with lifetime
-        depth_texture: Arc<wgpu::Texture>,
+        _depth_texture: Arc<wgpu::Texture>,
     ) -> Self {
         let create_texture = || {
             device.create_texture(&wgpu::TextureDescriptor {
@@ -67,48 +72,45 @@ impl PostProcessing {
 
         let mut res = Self {
             effects: vec![],
-            intermediate_views: [
-                tex0.create_view(&wgpu::TextureViewDescriptor::default()),
-                tex1.create_view(&wgpu::TextureViewDescriptor::default()),
-            ],
             intermediate_textures: [tex0, tex1],
         };
 
-        // res.add_effect(PostEffect::GrayScale(GrayScale::new(
-        //     device,
-        //     input_texture_format,
-        //     fullscreen_tri_vertex_shader,
-        // )));
+        // make sure the order is correct
+        res.add_effect(PostEffect::Kuwahara(Kuwahara::new(
+            device,
+            input_texture_format,
+            fullscreen_tri_vertex_shader,
+        )));
 
-        // res.add_effect(PostEffect::Bloom(Bloom::new2(
-        //     device,
-        //     input_texture_format,
-        //     fullscreen_tri_vertex_shader,
-        //     width,
-        //     height,
-        // )));
+        res.add_effect(PostEffect::Bloom(Bloom::new2(
+            device,
+            input_texture_format,
+            fullscreen_tri_vertex_shader,
+            width,
+            height,
+        )));
 
-        // res.add_effect(PostEffect::Kuwahara(Kuwahara::new(
-        //     device,
-        //     input_texture_format,
-        //     fullscreen_tri_vertex_shader,
-        // )));
+        res.add_effect(PostEffect::ChromaticAberration(ChromaticAberration::new(
+            device,
+            input_texture_format,
+            fullscreen_tri_vertex_shader,
+        )));
 
-        // res.add_effect(PostEffect::ChromaticAberration(ChromaticAberration::new2(
-        //     device,
-        //     input_texture_format,
-        //     fullscreen_tri_vertex_shader,
-        //     depth_texture,
-        // )));
+        res.add_effect(PostEffect::GrayScale(GrayScale::new(
+            device,
+            input_texture_format,
+            fullscreen_tri_vertex_shader,
+        )));
 
         res
     }
 
     pub fn add_effect<T: Into<PostEffect>>(&mut self, effect: T) {
-        self.effects.push(effect.into());
+        // all effects start disabled
+        self.effects.push((false, effect.into()));
     }
 
-    pub fn execute(
+    pub fn run_post_processing_effects(
         &mut self,
         device: &wgpu::Device,
         encoder: &mut wgpu::CommandEncoder,
@@ -117,10 +119,14 @@ impl PostProcessing {
         // composite
         output_texture: &wgpu::Texture,
     ) {
-        let effect_count = self.effects.len();
+        let effect_count = self
+            .effects
+            .iter()
+            .filter(|(is_enabled, _)| *is_enabled)
+            .count();
 
         // if no effect, copy from input (main render) to output (composite) directly
-        if self.effects.is_empty() {
+        if effect_count == 0 {
             encoder.copy_texture_to_texture(
                 input_texture.as_image_copy(),
                 output_texture.as_image_copy(),
@@ -138,7 +144,12 @@ impl PostProcessing {
         let mut current_intermediate_output_texture = &self.intermediate_textures[0];
 
         // effect_count is at least 1 here
-        for (effect_index, effect) in self.effects.iter_mut().enumerate() {
+        for (effect_index, (_, effect)) in self
+            .effects
+            .iter()
+            .filter(|(is_enabled, _)| *is_enabled)
+            .enumerate()
+        {
             let is_last = effect_index == effect_count - 1;
 
             // if last, the output must be the specified output in the execute function
@@ -191,5 +202,35 @@ impl PostProcessing {
                     &self.intermediate_textures[(effect_index + 1) % 2];
             }
         }
+    }
+}
+
+impl PostProcessing {
+    pub fn get_gray_scale_toggle(&mut self) -> Option<&mut bool> {
+        self.effects
+            .iter_mut()
+            .find(|(_, e)| matches!(e, PostEffect::GrayScale(_)))
+            .map(|(is_enabled, _)| is_enabled)
+    }
+
+    pub fn get_bloom_toggle(&mut self) -> Option<&mut bool> {
+        self.effects
+            .iter_mut()
+            .find(|(_, e)| matches!(e, PostEffect::Bloom(_)))
+            .map(|(is_enabled, _)| is_enabled)
+    }
+
+    pub fn get_chromatic_aberration_toggle(&mut self) -> Option<&mut bool> {
+        self.effects
+            .iter_mut()
+            .find(|(_, e)| matches!(e, PostEffect::ChromaticAberration(_)))
+            .map(|(is_enabled, _)| is_enabled)
+    }
+
+    pub fn get_kuwahara_toggle(&mut self) -> Option<&mut bool> {
+        self.effects
+            .iter_mut()
+            .find(|(_, e)| matches!(e, PostEffect::Kuwahara(_)))
+            .map(|(is_enabled, _)| is_enabled)
     }
 }

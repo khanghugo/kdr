@@ -6,11 +6,11 @@ use winit::{
     window::CursorGrabMode,
 };
 
-use crate::app::constants::SENSITIVITY;
+use crate::app::constants::{DEFAULT_NOCLIP_SPEED, DEFAULT_SENSITIVITY};
 
 use super::AppState;
 
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy)]
 pub struct Key(u32);
 
 bitflags! {
@@ -28,10 +28,25 @@ bitflags! {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct InputState {
     pub keys: Key,
     pub mouse_right_hold: bool,
+    pub sensitivity: f32,
+    pub noclip_speed: f32,
+    pub free_cam: bool,
+}
+
+impl Default for InputState {
+    fn default() -> Self {
+        Self {
+            keys: Key::empty(),
+            mouse_right_hold: false,
+            sensitivity: DEFAULT_SENSITIVITY,
+            noclip_speed: DEFAULT_NOCLIP_SPEED,
+            free_cam: true,
+        }
+    }
 }
 
 impl AppState {
@@ -175,12 +190,12 @@ impl AppState {
             return;
         }
 
-        self.render_state
-            .camera
-            .set_pitch(self.render_state.camera.pitch() + Deg(-y as f32 * SENSITIVITY));
-        self.render_state
-            .camera
-            .set_yaw(self.render_state.camera.yaw() + Deg(-x as f32 * SENSITIVITY));
+        self.render_state.camera.set_pitch(
+            self.render_state.camera.pitch() + Deg(-y as f32 * self.input_state.sensitivity),
+        );
+        self.render_state.camera.set_yaw(
+            self.render_state.camera.yaw() + Deg(-x as f32 * self.input_state.sensitivity),
+        );
 
         self.render_state.camera.rebuild_orientation();
     }

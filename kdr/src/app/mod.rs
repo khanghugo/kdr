@@ -4,7 +4,8 @@ use ::tracing::{info, warn};
 use constants::{WINDOW_HEIGHT, WINDOW_WIDTH};
 use ghost::GhostInfo;
 use state::{
-    AppState,
+    AppState, ResourceState,
+    overlay::PostProcessingState,
     replay::{Replay, ReplayPlaybackMode},
 };
 // pollster for native use only
@@ -32,7 +33,8 @@ pub mod constants;
 mod state;
 
 use crate::renderer::{
-    RenderContext, camera::Camera, egui_renderer::EguiRenderer, world_buffer::WorldLoader,
+    RenderContext, RenderOptions, camera::Camera, egui_renderer::EguiRenderer,
+    world_buffer::WorldLoader,
 };
 use loader::{Resource, ResourceIdentifier, ResourceProvider, error::ResourceProviderError};
 
@@ -57,7 +59,8 @@ pub enum CustomEvent {
     RequestResource(ResourceIdentifier),
     ReceiveResource(Resource),
     NewFileSelected,
-    ReceivedGhostRequest(ResourceIdentifier, GhostInfo),
+    ReceiveGhostRequest(ResourceIdentifier, GhostInfo),
+    ReceivePostProcessingUpdate(PostProcessingState),
     ErrorEvent(AppError),
 }
 
@@ -383,6 +386,15 @@ impl ApplicationHandler<CustomEvent> for App {
             CustomEvent::RequestResource(resource_identifier) => {
                 info!("Requesting resources: {:?}", resource_identifier);
 
+                // when we have a ghost and we wnat to load a map instead, we need to know what is being loaded
+                // resource loading goes: ghost -> map
+                // so, if we want to load map, that means we have to restart ghost if we play ghost previously
+                // however, due to the resource loading order, we cannot just do that
+                // so here, we need to know what kind of resource is being loaded to reset data correctly
+                if matches!(self.state.resource_state, ResourceState::Bsp) {
+                    self.state.replay = None;
+                }
+
                 #[cfg(target_arch = "wasm32")]
                 let Some(resource_provider) = &self.web_resource_provider else {
                     return;
@@ -456,11 +468,11 @@ impl ApplicationHandler<CustomEvent> for App {
                 );
 
                 self.state.render_state.camera = Camera::default();
-
-                // ghost is loaded first so dont do this
-                // self.state.ghost = None;
+                self.state.render_state.render_options = RenderOptions::default();
             }
             CustomEvent::NewFileSelected => {
+                self.state.resource_state = ResourceState::None;
+
                 let Some(file_path) = &self.state.selected_file else {
                     warn!("New file is said to be selected but no new file found");
                     return;
@@ -500,13 +512,15 @@ impl ApplicationHandler<CustomEvent> for App {
                         .unwrap_or_else(|_| {
                             warn!("Cannot send resource request message after file dialogue")
                         });
+
+                    self.state.resource_state = ResourceState::Bsp;
                 } else if file_extension == "dem" {
                     info!("Received .dem from file dialogue. Processing .dem");
 
                     let event_loop_proxy = self.event_loop_proxy.clone();
                     let send_message = move |identifier, ghost| {
                         event_loop_proxy
-                            .send_event(CustomEvent::ReceivedGhostRequest(identifier, ghost))
+                            .send_event(CustomEvent::ReceiveGhostRequest(identifier, ghost))
                             .unwrap_or_else(|_| warn!("Failed to send ReceivedGhostRequest"));
                     };
 
@@ -559,23 +573,55 @@ impl ApplicationHandler<CustomEvent> for App {
                             send_message(identifier, ghost);
                         });
                     }
+
+                    self.state.resource_state = ResourceState::Replay;
                 } else {
                     warn!("Bad resource: {}", file_path.display());
                 }
             }
-            CustomEvent::ReceivedGhostRequest(identifier, ghost) => {
+            CustomEvent::ReceiveGhostRequest(identifier, ghost) => {
                 info!("Finished processing .dem. Loading replay");
 
                 self.state.replay = Some(Replay {
                     ghost,
-                    playback_mode: ReplayPlaybackMode::RealTime,
+                    playback_mode: ReplayPlaybackMode::Interpolated,
                 });
 
+                // resetting the time, obviously
                 self.state.time = 0.;
+
+                // make sure the user cannot move camera because it is true by default
+                self.state.input_state.free_cam = false;
 
                 self.event_loop_proxy
                     .send_event(CustomEvent::RequestResource(identifier))
                     .unwrap_or_else(|_| warn!("Failed to send RequestResource"));
+            }
+            CustomEvent::ReceivePostProcessingUpdate(state) => {
+                let Some(renderer) = &mut self.render_context else {
+                    warn!("Received ReceivePostProcessingUpdate but no render context available");
+                    return;
+                };
+
+                renderer
+                    .post_processing
+                    .get_kuwahara_toggle()
+                    .map(|res| *res = state.kuwahara);
+
+                renderer
+                    .post_processing
+                    .get_bloom_toggle()
+                    .map(|res| *res = state.bloom);
+
+                renderer
+                    .post_processing
+                    .get_chromatic_aberration_toggle()
+                    .map(|res| *res = state.chromatic_aberration);
+
+                renderer
+                    .post_processing
+                    .get_gray_scale_toggle()
+                    .map(|res| *res = state.gray_scale);
             }
             CustomEvent::ErrorEvent(app_error) => {
                 warn!("Error: {}", app_error.to_string());

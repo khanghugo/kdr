@@ -1,6 +1,6 @@
 use cgmath::Deg;
 
-use crate::app::constants::{CAM_SPEED, CAM_TURN};
+use crate::app::constants::CAM_TURN;
 
 use super::{input::Key, *};
 
@@ -54,7 +54,7 @@ impl AppState {
     }
 
     fn get_move_displacement(&self) -> f32 {
-        CAM_SPEED * self.frame_time * self.get_multiplier()
+        self.input_state.noclip_speed * self.frame_time * self.get_multiplier()
     }
 
     fn get_camera_displacement(&self) -> Deg<f32> {

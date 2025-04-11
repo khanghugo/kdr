@@ -1,10 +1,9 @@
-use std::sync::Arc;
+use crate::renderer::utils::FullScrenTriVertexShader;
 
 use super::pp_trait::{PostProcessingModule, PostProcessingPipeline};
 
 pub struct ChromaticAberration {
     pipeline: PostProcessingPipeline,
-    depth_view: wgpu::TextureView,
 }
 
 impl PostProcessingModule for ChromaticAberration {
@@ -43,20 +42,9 @@ impl PostProcessingModule for ChromaticAberration {
                     },
                     count: None,
                 },
-                // depth texture
-                wgpu::BindGroupLayoutEntry {
-                    binding: 1,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Texture {
-                        sample_type: wgpu::TextureSampleType::Depth,
-                        view_dimension: wgpu::TextureViewDimension::D2,
-                        multisampled: false,
-                    },
-                    count: None,
-                },
                 // sampler
                 wgpu::BindGroupLayoutEntry {
-                    binding: 2,
+                    binding: 1,
                     visibility: wgpu::ShaderStages::FRAGMENT,
                     ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
                     count: None,
@@ -80,10 +68,6 @@ impl PostProcessingModule for ChromaticAberration {
                 },
                 wgpu::BindGroupEntry {
                     binding: 1,
-                    resource: wgpu::BindingResource::TextureView(&self.depth_view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 2,
                     resource: wgpu::BindingResource::Sampler(self.get_sampler()),
                 },
             ],
@@ -93,30 +77,11 @@ impl PostProcessingModule for ChromaticAberration {
     fn new(
         device: &wgpu::Device,
         input_texture_format: wgpu::TextureFormat,
-        fullscreen_tri_vertex_shader: &crate::renderer::utils::FullScrenTriVertexShader,
-    ) -> Self {
-        panic!("dont use this method")
-    }
-}
-
-impl ChromaticAberration {
-    pub fn new2(
-        device: &wgpu::Device,
-        input_texture_format: wgpu::TextureFormat,
-        fullscreen_tri_vertex_shader: &crate::renderer::utils::FullScrenTriVertexShader,
-        depth_texture: Arc<wgpu::Texture>,
+        fullscreen_tri_vertex_shader: &FullScrenTriVertexShader,
     ) -> Self {
         let pipeline =
             Self::create_pipeline(device, input_texture_format, fullscreen_tri_vertex_shader);
 
-        let depth_view = depth_texture.create_view(&wgpu::TextureViewDescriptor {
-            aspect: wgpu::TextureAspect::DepthOnly,
-            ..Default::default()
-        });
-
-        Self {
-            pipeline,
-            depth_view,
-        }
+        Self { pipeline }
     }
 }

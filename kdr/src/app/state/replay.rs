@@ -13,8 +13,12 @@ pub enum ReplayPlaybackMode {
     Immediate(usize),
     /// Interpolated replay frame for the current time in the app.
     ///
-    /// Basically like a normal video.
-    RealTime,
+    /// Basically like how demo playback works.
+    Interpolated,
+    /// No interpolation.
+    ///
+    // TODO: make ghost playback do this
+    FrameAccurate,
 }
 
 pub struct Replay {
@@ -24,11 +28,17 @@ pub struct Replay {
 
 impl AppState {
     pub fn replay_tick(&mut self) {
+        // don't override the camera if in free cam
+        if self.input_state.free_cam {
+            return;
+        }
+
         let Some(replay) = &self.replay else { return };
 
         match replay.playback_mode {
             ReplayPlaybackMode::Immediate(_) => todo!("not planned for now until the recorder"),
-            ReplayPlaybackMode::RealTime => {
+            ReplayPlaybackMode::FrameAccurate => todo!("will be eventually, an easy task"),
+            ReplayPlaybackMode::Interpolated => {
                 let Some(frame) = replay.ghost.get_frame(self.time, None) else {
                     return;
                 };

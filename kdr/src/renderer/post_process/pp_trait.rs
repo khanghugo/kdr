@@ -51,7 +51,7 @@ pub trait PostProcessingModule {
         )
     }
 
-    fn bind_group_layout_label() -> Option<&'static str> {
+    fn _bind_group_layout_label() -> Option<&'static str> {
         Some(format!("{} bind group layout", Self::post_processing_effect_name()).leak())
     }
 
@@ -72,7 +72,7 @@ pub trait PostProcessingModule {
     }
 
     // not sure if this should be used becuase it might leak multiple time
-    fn render_pass_label() -> Option<&'static str> {
+    fn _render_pass_label() -> Option<&'static str> {
         Some(format!("{} render pass", Self::post_processing_effect_name()).leak())
     }
 

@@ -5,7 +5,7 @@ use super::Instant;
 
 use futures::FutureExt;
 use input::InputState;
-use overlay::UIState;
+use overlay::{PostProcessingState, UIState};
 use replay::Replay;
 use rfd::AsyncFileDialog;
 use tracing::warn;
@@ -19,6 +19,13 @@ pub mod input;
 pub mod movement;
 pub mod overlay;
 pub mod replay;
+
+/// This is just to simply tell the program what kind of thing is being loaded so it can reasonably resetting stuffs
+pub enum ResourceState {
+    Bsp,
+    Replay,
+    None,
+}
 
 // Decouples states from App so that we can impl specific stuffs that affect states without affecting App.
 pub struct AppState {
@@ -41,9 +48,13 @@ pub struct AppState {
     file_dialogue_future: Option<Pin<Box<dyn Future<Output = Option<rfd::FileHandle>> + 'static>>>,
     file_bytes_future: Option<Pin<Box<dyn Future<Output = Vec<u8>> + 'static>>>,
 
-    input_state: InputState,
+    // other states
+    pub input_state: InputState,
     ui_state: UIState,
+    post_processing_state: PostProcessingState,
+    pub resource_state: ResourceState,
 
+    // talk with other modules
     event_loop_proxy: EventLoopProxy<CustomEvent>,
     pub window: Option<Arc<Window>>,
 }
@@ -67,6 +78,8 @@ impl AppState {
 
             input_state: InputState::default(),
             ui_state: UIState { enabled: true },
+            post_processing_state: PostProcessingState::default(),
+            resource_state: ResourceState::None,
 
             event_loop_proxy,
             window: None,

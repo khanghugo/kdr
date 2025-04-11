@@ -1,6 +1,6 @@
-pub const CAM_SPEED: f32 = 1000.;
+pub const DEFAULT_NOCLIP_SPEED: f32 = 1000.;
 pub const CAM_TURN: f32 = 150.; // degrees
-pub const SENSITIVITY: f32 = 0.06; // degree angles per mouse unit moved
+pub const DEFAULT_SENSITIVITY: f32 = 0.06; // degree angles per mouse unit moved
 
 pub const MAX_MVP: u32 = 512;
 

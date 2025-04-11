@@ -15,6 +15,12 @@ use super::{
     utils::{face_vertices, get_bsp_textures, get_mdl_textures, vertex_uv},
 };
 
+#[derive(Pod, Zeroable, Clone, Copy)]
+#[repr(C)]
+pub struct WorldPushConstants {
+    pub render_nodraw: u32,
+}
+
 /// Key: (World Entity Index, Texture Index)
 ///
 /// Value: (Texture Array Index, Texture Index)
@@ -223,6 +229,16 @@ impl WorldLoader {
         let lightmap_bind_group_layout =
             device.create_bind_group_layout(&LightMapAtlasBuffer::bind_group_layout_descriptor());
 
+        let push_constant_ranges = match pipeline_type {
+            WorldPipelineType::ZPrepass | WorldPipelineType::SkyboxMask => vec![],
+            WorldPipelineType::Opaque | WorldPipelineType::Transparent => {
+                vec![wgpu::PushConstantRange {
+                    stages: wgpu::ShaderStages::FRAGMENT,
+                    range: 0..std::mem::size_of::<WorldPushConstants>() as u32,
+                }]
+            }
+        };
+
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: None,
             bind_group_layouts: &[
@@ -231,7 +247,7 @@ impl WorldLoader {
                 &texture_array_bind_group_layout, // 2
                 &lightmap_bind_group_layout,      // 3
             ],
-            push_constant_ranges: &[],
+            push_constant_ranges: &push_constant_ranges,
         });
 
         let fragment_targets = fragment_targets

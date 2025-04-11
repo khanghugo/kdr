@@ -203,6 +203,9 @@ fn nearest_aa_filtering(_uv: vec2f, layer_idx: u32) -> vec4f {
 @group(3) @binding(0) var lightmap: texture_2d<f32>;
 @group(3) @binding(1) var lightmap_sampler: sampler;
 
+// push constant is just `render_nodraw == 1`
+var<push_constant> push_constant: u32;
+
 fn calculate_base_color(
     position: vec4f,
     tex_coord: vec2f,
@@ -220,12 +223,18 @@ fn calculate_base_color(
     // albedo = nearest_aa_filtering(tex_coord, layer_idx);
     // albedo = pixel_art_filter2(tex_coord, layer_idx);
 
+    let render_nodraw = push_constant == 1;
+
     if type_ == 0 {
         // this is bsp vertex
         let is_trigger = data_b[1] == 2;
 
         if is_trigger {
-            return albedo;
+            if render_nodraw {
+                return albedo;
+            } else {
+                discard;
+            }
         }
 
         // it doesn't matter if we discard sky here or not
