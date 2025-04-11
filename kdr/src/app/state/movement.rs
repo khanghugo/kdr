@@ -72,6 +72,11 @@ impl AppState {
     }
 
     pub fn interaction_tick(&mut self) {
+        // shouldnt be able to move if we are not in free cam
+        if !self.input_state.free_cam {
+            return;
+        }
+
         if self.input_state.keys.contains(Key::Forward) {
             self.forward();
         }
@@ -96,5 +101,25 @@ impl AppState {
         if self.input_state.keys.contains(Key::Down) {
             self.down();
         }
+    }
+
+    pub fn handle_mouse_movement(&mut self, (x, y): (f64, f64)) {
+        if !self.input_state.free_cam {
+            return;
+        }
+
+        // behave like bspguy
+        if !self.input_state.mouse_right_hold {
+            return;
+        }
+
+        self.render_state.camera.set_pitch(
+            self.render_state.camera.pitch() + Deg(-y as f32 * self.input_state.sensitivity),
+        );
+        self.render_state.camera.set_yaw(
+            self.render_state.camera.yaw() + Deg(-x as f32 * self.input_state.sensitivity),
+        );
+
+        self.render_state.camera.rebuild_orientation();
     }
 }

@@ -183,20 +183,4 @@ impl AppState {
             let _ = window.set_cursor_grab(CursorGrabMode::None);
         }
     }
-
-    pub fn handle_mouse_movement(&mut self, (x, y): (f64, f64)) {
-        // behave like bspguy
-        if !self.input_state.mouse_right_hold {
-            return;
-        }
-
-        self.render_state.camera.set_pitch(
-            self.render_state.camera.pitch() + Deg(-y as f32 * self.input_state.sensitivity),
-        );
-        self.render_state.camera.set_yaw(
-            self.render_state.camera.yaw() + Deg(-x as f32 * self.input_state.sensitivity),
-        );
-
-        self.render_state.camera.rebuild_orientation();
-    }
 }
