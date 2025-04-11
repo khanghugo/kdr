@@ -27,12 +27,12 @@ pub enum EntityModel {
     OpaqueEntityBrush((i32, CustomRender)),
     /// Data inside is Bsp Model Index, Custom Render properties
     TransparentEntityBrush((i32, CustomRender)),
-    /// Trigger brushes have different rendering properties that we need to handle.
+    /// This is for all entity brushes that shouldn't be rendered. That includes all trigger_ and some func_
+    /// such as func_ladder or func_hostage_rescue. Why are they "func" but not "trigger"???
     ///
-    /// First of all, due to our code, renderamt for trigger brushes will be 0. This causes hall of mirror effect.
-    ///
-    /// Not only that, they don't have light map.
-    TriggerBrush(i32),
+    /// These brushes don't have lightmap so they will be black.
+    /// In addition, they will have renderamt 0. This causes hall of mirror effect on GLES.
+    NoDrawBrush(i32),
     // Data stored inside is the model name to get it from the `models` hash map inside [`BspResource`].
     Mdl(String),
     // TODO: implement sprite loading, sprite will likely be inside transparent buffer
@@ -129,7 +129,7 @@ impl BspResource {
                     return;
                 };
 
-                let is_trigger = classname.starts_with("trigger_");
+                let is_nodraw = is_nodraw(classname);
                 let is_entity_brush = model_path.starts_with("*");
                 let is_valid_model_displaying_entity = MODEL_ENTITIES.contains(&classname.as_str());
                 let is_sprite = !is_entity_brush
@@ -186,8 +186,8 @@ impl BspResource {
                     // it is reserved for the like of func_door and alikes
                     let angles = cgmath::Quaternion::zero();
 
-                    let normal_opaque_brush = is_opaque && !is_trigger;
-                    let normal_transparent_brush = !is_opaque && !is_trigger;
+                    let normal_opaque_brush = is_opaque && !is_nodraw;
+                    let normal_transparent_brush = !is_opaque && !is_nodraw;
 
                     let custom_render = CustomRender {
                         rendermode,
@@ -208,8 +208,8 @@ impl BspResource {
                                     bsp_model_index,
                                     custom_render,
                                 ))
-                            } else if is_trigger {
-                                EntityModel::TriggerBrush(bsp_model_index)
+                            } else if is_nodraw {
+                                EntityModel::NoDrawBrush(bsp_model_index)
                             } else {
                                 unreachable!("trying to add an unknown brush type: {}", classname)
                             },
@@ -365,4 +365,13 @@ fn vec3(i: &str) -> Option<[f32; 3]> {
     }
 
     Some([res[0], res[1], res[2]])
+}
+
+const NO_DRAW_FUNC_BRUSHES: &[&str] = &["func_hostage_rescue", "func_ladder"];
+
+fn is_nodraw(classname: &str) -> bool {
+    let is_trigger = classname.starts_with("trigger_");
+    let is_nodraw_func = NO_DRAW_FUNC_BRUSHES.contains(&classname);
+
+    return is_trigger || is_nodraw_func;
 }

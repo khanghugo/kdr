@@ -1,6 +1,7 @@
 use std::{path::Path, sync::Arc};
 
 use ::tracing::{info, warn};
+use common::constants::UNKNOWN_GAME_MOD;
 use constants::{WINDOW_HEIGHT, WINDOW_WIDTH};
 use ghost::GhostInfo;
 use state::{
@@ -23,8 +24,6 @@ use winit::{
     window::Window,
 };
 
-#[cfg(target_arch = "wasm32")]
-use crate::utils::browser_console_log;
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::JsCast;
 #[cfg(target_arch = "wasm32")]
@@ -448,6 +447,7 @@ impl ApplicationHandler<CustomEvent> for App {
                 info!("Received resources");
 
                 let Some(render_context) = &mut self.render_context else {
+                    warn!("Received resources but no render context to render");
                     return;
                 };
 
@@ -498,7 +498,8 @@ impl ApplicationHandler<CustomEvent> for App {
                         .and_then(|path| path.parent()) // game mod
                         .and_then(|path| path.file_name())
                         .and_then(|osstr| osstr.to_str())
-                        .unwrap_or("unknown");
+                        // the server needs to understand how to intepret the unknown map
+                        .unwrap_or(UNKNOWN_GAME_MOD);
 
                     let bsp_name = file_path.file_name().unwrap().to_str().unwrap();
 

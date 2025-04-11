@@ -8,7 +8,7 @@ use render_targets::RenderTargets;
 use skybox::{SkyboxBuffer, SkyboxLoader};
 use utils::FullScrenTriVertexShader;
 use winit::window::Window;
-use world_buffer::{WorldBuffer, WorldLoader, WorldPushConstants};
+use world_buffer::{PushConstantRenderFlags, WorldBuffer, WorldLoader, WorldPushConstants};
 
 // need this to have window.canvas()
 #[cfg(target_arch = "wasm32")]
@@ -84,6 +84,7 @@ pub struct RenderOptions {
     pub render_beyond_sky: bool,
     pub render_skybox: bool,
     pub render_transparent: bool,
+    pub full_bright: bool,
 }
 
 impl Default for RenderOptions {
@@ -93,6 +94,7 @@ impl Default for RenderOptions {
             render_beyond_sky: false,
             render_skybox: true,
             render_transparent: true,
+            full_bright: false,
         }
     }
 }
@@ -354,12 +356,24 @@ impl RenderContext {
         //     });
         // }
 
+        let push_constant_render_flags = {
+            let mut res = PushConstantRenderFlags::empty();
+
+            res.set(
+                PushConstantRenderFlags::RenderNoDraw,
+                state.render_options.render_nodraw,
+            );
+
+            res.set(
+                PushConstantRenderFlags::FullBright,
+                state.render_options.full_bright,
+            );
+
+            res
+        };
+
         let world_push_constants = WorldPushConstants {
-            render_nodraw: if state.render_options.render_nodraw {
-                1
-            } else {
-                0
-            },
+            render_flags: push_constant_render_flags,
         };
 
         let push_data = bytemuck::bytes_of(&world_push_constants);

@@ -77,7 +77,7 @@ impl AppState {
             file_bytes_future: None,
 
             input_state: InputState::default(),
-            ui_state: UIState { enabled: true },
+            ui_state: UIState::default(),
             post_processing_state: PostProcessingState::default(),
             resource_state: ResourceState::None,
 

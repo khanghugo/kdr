@@ -1,5 +1,4 @@
 use bitflags::bitflags;
-use cgmath::Deg;
 use winit::{
     event::{ElementState, MouseButton},
     keyboard::{KeyCode, PhysicalKey},
@@ -25,6 +24,7 @@ bitflags! {
         const Down      = (1 << 7);
         const Shift     = (1 << 8);
         const Control   = (1 << 9);
+        const Alt       = (1 << 10);
     }
 }
 
@@ -141,6 +141,14 @@ impl AppState {
                             .intersection(Key::Control.complement());
                     }
                 }
+                KeyCode::AltLeft => {
+                    if state.is_pressed() {
+                        self.input_state.keys = self.input_state.keys.union(Key::Alt);
+                    } else {
+                        self.input_state.keys =
+                            self.input_state.keys.intersection(Key::Alt.complement());
+                    }
+                }
                 KeyCode::KeyQ => {
                     if state.is_pressed() {
                         panic!()
@@ -148,10 +156,10 @@ impl AppState {
                 }
                 KeyCode::Escape => {
                     if state.is_pressed() {
-                        self.ui_state.enabled = !self.ui_state.enabled;
+                        self.ui_state.main_ui = !self.ui_state.main_ui;
                     }
                 }
-                KeyCode::Space => {
+                KeyCode::Space | KeyCode::KeyK => {
                     if state.is_pressed() {
                         self.paused = !self.paused;
                     }

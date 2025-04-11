@@ -11,6 +11,7 @@ wad = { path = "../wad" }
 mdl = { path = "../mdl" }
 ghost = { path = "../ghost" }
 loader = { path = "../loader" }
+common = { path = "../common" }
 
 bytemuck = { version = "1.21.0" }
 # default bytemuck traits aren't available inside base bytemuck when compile wasm32, for some reasons

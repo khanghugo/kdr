@@ -1,7 +1,7 @@
-use std::collections::HashMap;
-
+use bitflags::bitflags;
 use bytemuck_derive::{Pod, Zeroable};
 use image::RgbaImage;
+use std::collections::HashMap;
 use tracing::{info, warn};
 use wgpu::util::DeviceExt;
 
@@ -17,8 +17,20 @@ use super::{
 
 #[derive(Pod, Zeroable, Clone, Copy)]
 #[repr(C)]
+pub struct PushConstantRenderFlags(u32);
+
+bitflags! {
+    impl PushConstantRenderFlags: u32 {
+        const RenderNoDraw      = (1 << 0);
+        const FullBright        = (1 << 1);
+    }
+}
+
+// TODO, bit packing. maybe that is better?
+#[derive(Pod, Zeroable, Clone, Copy)]
+#[repr(C)]
 pub struct WorldPushConstants {
-    pub render_nodraw: u32,
+    pub render_flags: PushConstantRenderFlags,
 }
 
 /// Key: (World Entity Index, Texture Index)
@@ -544,7 +556,7 @@ struct ProcessBspFaceData<'a> {
     ///
     /// 1: Sky
     ///
-    /// 2: Trigger brush
+    /// 2: No draw brushes
     type_: u32,
 }
 
@@ -577,12 +589,12 @@ fn create_batch_lookups(
             EntityModel::Bsp
             | EntityModel::OpaqueEntityBrush(_)
             | EntityModel::TransparentEntityBrush(_)
-            | EntityModel::TriggerBrush(_) => {
+            | EntityModel::NoDrawBrush(_) => {
                 let bsp_model_index = match &entity.model {
                     EntityModel::Bsp => 0,
                     EntityModel::OpaqueEntityBrush((x, _)) => *x,
                     EntityModel::TransparentEntityBrush((x, _)) => *x,
-                    EntityModel::TriggerBrush(x) => *x,
+                    EntityModel::NoDrawBrush(x) => *x,
                     _ => unreachable!("cannot get bsp model index out of this model"),
                 };
 
@@ -593,8 +605,7 @@ fn create_batch_lookups(
 
                 let faces = &bsp.faces[first_face..(first_face + face_count)];
 
-                // trigger will have no render effect
-                let is_trigger = matches!(entity.model, EntityModel::TriggerBrush(_));
+                let is_nodraw = matches!(entity.model, EntityModel::NoDrawBrush(_));
 
                 let custom_render = match &entity.model {
                     EntityModel::OpaqueEntityBrush((_, custom_render)) => Some(custom_render),
@@ -621,7 +632,7 @@ fn create_batch_lookups(
 
                         let face_type = if is_sky {
                             1
-                        } else if is_trigger {
+                        } else if is_nodraw {
                             2
                         } else {
                             0

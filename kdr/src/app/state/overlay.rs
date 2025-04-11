@@ -4,7 +4,17 @@ use crate::app::constants::{DEFAULT_FRAMETIME, DEFAULT_NOCLIP_SPEED, DEFAULT_SEN
 use super::*;
 
 pub struct UIState {
-    pub enabled: bool,
+    pub main_ui: bool,
+    pub crosshair: bool,
+}
+
+impl Default for UIState {
+    fn default() -> Self {
+        Self {
+            main_ui: true,
+            crosshair: true,
+        }
+    }
 }
 
 // awkward......
@@ -22,7 +32,12 @@ pub struct PostProcessingState {
 impl AppState {
     pub fn draw_egui(&mut self) -> impl FnMut(&egui::Context) -> () {
         |ctx| {
-            if !self.ui_state.enabled {
+            if self.ui_state.crosshair {
+                self.crosshair(ctx);
+            }
+
+            // anything interactive start from here
+            if !self.ui_state.main_ui {
                 return;
             }
 
@@ -32,6 +47,65 @@ impl AppState {
                 self.seek_bar(ctx);
             }
         }
+    }
+
+    pub fn crosshair(&mut self, ctx: &egui::Context) {
+        let Some((width, height)) = self.window_dimensions() else {
+            return;
+        };
+
+        const STROKE_LENGTH: f32 = 8.0;
+        const STROKE_START: f32 = 4.0;
+
+        // very sad, stroke length has to be 1.5 becuase
+        // screensize is usually even number, infact, twice the even
+        // so the center is even, that means, we cannot have 1 pixel stroke unless there's some subpixel stuffs
+        let stroke = egui::Stroke::new(1.5, egui::Color32::GREEN);
+        let center_x = width as f32 / 2.;
+        let center_y = height as f32 / 2.;
+
+        let top_stroke = egui::Shape::LineSegment {
+            points: [
+                [center_x, center_y - STROKE_START].into(), // start
+                [center_x, center_y - STROKE_START - STROKE_LENGTH].into(), // end
+            ],
+            stroke,
+        };
+
+        let bottom_stroke = egui::Shape::LineSegment {
+            points: [
+                [center_x, center_y + STROKE_START].into(), // start
+                [center_x, center_y + STROKE_START + STROKE_LENGTH].into(), // end
+            ],
+            stroke,
+        };
+
+        let left_stroke = egui::Shape::LineSegment {
+            points: [
+                [center_x - STROKE_START, center_y].into(), // start
+                [center_x - STROKE_START - STROKE_LENGTH, center_y].into(), // end
+            ],
+            stroke,
+        };
+
+        let right_stroke = egui::Shape::LineSegment {
+            points: [
+                [center_x + STROKE_START, center_y].into(), // start
+                [center_x + STROKE_START + STROKE_LENGTH, center_y].into(), // end
+            ],
+            stroke,
+        };
+
+        egui::Area::new(egui::Id::new("crosshair"))
+            .anchor(egui::Align2::CENTER_CENTER, [0., 0.])
+            .show(ctx, |ui| {
+                let painter = ui.painter();
+
+                painter.add(top_stroke);
+                painter.add(bottom_stroke);
+                painter.add(left_stroke);
+                painter.add(right_stroke);
+            });
     }
 
     pub fn seek_bar(&mut self, ctx: &egui::Context) {
@@ -71,12 +145,12 @@ impl AppState {
 
                             // current_time
                             ui.horizontal_centered(|ui| {
-                                ui.add_space(2.0);
-                                let time_text = egui::RichText::new(format!("{:>6.02}", self.time))
+                                let time_text = egui::RichText::new(format_time(self.time))
                                     .size(14.0)
                                     .monospace();
-                                ui.label(time_text);
-                                ui.add_space(2.0);
+                                let time_label = egui::Label::new(time_text).selectable(false);
+
+                                ui.add(time_label);
                             });
 
                             // pause button
@@ -150,8 +224,6 @@ impl AppState {
                 if let Some(replay) = &self.replay {
                     ui.separator();
 
-                    ui.label("Demo Info: ");
-
                     ui.vertical(|ui| {
                         let playback_mode = match replay.playback_mode {
                             replay::ReplayPlaybackMode::Immediate(_) => "Immediate",
@@ -173,8 +245,8 @@ impl AppState {
 
                 // settings
                 ui.separator();
+                ui.label("Controls");
 
-                // usual movement settings
                 ui.horizontal(|ui| {
                     let sensitivity_slider =
                         egui::DragValue::new(&mut self.input_state.sensitivity)
@@ -202,20 +274,23 @@ impl AppState {
                         self.input_state.noclip_speed = DEFAULT_NOCLIP_SPEED;
                     }
 
-                    ui.checkbox(&mut self.input_state.free_cam, "Free cam");
+                    ui.checkbox(&mut self.input_state.free_cam, "Freecam");
+
+                    ui.checkbox(&mut self.ui_state.crosshair, "Crosshair");
                 });
 
                 // post processing settings
-                ui.horizontal(|ui| {
-                    ui.label("Effects: ");
+                ui.separator();
+                ui.label("Effects");
 
+                ui.horizontal(|ui| {
                     let kuwahara_response =
                         ui.checkbox(&mut self.post_processing_state.kuwahara, "Kuwahara");
                     let bloom_response =
                         ui.checkbox(&mut self.post_processing_state.bloom, "Bloom");
                     let cr_response = ui.checkbox(
                         &mut self.post_processing_state.chromatic_aberration,
-                        "Chromatic Aberration",
+                        "C. Aberration",
                     );
                     let gs_response =
                         ui.checkbox(&mut self.post_processing_state.gray_scale, "Gray Scale");
@@ -236,23 +311,27 @@ impl AppState {
                 });
 
                 // render options
-                ui.horizontal(|ui| {
-                    // pub render_nodraw: bool,
-                    // // TODO, eh, make it better?
-                    // pub render_beyond_sky: bool,
-                    // pub render_skybox: bool,
-                    // pub render_transparent: bool,
-                    ui.label("Render:");
+                ui.separator();
+                ui.label("Render options");
 
+                ui.horizontal(|ui| {
                     ui.checkbox(
                         &mut self.render_state.render_options.render_nodraw,
-                        "No Draw Textures",
+                        "NoDraw Textures",
                     );
                     ui.checkbox(
                         &mut self.render_state.render_options.render_beyond_sky,
                         "Beyond Sky",
                     )
                     .on_hover_text("Currently not working");
+
+                    ui.checkbox(
+                        &mut self.render_state.render_options.full_bright,
+                        "Full Bright",
+                    );
+                });
+
+                ui.horizontal(|ui| {
                     ui.checkbox(
                         &mut self.render_state.render_options.render_skybox,
                         "Skybox",
@@ -270,4 +349,15 @@ impl AppState {
                 });
             });
     }
+}
+
+fn format_time(time_in_secs: f32) -> String {
+    let minutes = time_in_secs.div_euclid(60.);
+    let seconds = (time_in_secs % 60.0).floor();
+    let fract = (time_in_secs.fract() * 100.0).floor();
+
+    format!(
+        "{:02}:{:02}.{:02}",
+        minutes as i32, seconds as i32, fract as i32
+    )
 }

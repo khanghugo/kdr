@@ -4,6 +4,7 @@ use std::{
 };
 
 use bsp::Bsp;
+use common::constants::UNKNOWN_GAME_MOD;
 use tracing::{info, warn};
 use wad::types::Wad;
 
@@ -46,6 +47,13 @@ impl ResourceProvider for NativeResourceProvider {
         let map_relative_path = PathBuf::from("maps").join(map_name.as_str());
 
         info!("Requesting resources for {}", map_name);
+
+        if identifier.game_mod == UNKNOWN_GAME_MOD {
+            info!(
+                "Encountering `{}` game mod. Will scan all game mods in the config file",
+                UNKNOWN_GAME_MOD
+            );
+        }
 
         // need to properly search the bsp as well
         let path_to_map = search_game_resource(
@@ -410,7 +418,18 @@ pub fn search_game_resource(
     None
 }
 
+// must include the downloads variance because that is easier for me
+const COMMON_GAME_MODS: &[&str] = &[
+    // "valve", // no need for valve because it is guaranteed to be inside "get_game_mods_to_check"
+    // "valve_downloads", // likewise
+    "ag",
+    "ag_downloads",
+    "cstrike",
+    "cstrike_downloads",
+];
+
 // includes the original game_mod
+// if game mod is unknown, we will check all of the game mods inside a provided list
 fn get_game_mods_to_check(game_mod: &str) -> Vec<String> {
     let is_valve = game_mod == "valve";
     let is_download = game_mod.ends_with("downloads");
@@ -423,7 +442,6 @@ fn get_game_mods_to_check(game_mod: &str) -> Vec<String> {
     } else {
         // check main mod and then check valve
         // it is usually guaranteed that downloads folder is very big and longer to check. Whatever.
-        gamemods_to_check.push("valve".to_string());
         if is_download {
             let without_download = game_mod.replace("_downloads", "");
 
@@ -434,7 +452,15 @@ fn get_game_mods_to_check(game_mod: &str) -> Vec<String> {
 
         // every else needs to check in with "valve"
         // but we add it last because we have to prioritize our game mod
+        gamemods_to_check.push("valve".to_string());
         gamemods_to_check.push("valve_downloads".to_string());
+    }
+
+    // if gmae mod is unknown then just check all of the other gmae mods just to be safe
+    if game_mod == UNKNOWN_GAME_MOD {
+        COMMON_GAME_MODS.iter().for_each(|&game_mod| {
+            gamemods_to_check.push(game_mod.to_string());
+        });
     }
 
     gamemods_to_check

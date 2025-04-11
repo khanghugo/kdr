@@ -64,7 +64,7 @@ impl AppState {
     fn get_multiplier(&self) -> f32 {
         if self.input_state.keys.contains(Key::Shift) {
             2.0
-        } else if self.input_state.keys.contains(Key::Control) {
+        } else if (Key::Control | Key::Alt).intersects(self.input_state.keys) {
             0.5
         } else {
             1.0

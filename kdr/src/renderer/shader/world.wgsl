@@ -204,7 +204,10 @@ fn nearest_aa_filtering(_uv: vec2f, layer_idx: u32) -> vec4f {
 @group(3) @binding(1) var lightmap_sampler: sampler;
 
 // push constant is just `render_nodraw == 1`
-var<push_constant> push_constant: u32;
+var<push_constant> render_flags: u32;
+
+const RENDER_NODRAW_FLAG: u32 = 1u << 0u;
+const FULL_BRIGHT_FLAG: u32 = 1u << 1u;
 
 fn calculate_base_color(
     position: vec4f,
@@ -223,18 +226,24 @@ fn calculate_base_color(
     // albedo = nearest_aa_filtering(tex_coord, layer_idx);
     // albedo = pixel_art_filter2(tex_coord, layer_idx);
 
-    let render_nodraw = push_constant == 1;
+    // need to explicitly specify we are shifting a u32 with u32
+    let render_nodraw = (render_flags & RENDER_NODRAW_FLAG) != 0u;
+    let full_bright = (render_flags & FULL_BRIGHT_FLAG) != 0u;
 
     if type_ == 0 {
         // this is bsp vertex
-        let is_trigger = data_b[1] == 2;
+        let is_nodraw = data_b[1] == 2;
 
-        if is_trigger {
+        if is_nodraw {
             if render_nodraw {
                 return albedo;
             } else {
                 discard;
             }
+        }
+
+        if full_bright {
+            return albedo;
         }
 
         // it doesn't matter if we discard sky here or not
@@ -271,6 +280,11 @@ fn calculate_base_color(
         return vec4(final_color, alpha);
     } else if type_ == 1 {
         // this is mdl vertex
+
+        // need to repeat it because we also want to filter othre stuffs we don't want to draw like nodraw :()
+        if full_bright {
+            return albedo;
+        }
 
         let alpha = albedo.a;
 
