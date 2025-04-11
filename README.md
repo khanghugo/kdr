@@ -51,6 +51,7 @@ Currently work in progress, check back later
     - [ ] HDR
     - [X] ~~Anisotropic~~ Kuwahara Filtering
     - [X] Some random other shader effects just to prove that it is easy to add.
+  - [ ] MSAA. Doesn't seem like a lot of work but not the priority.
 - Navigation
   - [X] Noclip movement
   - [X] Pitch and Yaw
@@ -87,3 +88,4 @@ Currently work in progress, check back later
     - [X] usable interface
     - [X] seek bar for demo
     - [ ] demo checker ui?
+- [ ] Sound
