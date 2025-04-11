@@ -20,7 +20,8 @@ Currently work in progress, check back later
       - [X] "renderamt"
     - [X] Named entities. Some entities aren't properly displaced
     - [X] Samey shader as the game
-    - [X] "rendermode"
+    - [X] ~~"rendermode"~~ (duplicated)
+    - [ ] Water and futurely moving sprites
   - MDL
     - [X] Face
     - [X] Texture
@@ -66,11 +67,23 @@ Currently work in progress, check back later
 - [X] BSP viewer. It is implicitly one.
 - [ ] Demo checker. Seems like a cool addition. If I add the normal UI on top, should be easy to have demo checker UI similar to demo.unique-kz.net. That UI should be for scrubbing through the demo?
 - Integration
-  - [X] Native with Vulkan
-  - [ ] Web with WebGPU. Probably working just fine. Just need to write some HTML
+  - Native
+    - [X] Vulkan. This is the definitive backend
+    - [X] OpenGL. This is the backup backend to test with WebGL2. So far, all of the weird kinks are ironed out
+    - [ ] Config files. Somehow have a config files so that resource provider is correct. Like how bspguy does
+  - Web
+    - [X] WebGL2. Clear color is different than native OpenGL for some reasons.
+    - [X] Minimal web example. This uses simple HTML script block. Basically no javascript or node project to help people bootstrap this
+    - [ ] Less minimal web example. A nodejs module example because most people don't roll pure html.
+    - [X] REST API server. There is one now but I guess it is too minimal. It works great though. It uses the game folder so that is very standard
+    - [ ] Final version of gchimp ResMake. To help the server distribute maps faster, gchimp ResMake zip option pre-processess all the files
+    so that the server only needs to distribute the archive instead of searchign for files in the game install.
   - BSP Loads:
     - [X] BSP self
     - [ ] BSP another
     - [X] MDL
     - [ ] SPR
-  - [ ] User interface. `egui` probably works
+  - User interface. `egui` probably works
+    - [X] usable interface
+    - [X] seek bar for demo
+    - [ ] demo checker ui?
