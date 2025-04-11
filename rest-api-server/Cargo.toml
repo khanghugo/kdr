@@ -14,7 +14,7 @@ serde = { version = "1.0.219", features = ["derive"] }
 serde_json = "1.0.140"
 thiserror = "2.0.12"
 tracing = "0.1.41"
-tracing-subscriber = "0.3.19"
+tracing-subscriber = { version = "0.3.19", features = ["local-time"] }
 uuid = { version = "1.16.0", features = ["v4"] }
 zip = { version = "2.6.1", features = ["deflate"], default-features = false }
 

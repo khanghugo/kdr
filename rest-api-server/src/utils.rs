@@ -2,7 +2,7 @@ use std::{io::Write, path::Path};
 
 use loader::ResourceIdentifier;
 use tracing::{Level, info};
-use tracing_subscriber::FmtSubscriber;
+use tracing_subscriber::{FmtSubscriber, fmt::time::LocalTime};
 use zip::{ZipWriter, write::SimpleFileOptions};
 
 // from gchimp
@@ -48,6 +48,7 @@ pub fn sanitize_identifier(identifier: &ResourceIdentifier) -> Option<ResourceId
 pub fn start_tracing() {
     let subscriber = FmtSubscriber::builder()
         .with_max_level(Level::DEBUG)
+        .with_timer(LocalTime::rfc_3339())
         .finish();
 
     tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
