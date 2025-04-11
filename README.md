@@ -89,3 +89,7 @@ Currently work in progress, check back later
     - [X] seek bar for demo
     - [ ] demo checker ui?
 - [ ] Sound
+- On screen text
+  - [ ] Chat message
+  - [ ] Timer? Health? Armor?
+  - [ ] TeTextMessage?
