@@ -110,7 +110,7 @@ impl AppState {
     }
 
     pub fn main_ui(&mut self, ctx: &egui::Context) {
-        const MAX_TITLE_LENGTH: usize = 40;
+        const MAX_TITLE_LENGTH: usize = 44;
         let title_name = self.selected_file.clone().unwrap_or("kdr".to_string());
         let title_name = if title_name.len() > MAX_TITLE_LENGTH {
             format!(
