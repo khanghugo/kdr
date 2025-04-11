@@ -69,6 +69,16 @@ impl AppState {
 
                             ui.add(timeline_slider);
 
+                            // current_time
+                            ui.horizontal_centered(|ui| {
+                                ui.add_space(2.0);
+                                let time_text = egui::RichText::new(format!("{:>6.02}", self.time))
+                                    .size(14.0)
+                                    .monospace();
+                                ui.label(time_text);
+                                ui.add_space(2.0);
+                            });
+
                             // pause button
                             let pause_button_size = height as f32 * 0.01;
                             let pause_icon = egui::RichText::new("⏸").size(24.0);
