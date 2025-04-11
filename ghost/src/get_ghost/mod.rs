@@ -36,6 +36,35 @@ pub fn get_ghost<'a>(
         GhostBlob::Unknown => err!("unknown ghost file"),
     }
 }
+#[derive(Debug, Clone)]
+pub struct GhostFrameSound {
+    pub file_name: String,
+    pub volume: String,
+    pub origin: [f32; 3],
+}
+
+#[derive(Debug, Clone)]
+pub struct GhostFrameText {
+    pub text: String,
+    // normalized [0, 1]
+    // demo default location goes [-8192, 8192]
+    pub location: [f32; 2],
+    // normalized rgba [0, 1]
+    pub color: [f32; 4],
+    // how long it lives for, in seconds
+    // demo life is counted in miliseconds, so "190" = 0.19s
+    pub life: f32,
+    // the channel of the text where only 1 text can occupy
+    // with this, we can render text more accurately like how the game does
+    pub channel: i8,
+}
+
+#[derive(Debug, Clone)]
+pub struct GhostFrameExtra {
+    pub sound: Vec<GhostFrameSound>,
+    pub text: Vec<GhostFrameText>,
+    pub anim: Option<GhostFrameAnim>,
+}
 
 #[derive(Debug, Clone)]
 pub struct GhostFrame {
@@ -43,8 +72,8 @@ pub struct GhostFrame {
     pub viewangles: Vec3,
     pub frametime: Option<f32>,
     pub buttons: Option<u32>,
-    pub anim: Option<GhostFrameAnim>,
     pub fov: Option<f32>,
+    pub extras: Option<GhostFrameExtra>,
 }
 
 #[derive(Debug, Clone)]
@@ -66,10 +95,10 @@ pub struct GhostInfo {
 }
 
 impl GhostInfo {
-    /// Returns an interpolated [`GhostFrame`] based on current time.
+    /// Returns an interpolated [`GhostFrame`] based on current time and the round down frame index.
     ///
     /// Takes an optional argument to force frametime.
-    pub fn get_frame(&self, time: f32, frametime: Option<f32>) -> Option<GhostFrame> {
+    pub fn get_frame(&self, time: f32, frametime: Option<f32>) -> Option<(usize, GhostFrame)> {
         let frame0 = self.frames.first()?;
 
         // No frame time, not sure how to accumulate correctly
@@ -99,7 +128,7 @@ impl GhostInfo {
         }
 
         if to_index == 0 {
-            return Some(frame0.clone());
+            return Some((0, frame0.clone()));
         }
 
         // If exceeding the number of available frames then we have nothing.
@@ -140,14 +169,18 @@ impl GhostInfo {
         };
 
         // Maybe do some interpolation for sequence in the future? Though only demo would have it.
-        Some(GhostFrame {
-            origin: new_origin,
-            viewangles: new_viewangles,
-            frametime: from_frame.frametime,
-            buttons: from_frame.buttons,
-            anim: from_frame.anim.clone(),
-            fov: new_fov,
-        })
+        Some((
+            // to index is guaranteed to not be 0
+            to_index - 1,
+            GhostFrame {
+                origin: new_origin,
+                viewangles: new_viewangles,
+                frametime: from_frame.frametime,
+                buttons: from_frame.buttons,
+                fov: new_fov,
+                extras: from_frame.extras.clone(),
+            },
+        ))
     }
 
     /// Returns the frame index from a given time.
@@ -200,6 +233,16 @@ impl GhostInfo {
         } else {
             return Box::new(no_frametime);
         }
+    }
+
+    pub fn has_sound(&self) -> bool {
+        self.frames.iter().any(|frame| {
+            frame
+                .extras
+                .as_ref()
+                .map(|extra| !extra.sound.is_empty())
+                .unwrap_or(false)
+        })
     }
 }
 

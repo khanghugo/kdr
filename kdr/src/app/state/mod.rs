@@ -5,7 +5,10 @@ use super::Instant;
 
 use futures::FutureExt;
 use input::InputState;
-use overlay::{PostProcessingState, UIState};
+use overlay::{
+    text::TextState,
+    ui::{PostProcessingState, UIState},
+};
 use replay::Replay;
 use rfd::AsyncFileDialog;
 use tracing::warn;
@@ -53,6 +56,7 @@ pub struct AppState {
     ui_state: UIState,
     post_processing_state: PostProcessingState,
     pub resource_state: ResourceState,
+    text_state: TextState,
 
     // talk with other modules
     event_loop_proxy: EventLoopProxy<CustomEvent>,
@@ -80,6 +84,7 @@ impl AppState {
             ui_state: UIState::default(),
             post_processing_state: PostProcessingState::default(),
             resource_state: ResourceState::None,
+            text_state: TextState::default(),
 
             event_loop_proxy,
             window: None,
@@ -94,6 +99,7 @@ impl AppState {
 
         self.interaction_tick();
         self.replay_tick();
+        self.text_tick();
     }
 
     fn delta_update(&mut self) {

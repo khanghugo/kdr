@@ -42,12 +42,14 @@ tracing = "0.1.41"
 tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
 
 # egui integration
+egui = { version = "0.31.1" }
 # need these crates along with the original crates
-egui = "0.31.1"
 egui-wgpu = { version = "0.31.1", features = ["winit"] }
 # disable all featurse but have winit enable
 # need to disable arboards, which is important to compile to wasm32
-egui-winit = { version = "0.31.1", default-features = false }
+egui-winit = { version = "0.31.1", default-features = false, features = [
+    "links",
+] }
 wgpu = { version = "24.0.3", features = ["webgl"] }
 winit = { version = "0.30.9", features = [] }
 rfd = "0.15.3"

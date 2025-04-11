@@ -6,7 +6,7 @@ pub use error::GhostError;
 mod error;
 mod get_ghost;
 
-pub use get_ghost::GhostInfo;
+pub use get_ghost::*;
 
 pub enum GhostBlob<'a> {
     Demo(Demo),

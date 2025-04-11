@@ -6,7 +6,7 @@ use constants::{WINDOW_HEIGHT, WINDOW_WIDTH};
 use ghost::GhostInfo;
 use state::{
     AppState, ResourceState,
-    overlay::PostProcessingState,
+    overlay::ui::PostProcessingState,
     replay::{Replay, ReplayPlaybackMode},
 };
 // pollster for native use only

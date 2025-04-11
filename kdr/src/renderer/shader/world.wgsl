@@ -242,10 +242,6 @@ fn calculate_base_color(
             }
         }
 
-        if full_bright {
-            return albedo;
-        }
-
         // it doesn't matter if we discard sky here or not
         // in the skybox pass, the stencil will write over fragments behind it regardless
         // just draw it anyway so depth test is updated
@@ -277,14 +273,14 @@ fn calculate_base_color(
             final_color = alpha_test(tex_coord, layer_idx, final_color, alpha);
         }
 
-        return vec4(final_color, alpha);
-    } else if type_ == 1 {
-        // this is mdl vertex
-
-        // need to repeat it because we also want to filter othre stuffs we don't want to draw like nodraw :()
+        // full bright goes last because we might want to discard fragments
         if full_bright {
             return albedo;
         }
+
+        return vec4(final_color, alpha);
+    } else if type_ == 1 {
+        // this is mdl vertex
 
         let alpha = albedo.a;
 
@@ -309,6 +305,11 @@ fn calculate_base_color(
         // additive
         if (texture_flags & (1u << 5)) != 0 {
 
+        }
+
+        // need to repeat it because we also want to filter othre stuffs we don't want to draw like nodraw :()
+        if full_bright {
+            return albedo;
         }
 
         return vec4(final_color, alpha);

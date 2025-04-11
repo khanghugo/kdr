@@ -1,4 +1,4 @@
-use dem::types::{EngineMessage, FrameData, MessageData, NetMessage};
+use dem::types::{EngineMessage, FrameData, MessageData, NetMessage, TempEntity};
 
 use super::*;
 
@@ -144,12 +144,57 @@ pub fn demo_ghost_parse(filename: &str, demo: &Demo) -> eyre::Result<GhostInfo> 
                     }
                 }
 
-                Some(GhostFrame {
-                    origin: Vec3::from_array(origin),
-                    viewangles: Vec3::from_array(viewangles),
-                    frametime: Some(frame.time), /* time here is accummulative, will fix
-                                                  * after */
-                    buttons: None,
+                let mut text = vec![];
+
+                messages.iter().for_each(|message| {
+                    if let NetMessage::EngineMessage(engine_message) = message {
+                        if let EngineMessage::SvcTempEntity(ref temp_entity) = **engine_message {
+                            if let TempEntity::TeTextMessage(ref text_entity) = temp_entity.entity {
+                                let text_color: Vec<f32> = text_entity
+                                    .text_color
+                                    .iter()
+                                    .map(|&c| c as f32 / 255.)
+                                    .collect();
+
+                                // println!("{:?}", text_entity);
+                                let text_color: [f32; 4] = from_fn(|i| text_color[i]);
+
+                                let normalize_pos = |x: i16| {
+                                    if x == -8192 {
+                                        return 0.5;
+                                    }
+
+                                    x as f32 / 8192.
+                                };
+
+                                let frame_text = GhostFrameText {
+                                    text: text_entity.message.to_str().unwrap().to_string(),
+                                    // need to normalize position
+                                    location: [
+                                        normalize_pos(text_entity.x),
+                                        normalize_pos(text_entity.y),
+                                    ],
+                                    color: text_color,
+                                    // life is in msec, not sec
+                                    life: (text_entity.hold_time
+                                        + text_entity.fade_in_time
+                                        + text_entity.fade_out_time)
+                                        as f32
+                                        / 1000.
+                                        // these text persists for a very long time
+                                        * 2.,
+                                    channel: text_entity.channel,
+                                };
+
+                                text.push(frame_text);
+                            }
+                        }
+                    }
+                });
+
+                let frame_extra = GhostFrameExtra {
+                    sound: vec![],
+                    text,
                     anim: Some(GhostFrameAnim {
                         sequence,
                         frame: anim_frame,
@@ -157,7 +202,16 @@ pub fn demo_ghost_parse(filename: &str, demo: &Demo) -> eyre::Result<GhostInfo> 
                         gaitsequence,
                         blending,
                     }),
+                };
+
+                Some(GhostFrame {
+                    origin: Vec3::from_array(origin),
+                    viewangles: Vec3::from_array(viewangles),
+                    frametime: Some(frame.time), /* time here is accummulative, will fix
+                                                  * after */
+                    buttons: None,
                     fov,
+                    extras: frame_extra.into(),
                 })
             }
             _ => None,

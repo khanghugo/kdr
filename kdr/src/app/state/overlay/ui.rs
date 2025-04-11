@@ -1,7 +1,11 @@
 //! egui UI
-use crate::app::constants::{DEFAULT_FRAMETIME, DEFAULT_NOCLIP_SPEED, DEFAULT_SENSITIVITY};
+use tracing::warn;
 
-use super::*;
+use crate::app::{
+    CustomEvent,
+    constants::{DEFAULT_FRAMETIME, DEFAULT_NOCLIP_SPEED, DEFAULT_SENSITIVITY},
+    state::{AppState, replay},
+};
 
 pub struct UIState {
     pub main_ui: bool,
@@ -30,25 +34,6 @@ pub struct PostProcessingState {
 }
 
 impl AppState {
-    pub fn draw_egui(&mut self) -> impl FnMut(&egui::Context) -> () {
-        |ctx| {
-            if self.ui_state.crosshair {
-                self.crosshair(ctx);
-            }
-
-            // anything interactive start from here
-            if !self.ui_state.main_ui {
-                return;
-            }
-
-            self.main_ui(ctx);
-
-            if self.replay.is_some() {
-                self.seek_bar(ctx);
-            }
-        }
-    }
-
     pub fn crosshair(&mut self, ctx: &egui::Context) {
         let Some((width, height)) = self.window_dimensions() else {
             return;
@@ -141,7 +126,12 @@ impl AppState {
                                 egui::Slider::new(&mut self.time, 0.0..=slider_max)
                                     .show_value(false);
 
-                            ui.add(timeline_slider);
+                            let response = ui.add(timeline_slider);
+
+                            if response.changed() {
+                                // if seekbar is used, reset text states and alike
+                                self.text_state.entity_text.clear();
+                            }
 
                             // current_time
                             ui.horizontal_centered(|ui| {

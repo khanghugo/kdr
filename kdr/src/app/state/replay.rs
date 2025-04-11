@@ -1,5 +1,5 @@
 use cgmath::Deg;
-use ghost::GhostInfo;
+use ghost::{GhostFrameText, GhostInfo};
 
 use super::*;
 
@@ -39,9 +39,25 @@ impl AppState {
             ReplayPlaybackMode::Immediate(_) => todo!("not planned for now until the recorder"),
             ReplayPlaybackMode::FrameAccurate => todo!("will be eventually, an easy task"),
             ReplayPlaybackMode::Interpolated => {
-                let Some(frame) = replay.ghost.get_frame(self.time, None) else {
+                let Some((frame_idx, frame)) = replay.ghost.get_frame(self.time, None) else {
                     return;
                 };
+
+                if let Some(extra) = frame.extras {
+                    extra.text.into_iter().for_each(|text| {
+                        self.text_state.entity_text.insert(
+                            text.channel,
+                            (
+                                frame_idx,
+                                GhostFrameText {
+                                    // here we do something a bit hacky by just adding new timer to the text we want
+                                    life: text.life + self.time,
+                                    ..text
+                                },
+                            ),
+                        );
+                    });
+                }
 
                 // negative pitch
                 self.render_state
