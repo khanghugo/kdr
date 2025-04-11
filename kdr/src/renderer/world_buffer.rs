@@ -583,7 +583,7 @@ fn create_batch_lookups(
                     EntityModel::OpaqueEntityBrush((x, _)) => *x,
                     EntityModel::TransparentEntityBrush((x, _)) => *x,
                     EntityModel::TriggerBrush(x) => *x,
-                    _ => unreachable!(),
+                    _ => unreachable!("cannot get bsp model index out of this model"),
                 };
 
                 let model = &bsp.models[bsp_model_index as usize];
@@ -595,17 +595,6 @@ fn create_batch_lookups(
 
                 // trigger will have no render effect
                 let is_trigger = matches!(entity.model, EntityModel::TriggerBrush(_));
-
-                // TODO: custom render for sprite and model, just pull this out of this scope
-                let custom_render = if is_transparent {
-                    if let EntityModel::TransparentEntityBrush((_, custom_render)) = &entity.model {
-                        Some(custom_render)
-                    } else {
-                        unreachable!()
-                    }
-                } else {
-                    None
-                };
 
                 let custom_render = match &entity.model {
                     EntityModel::OpaqueEntityBrush((_, custom_render)) => Some(custom_render),

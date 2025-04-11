@@ -176,7 +176,7 @@ impl BspResource {
                     .and_then(|renderfx| renderfx.parse::<i32>().ok())
                     .unwrap_or(0);
 
-                if is_entity_brush && !is_trigger {
+                if is_entity_brush {
                     let is_opaque = [0, 4].contains(&rendermode) || renderamt == 255.0;
                     let bsp_model_index = model_path[1..]
                         .parse::<i32>()
@@ -186,57 +186,33 @@ impl BspResource {
                     // it is reserved for the like of func_door and alikes
                     let angles = cgmath::Quaternion::zero();
 
-                    if is_opaque {
-                        entity_dictionary.insert(
-                            bsp_entity_index,
-                            WorldEntity {
-                                world_index: assign_world_index(),
-                                model: EntityModel::OpaqueEntityBrush((
-                                    bsp_model_index,
-                                    CustomRender {
-                                        rendermode,
-                                        renderamt,
-                                        renderfx,
-                                    },
-                                )),
-                                origin,
-                                angles,
-                            },
-                        );
-                    } else {
-                        entity_dictionary.insert(
-                            bsp_entity_index,
-                            WorldEntity {
-                                world_index: assign_world_index(),
-                                model: EntityModel::TransparentEntityBrush((
-                                    bsp_model_index,
-                                    CustomRender {
-                                        rendermode,
-                                        renderamt,
-                                        renderfx,
-                                    },
-                                )),
-                                origin,
-                                angles,
-                            },
-                        );
-                    }
+                    let normal_opaque_brush = is_opaque && !is_trigger;
+                    let normal_transparent_brush = !is_opaque && !is_trigger;
 
-                    return;
-                }
-
-                if is_trigger {
-                    let bsp_model_index = model_path[1..]
-                        .parse::<i32>()
-                        .expect("brush model index is not a number");
-
-                    let angles = cgmath::Quaternion::zero();
+                    let custom_render = CustomRender {
+                        rendermode,
+                        // make sure that renderamt is 255.0 if opaque
+                        // due to some dumb stuffs, this has to be done
+                        renderamt: if is_opaque { 255.0 } else { renderamt },
+                        renderfx,
+                    };
 
                     entity_dictionary.insert(
                         bsp_entity_index,
                         WorldEntity {
                             world_index: assign_world_index(),
-                            model: EntityModel::TriggerBrush(bsp_model_index),
+                            model: if normal_opaque_brush {
+                                EntityModel::OpaqueEntityBrush((bsp_model_index, custom_render))
+                            } else if normal_transparent_brush {
+                                EntityModel::TransparentEntityBrush((
+                                    bsp_model_index,
+                                    custom_render,
+                                ))
+                            } else if is_trigger {
+                                EntityModel::TriggerBrush(bsp_model_index)
+                            } else {
+                                unreachable!("trying to add an unknown brush type: {}", classname)
+                            },
                             origin,
                             angles,
                         },
