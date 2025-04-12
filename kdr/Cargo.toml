@@ -54,6 +54,8 @@ wgpu = { version = "24.0.3", features = ["webgl"] }
 winit = { version = "0.30.9", features = [] }
 rfd = "0.15.3"
 futures = "0.3.31"
+kira = "0.10.5"
+mint = "0.5.9"
 
 # native specific dependencies
 # basically the tracing stuffs

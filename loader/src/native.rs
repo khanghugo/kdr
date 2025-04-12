@@ -8,7 +8,7 @@ use common::constants::UNKNOWN_GAME_MOD;
 use tracing::{info, warn};
 use wad::types::Wad;
 
-use crate::{MODEL_ENTITIES, ResourceMap};
+use crate::{MODEL_ENTITIES, ResourceMap, SOUND_ENTITIES};
 
 use super::{ResourceProvider, SKYBOX_SUFFIXES, error::ResourceProviderError, fix_bsp_file_name};
 
@@ -96,6 +96,15 @@ impl ResourceProvider for NativeResourceProvider {
             &identifier.game_mod,
             &path_to_map,
         )?;
+
+        get_sound(
+            &mut resource_map,
+            &bsp,
+            &self.game_dir,
+            &identifier.game_mod,
+        );
+
+        get_other_sound(&mut resource_map, &self.game_dir, &identifier.game_mod);
 
         Ok(super::Resource {
             bsp,
@@ -405,6 +414,74 @@ fn get_external_wads(
     }
 
     Ok(())
+}
+
+fn get_sound(resource_map: &mut ResourceMap, bsp: &Bsp, game_dir: &Path, game_mod: &str) {
+    bsp.entities.iter().for_each(|entity| {
+        let is_sound_entity = entity
+            .get("classname")
+            .map(|classname| SOUND_ENTITIES.contains(&classname.as_str()))
+            .unwrap_or(false);
+
+        if !is_sound_entity {
+            return;
+        }
+
+        // sound path doesn't include "sound" folder
+        let Some(sound_path) = entity.get("message") else {
+            return;
+        };
+
+        // now it contains "sound" folder
+        let sound_path = format!("sound/{}", sound_path);
+
+        if !sound_path.ends_with(".wav") {
+            return;
+        }
+
+        // duplicated
+        if resource_map.contains_key(&sound_path) {
+            return;
+        }
+
+        let Some(sound_absolute_path) =
+            search_game_resource(game_dir, game_mod, Path::new(&sound_path), true)
+        else {
+            warn!("Cannot find sound `{}`", sound_path);
+            return;
+        };
+
+        let Ok(sound_bytes) = std::fs::read(sound_absolute_path.as_path()) else {
+            warn!("Cannot load sound `{}`", sound_absolute_path.display());
+            return;
+        };
+
+        resource_map.insert(sound_path, sound_bytes);
+    });
+}
+
+const OTHER_SOUND: &[&str] = &[
+    "sound/player/pl_step1.wav",
+    "sound/player/pl_step2.wav",
+    "sound/player/pl_step3.wav",
+    "sound/player/pl_step4.wav",
+];
+fn get_other_sound(resource_map: &mut ResourceMap, game_dir: &Path, game_mod: &str) {
+    OTHER_SOUND.iter().for_each(|&sound_path| {
+        let Some(sound_absolute_path) =
+            search_game_resource(game_dir, game_mod, Path::new(&sound_path), true)
+        else {
+            warn!("Cannot find sound `{}`", sound_path);
+            return;
+        };
+
+        let Ok(sound_bytes) = std::fs::read(sound_absolute_path.as_path()) else {
+            warn!("Cannot load sound `{}`", sound_absolute_path.display());
+            return;
+        };
+
+        resource_map.insert(sound_path.to_owned(), sound_bytes);
+    });
 }
 
 // search through the game files by switching between different game mods just to makes sure

@@ -1,10 +1,13 @@
 use std::{pin::Pin, sync::Arc};
 
 // need to do like this
-use super::Instant;
+use super::{Duration, Instant};
 
+use audio::AudioState;
+use egui::ahash::{HashMap, HashMapExt};
 use futures::FutureExt;
 use input::InputState;
+use kira::sound::static_sound::StaticSoundData;
 use overlay::{
     text::TextState,
     ui::{PostProcessingState, UIState},
@@ -18,6 +21,7 @@ use crate::renderer::RenderState;
 
 use super::CustomEvent;
 
+pub mod audio;
 pub mod input;
 pub mod movement;
 pub mod overlay;
@@ -57,6 +61,8 @@ pub struct AppState {
     post_processing_state: PostProcessingState,
     pub resource_state: ResourceState,
     text_state: TextState,
+    pub audio_state: Option<AudioState>,
+    pub audio_resource: HashMap<String, StaticSoundData>,
 
     // talk with other modules
     event_loop_proxy: EventLoopProxy<CustomEvent>,
@@ -85,6 +91,8 @@ impl AppState {
             post_processing_state: PostProcessingState::default(),
             resource_state: ResourceState::None,
             text_state: TextState::default(),
+            audio_state: None,
+            audio_resource: HashMap::new(),
 
             event_loop_proxy,
             window: None,
@@ -100,6 +108,7 @@ impl AppState {
         self.interaction_tick();
         self.replay_tick();
         self.text_tick();
+        self.audio_state_tick();
     }
 
     fn delta_update(&mut self) {

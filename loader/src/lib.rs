@@ -34,6 +34,7 @@ pub mod native;
 pub mod web;
 
 const MODEL_ENTITIES: &[&str] = &["cycler_sprite", "env_sprite"];
+const SOUND_ENTITIES: &[&str] = &["ambient_generic"];
 
 // skybox order here, already works.
 // need to make sure shader coordinate is flipped accordingly and culling mode is right

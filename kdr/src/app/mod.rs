@@ -6,6 +6,7 @@ use constants::{WINDOW_HEIGHT, WINDOW_WIDTH};
 use ghost::GhostInfo;
 use state::{
     AppState, ResourceState,
+    audio::{AudioState, AudioStateError},
     overlay::ui::PostProcessingState,
     replay::{Replay, ReplayPlaybackMode},
 };
@@ -49,6 +50,11 @@ pub enum AppError {
     ProviderError { source: ResourceProviderError },
     #[error("No resource provider found")]
     NoProvider,
+    #[error("Audio error: {source}")]
+    AudioError {
+        #[source]
+        source: AudioStateError,
+    },
 }
 
 pub enum CustomEvent {
@@ -60,6 +66,7 @@ pub enum CustomEvent {
     NewFileSelected,
     ReceiveGhostRequest(ResourceIdentifier, GhostInfo),
     ReceivePostProcessingUpdate(PostProcessingState),
+    MaybeStartAudio,
     ErrorEvent(AppError),
 }
 
@@ -385,6 +392,13 @@ impl ApplicationHandler<CustomEvent> for App {
             CustomEvent::RequestResource(resource_identifier) => {
                 info!("Requesting resources: {:?}", resource_identifier);
 
+                // Attempting to start audio whenever we request to load a map.
+                // This is to guaranteed that there are some user actions taken
+                // and the browser will kindly let us start audio stream.
+                self.event_loop_proxy
+                    .send_event(CustomEvent::MaybeStartAudio)
+                    .unwrap_or_else(|_| warn!("Failed to send StartAudio"));
+
                 // when we have a ghost and we wnat to load a map instead, we need to know what is being loaded
                 // resource loading goes: ghost -> map
                 // so, if we want to load map, that means we have to restart ghost if we play ghost previously
@@ -466,6 +480,10 @@ impl ApplicationHandler<CustomEvent> for App {
                     &render_context.queue(),
                     &bsp_resource.skybox,
                 );
+
+                bsp_resource.sound_lookup.into_iter().for_each(|(k, v)| {
+                    self.state.audio_resource.insert(k, v);
+                });
 
                 self.state.render_state.camera = Camera::default();
                 self.state.render_state.render_options = RenderOptions::default();
@@ -583,6 +601,13 @@ impl ApplicationHandler<CustomEvent> for App {
             CustomEvent::ReceiveGhostRequest(identifier, ghost) => {
                 info!("Finished processing .dem. Loading replay");
 
+                ghost
+                    .frames
+                    .iter()
+                    .filter_map(|frame| frame.extras.as_ref())
+                    .filter(|extra| !extra.sound.is_empty())
+                    .for_each(|extra| println!("{:?}", extra.sound));
+
                 self.state.replay = Some(Replay {
                     ghost,
                     playback_mode: ReplayPlaybackMode::Interpolated,
@@ -623,6 +648,27 @@ impl ApplicationHandler<CustomEvent> for App {
                     .post_processing
                     .get_gray_scale_toggle()
                     .map(|res| *res = state.gray_scale);
+            }
+            CustomEvent::MaybeStartAudio => {
+                // We can only start audio manager after the user interacts with the site.
+                if self.state.audio_state.is_some() {
+                    return;
+                }
+
+                info!("Starting audio manager");
+
+                match AudioState::start() {
+                    Ok(audio_state) => {
+                        self.state.audio_state = audio_state.into();
+                    }
+                    Err(err) => {
+                        self.event_loop_proxy
+                            .send_event(CustomEvent::ErrorEvent(AppError::AudioError {
+                                source: err,
+                            }))
+                            .unwrap_or_else(|_| warn!("Failed to send ErrorEvent"));
+                    }
+                }
             }
             CustomEvent::ErrorEvent(app_error) => {
                 warn!("Error: {}", app_error.to_string());

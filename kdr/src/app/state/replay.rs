@@ -57,6 +57,19 @@ impl AppState {
                             ),
                         );
                     });
+
+                    extra.sound.into_iter().for_each(|sound| {
+                        let sound_path = format!("sound/{}", &sound.file_name);
+
+                        println!("found sound to play {}", sound_path);
+                        if let Some(sound_data) = self.audio_resource.get(&sound_path) {
+                            println!("found data");
+                            if let Some(sound_stat) = &mut self.audio_state {
+                                sound_stat.play_audio(sound_data.clone(), 0, None, false);
+                                println!("playing sound");
+                            }
+                        }
+                    });
                 }
 
                 // negative pitch

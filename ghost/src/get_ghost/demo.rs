@@ -1,4 +1,9 @@
-use dem::types::{EngineMessage, FrameData, MessageData, NetMessage, TempEntity};
+use std::collections::HashMap;
+
+use dem::{
+    bit::BitSliceCast,
+    types::{EngineMessage, FrameData, MessageData, NetMessage, TempEntity},
+};
 
 use super::*;
 
@@ -19,6 +24,49 @@ pub fn demo_ghost_parse(filename: &str, demo: &Demo) -> eyre::Result<GhostInfo> 
 
     let mut fov: Option<f32> = None;
 
+    // sound
+    let mut sound_vec = vec![];
+
+    // key is the resource index
+    let mut resource_lookup: HashMap<u32, String> = HashMap::new();
+
+    // can only build resource lookup from entry 0
+    demo.directory.entries[0]
+        .frames
+        .iter()
+        .for_each(|frame| match &frame.frame_data {
+            FrameData::NetworkMessage(a) => {
+                let netmessage = &a.as_ref().1;
+
+                let MessageData::Parsed(ref messages) = netmessage.messages else {
+                    return;
+                };
+
+                messages.iter().for_each(|message| match &message {
+                    NetMessage::EngineMessage(engine_message) => {
+                        let a = engine_message.as_ref();
+
+                        match a {
+                            EngineMessage::SvcResourceList(resource_list) => {
+                                resource_list.resources.iter().for_each(|resource| {
+                                    // do not insert if somethign is already there, dont ask me why it is this way,
+                                    let idx = resource.index.to_u32();
+
+                                    if !resource_lookup.contains_key(&idx) {
+                                        resource_lookup.insert(idx, resource.name.get_string());
+                                    }
+                                });
+                            }
+                            _ => (),
+                        }
+                    }
+                    _ => (),
+                });
+            }
+            _ => (),
+        });
+
+    // now ghost frames here
     let ghost_frames = demo.directory.entries[1]
         .frames
         .iter()
@@ -50,6 +98,16 @@ pub fn demo_ghost_parse(filename: &str, demo: &Demo) -> eyre::Result<GhostInfo> 
                 anim_frame = None;
                 animtime = None;
 
+                None
+            }
+            FrameData::Sound(sound) => {
+                let sound_frame = GhostFrameSound {
+                    file_name: sound.sample.to_str().unwrap().to_owned(),
+                    volume: sound.volume,
+                    origin: None,
+                };
+
+                sound_vec.push(sound_frame);
                 None
             }
             FrameData::NetworkMessage(box_type) => {
@@ -146,6 +204,7 @@ pub fn demo_ghost_parse(filename: &str, demo: &Demo) -> eyre::Result<GhostInfo> 
 
                 let mut text = vec![];
 
+                // text entity
                 messages.iter().for_each(|message| {
                     if let NetMessage::EngineMessage(engine_message) = message {
                         if let EngineMessage::SvcTempEntity(ref temp_entity) = **engine_message {
@@ -192,8 +251,57 @@ pub fn demo_ghost_parse(filename: &str, demo: &Demo) -> eyre::Result<GhostInfo> 
                     }
                 });
 
+                messages.iter().for_each(|message| {
+                    if let NetMessage::EngineMessage(engine_message) = message {
+                        if let EngineMessage::SvcSound(ref sound) = **engine_message {
+                            println!("svc sound here");
+                            let sound_index = sound
+                                .sound_index_short
+                                .as_ref()
+                                .or(sound.sound_index_long.as_ref())
+                                .map(|i| i.to_u32())
+                                .expect("sound does not have a resource index");
+
+                            let Some(sound_name) = resource_lookup.get(&sound_index) else {
+                                println!("no sound found");
+                                return;
+                            };
+
+                            let volume = sound
+                                .volume
+                                .as_ref()
+                                .map(|volume| volume.to_u32() as f32 / 255.)
+                                .unwrap_or(1.0);
+
+                            let mut origin = None;
+                            if let Some(x) = &sound.origin_x {
+                                if let Some(y) = &sound.origin_y {
+                                    if let Some(z) = &sound.origin_z {
+                                        let x = x.to_number();
+                                        let y = y.to_number();
+                                        let z = z.to_number();
+
+                                        origin = [x, y, z].into();
+                                    }
+                                }
+                            }
+
+                            let sound_name_length = sound_name.len();
+
+                            let sound_frame = GhostFrameSound {
+                                // excluding null terminator
+                                file_name: sound_name[..sound_name_length - 1].to_owned(),
+                                volume,
+                                origin,
+                            };
+
+                            sound_vec.push(sound_frame);
+                        }
+                    }
+                });
+
                 let frame_extra = GhostFrameExtra {
-                    sound: vec![],
+                    sound: sound_vec.to_owned(),
                     text,
                     anim: Some(GhostFrameAnim {
                         sequence,
@@ -203,6 +311,8 @@ pub fn demo_ghost_parse(filename: &str, demo: &Demo) -> eyre::Result<GhostInfo> 
                         blending,
                     }),
                 };
+
+                sound_vec.clear();
 
                 Some(GhostFrame {
                     origin: Vec3::from_array(origin),
@@ -218,6 +328,9 @@ pub fn demo_ghost_parse(filename: &str, demo: &Demo) -> eyre::Result<GhostInfo> 
         })
         .scan(0., |acc, mut frame: GhostFrame| {
             // Cummulative time is 1 2 3 4, so do subtraction to get the correct frametime
+            // TODO i think iam stupid, there is no neeed to calculate frame time like this
+            // can just derive from demo right away
+            // matter of fact, rewrite this horseshit
             let cum_time = frame.frametime.unwrap();
 
             frame.frametime = Some(cum_time - *acc);

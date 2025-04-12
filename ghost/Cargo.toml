@@ -5,7 +5,8 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
-dem = "0.2.3"
+# basically just the latest git commit
+dem = { path = "/home/khang/dem" }
 eyre = "0.6.12"
 serde = { version = "1.0.219", features = ["derive"] }
 serde_json = "1.0.140"

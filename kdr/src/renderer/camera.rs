@@ -127,7 +127,7 @@ pub struct Camera {
     yaw: Deg<f32>,
     pitch: Deg<f32>,
     // rotation state and everything in the camera depends on this
-    orientation: cgmath::Quaternion<f32>,
+    pub orientation: cgmath::Quaternion<f32>,
 }
 
 // const CAM_START_POS: [f32; 3] = [-300., -1000., -2000.];
