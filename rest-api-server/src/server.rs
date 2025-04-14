@@ -1,9 +1,13 @@
+use std::path::PathBuf;
+
 use actix_web::{App, HttpResponse, HttpServer, Responder, get, post, web};
+use common::CANNOT_FIND_REQUESTED_MAP_ERROR;
 use loader::{ResourceIdentifier, native::NativeResourceProvider};
 use tracing::{info, info_span, warn};
 use uuid::Uuid;
 
 use crate::{
+    ServerArgs,
     send_res::{gchimp_resmake_way, native_way},
     utils::sanitize_identifier,
 };
@@ -12,6 +16,9 @@ use crate::{
 // The state doesn't change after starting the server so this works nicely.
 struct AppData {
     resource_provider: NativeResourceProvider,
+    // .zip file already loaded into memory
+    // optional to make sure that we have a file to distribute
+    common_resource: Option<PathBuf>,
 }
 
 #[get("/")]
@@ -24,8 +31,31 @@ async fn echo(req_body: String) -> impl Responder {
     HttpResponse::Ok().body(req_body)
 }
 
+#[get("/request-common")]
+async fn request_common_resource(data: web::Data<AppData>) -> impl Responder {
+    info!("Request common resource");
+
+    if let Some(path) = data.common_resource.clone() {
+        match std::fs::read(path.as_path()) {
+            Ok(bytes) => HttpResponse::Ok()
+                .append_header((
+                    "Content-Disposition",
+                    format!("attachment; filename=\"common.zip\""),
+                ))
+                .body(bytes),
+            Err(err) => {
+                warn!("Cannot read common resource `{}`: {}", path.display(), err);
+
+                HttpResponse::InternalServerError().finish()
+            }
+        }
+    } else {
+        HttpResponse::NoContent().finish()
+    }
+}
+
 // must be a POST request
-#[post("request-map")]
+#[post("/request-map")]
 async fn request_map(
     req: web::Json<ResourceIdentifier>,
     data: web::Data<AppData>,
@@ -66,7 +96,7 @@ async fn request_map(
         }
         Err(err) => {
             warn!("Request failed: {}", err);
-            return HttpResponse::InternalServerError().body("Cannot find requested map.");
+            return HttpResponse::NotFound().body(CANNOT_FIND_REQUESTED_MAP_ERROR);
         }
     };
 }
@@ -79,11 +109,29 @@ async fn manual_hello(data: web::Data<AppData>) -> impl Responder {
 }
 
 #[actix_web::main]
-pub async fn start_server(
-    resource_provider: NativeResourceProvider,
-    port: u16,
-) -> std::io::Result<()> {
-    let data = AppData { resource_provider };
+pub async fn start_server(args: ServerArgs) -> std::io::Result<()> {
+    let ServerArgs {
+        resource_provider,
+        port,
+        common_resource,
+    } = args;
+
+    let data = AppData {
+        resource_provider,
+        common_resource,
+    };
+
+    info!("Staring kdr API server");
+    info!(
+        "Resource provider game directory: {}",
+        data.resource_provider.game_dir.display()
+    );
+
+    if let Some(common_resource_path) = &data.common_resource {
+        info!("Common resourch path: {}", common_resource_path.display());
+    } else {
+        info!("No common resource provided");
+    }
 
     HttpServer::new(move || {
         #[cfg(feature = "cors")]
@@ -93,6 +141,7 @@ pub async fn start_server(
             .service(hello)
             .service(echo)
             .service(request_map)
+            .service(request_common_resource)
             .route("/hey", web::get().to(manual_hello))
             .app_data(web::Data::new(data.clone()));
 

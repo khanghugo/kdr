@@ -39,34 +39,51 @@ impl AppState {
             ReplayPlaybackMode::Immediate(_) => todo!("not planned for now until the recorder"),
             ReplayPlaybackMode::FrameAccurate => todo!("will be eventually, an easy task"),
             ReplayPlaybackMode::Interpolated => {
+                // dont update anyting ghost related if paused
+                // texts and such will be wastefully added
+                // sound is the worst because it will spam if we pause on the right frame
+                if self.paused {
+                    return;
+                }
+
                 let Some((frame_idx, frame)) = replay.ghost.get_frame(self.time, None) else {
                     return;
                 };
 
                 if let Some(extra) = frame.extras {
                     extra.text.into_iter().for_each(|text| {
-                        self.text_state.entity_text.insert(
-                            text.channel,
-                            (
-                                frame_idx,
-                                GhostFrameText {
-                                    // here we do something a bit hacky by just adding new timer to the text we want
-                                    life: text.life + self.time,
-                                    ..text
-                                },
-                            ),
-                        );
+                        // something we do so that the final text of a channel is extended a bit longer
+                        let channel = text.channel;
+                        const EXTRA_TIME: f32 = 1.0;
+
+                        self.text_state
+                            .entity_text
+                            .iter_mut()
+                            .filter(|t| t.1.channel == channel)
+                            .for_each(|t| t.1.life -= EXTRA_TIME);
+
+                        self.text_state.entity_text.push((
+                            frame_idx,
+                            GhostFrameText {
+                                // here we do something a bit hacky by just adding new timer to the text we want
+                                life: text.life + self.time + EXTRA_TIME,
+                                ..text
+                            },
+                        ));
                     });
 
                     extra.sound.into_iter().for_each(|sound| {
                         let sound_path = format!("sound/{}", &sound.file_name);
 
-                        println!("found sound to play {}", sound_path);
                         if let Some(sound_data) = self.audio_resource.get(&sound_path) {
-                            println!("found data");
-                            if let Some(sound_stat) = &mut self.audio_state {
-                                sound_stat.play_audio(sound_data.clone(), 0, None, false);
-                                println!("playing sound");
+                            if let Some(backend) = &mut self.audio_state.backend {
+                                backend.play_audio_on_track(
+                                    sound_data.clone(),
+                                    0,
+                                    None,
+                                    false,
+                                    sound.volume * self.audio_state.volume,
+                                );
                             }
                         }
                     });

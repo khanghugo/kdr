@@ -4,15 +4,15 @@ use std::{
 };
 
 use bsp::Bsp;
+use common::{REQUEST_COMMON_RESOURCE_ENDPOINT, REQUEST_MAP_ENDPOINT};
 use zip::ZipArchive;
 
-use crate::{error::ResourceProviderError, fix_bsp_file_name};
+use crate::{ResourceMap, error::ResourceProviderError, fix_bsp_file_name};
 
 use super::ResourceProvider;
 
 const MAP_NAME_KEY: &str = "map_name";
 const GAME_MOD_KEY: &str = "game_mod";
-const REQUEST_ENDPOINT: &str = "request-map";
 
 #[derive(Debug, Clone)]
 pub struct WebResourceProvider {
@@ -22,7 +22,7 @@ pub struct WebResourceProvider {
 impl WebResourceProvider {
     pub fn new(base_url: impl AsRef<str> + Into<String>) -> Self {
         Self {
-            base_url: base_url.into(),
+            base_url: sanitize_base_url(base_url.as_ref()).to_string(),
         }
     }
 }
@@ -34,7 +34,7 @@ impl ResourceProvider for WebResourceProvider {
     ) -> Result<super::Resource, super::error::ResourceProviderError> {
         let map_name = fix_bsp_file_name(identifier.map_name.as_str());
 
-        let url = format!("{}/{}", self.base_url, REQUEST_ENDPOINT);
+        let url = format!("{}/{}", self.base_url, REQUEST_MAP_ENDPOINT);
         let client = reqwest::Client::new();
 
         let mut map = HashMap::new();
@@ -46,9 +46,36 @@ impl ResourceProvider for WebResourceProvider {
             .json(&map)
             .send()
             .await
-            .map_err(|op| ResourceProviderError::PostError { source: op })?
-            .error_for_status()
-            .map_err(|op| ResourceProviderError::ResponseError { source: op })?;
+            // dont map err for status
+            // we want to read the error body at the very least so the client can display it
+            // .error_for_status()
+            .map_err(|op| ResourceProviderError::RequestError { source: op })?;
+
+        // this means the server cannot find the request, so we just exit and return error
+        const NOT_FOUND_CODE: u16 = 404;
+        let status_code = response.status().as_u16();
+
+        if status_code == NOT_FOUND_CODE {
+            if let Ok(body) = response.text().await {
+                return Err(ResourceProviderError::ResponseError {
+                    status_code,
+                    message: body,
+                });
+            }
+
+            return Err(ResourceProviderError::ResponseError {
+                status_code,
+                message: "No message".to_string(),
+            });
+        };
+
+        let response =
+            response
+                .error_for_status()
+                .map_err(|op| ResourceProviderError::ResponseError {
+                    status_code,
+                    message: "No message".to_string(),
+                })?;
 
         let zip_bytes = response
             .bytes()
@@ -75,12 +102,46 @@ impl ResourceProvider for WebResourceProvider {
     }
 }
 
-fn extract_zip_to_hashmap(
-    zip_bytes: &[u8],
-) -> Result<HashMap<String, Vec<u8>>, zip::result::ZipError> {
+impl WebResourceProvider {
+    pub async fn request_common_resource(&self) -> Result<ResourceMap, ResourceProviderError> {
+        let url = format!("{}/{}", self.base_url, REQUEST_COMMON_RESOURCE_ENDPOINT);
+
+        let response = reqwest::get(url)
+            .await
+            .and_then(|response| response.error_for_status())
+            .map_err(|op| ResourceProviderError::RequestError { source: op })?;
+
+        let status_code = response.status().as_u16();
+
+        const HTTP_NO_CONTENT: u16 = 204;
+
+        // explicitly return empty hash map
+        if status_code == HTTP_NO_CONTENT {
+            return Ok(ResourceMap::new());
+        }
+
+        let response =
+            response
+                .error_for_status()
+                .map_err(|op| ResourceProviderError::ResponseError {
+                    status_code,
+                    message: "No message".to_string(),
+                })?;
+
+        let zip_bytes = response
+            .bytes()
+            .await
+            .map_err(|op| ResourceProviderError::ResponseBytesError { source: op })?;
+
+        extract_zip_to_hashmap(&zip_bytes)
+            .map_err(|op| ResourceProviderError::ZipDecompress { source: op })
+    }
+}
+
+fn extract_zip_to_hashmap(zip_bytes: &[u8]) -> Result<ResourceMap, zip::result::ZipError> {
     let reader = Cursor::new(zip_bytes);
     let mut archive = ZipArchive::new(reader)?;
-    let mut file_map: HashMap<String, Vec<u8>> = HashMap::new();
+    let mut file_map = ResourceMap::new();
 
     for i in 0..archive.len() {
         let mut file = archive.by_index(i)?;
@@ -91,4 +152,15 @@ fn extract_zip_to_hashmap(
     }
 
     Ok(file_map)
+}
+
+// eh, good enough
+fn sanitize_base_url(s: &str) -> &str {
+    let l = s.len();
+
+    if s.ends_with("/") {
+        return &s[..(l - 1)];
+    } else {
+        return s;
+    }
 }

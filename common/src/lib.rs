@@ -1,7 +1,10 @@
 use nom::{IResult as _IResult, combinator::fail};
 
 pub type IResult<'a, T> = _IResult<&'a str, T>;
-pub mod constants;
+
+mod constants;
+
+pub use constants::*;
 
 // https://github.com/getreu/parse-hyperlinks/blob/5af034d14aa72ffb9e705da13bf557a564b1bebf/parse-hyperlinks/src/lib.rs#L41
 pub fn take_until_unbalanced(

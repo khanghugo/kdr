@@ -1,12 +1,12 @@
 use std::{path::Path, sync::Arc};
 
 use ::tracing::{info, warn};
-use common::constants::UNKNOWN_GAME_MOD;
+use common::UNKNOWN_GAME_MOD;
 use constants::{WINDOW_HEIGHT, WINDOW_WIDTH};
 use ghost::GhostInfo;
 use state::{
-    AppState, ResourceState,
-    audio::{AudioState, AudioStateError},
+    AppState, InputFileType,
+    audio::{AudioBackend, AudioStateError},
     overlay::ui::PostProcessingState,
     replay::{Replay, ReplayPlaybackMode},
 };
@@ -36,7 +36,9 @@ use crate::renderer::{
     RenderContext, RenderOptions, camera::Camera, egui_renderer::EguiRenderer,
     world_buffer::WorldLoader,
 };
-use loader::{Resource, ResourceIdentifier, ResourceProvider, error::ResourceProviderError};
+use loader::{
+    Resource, ResourceIdentifier, ResourceMap, ResourceProvider, error::ResourceProviderError,
+};
 
 #[cfg(not(target_arch = "wasm32"))]
 use loader::native::NativeResourceProvider;
@@ -66,7 +68,10 @@ pub enum CustomEvent {
     NewFileSelected,
     ReceiveGhostRequest(ResourceIdentifier, GhostInfo),
     ReceivePostProcessingUpdate(PostProcessingState),
-    MaybeStartAudio,
+    MaybeStartAudioBackEnd,
+    RequestCommonResource,
+    #[allow(dead_code)]
+    ReceivedCommonResource(ResourceMap),
     ErrorEvent(AppError),
 }
 
@@ -355,14 +360,12 @@ impl ApplicationHandler<CustomEvent> for App {
                 // create egui after render context is done initializing
                 self.event_loop_proxy
                     .send_event(CustomEvent::CreateEgui)
-                    .unwrap_or_else(|_| warn!("cannot send creating egui renderer request"));
+                    .unwrap_or_else(|_| warn!("Failed to send CreateEgui"));
 
-                // self.event_loop_proxy
-                //     .send_event(CustomEvent::RequestResource(ResourceIdentifier {
-                //         map_name: "chk_section.bsp".to_string(),
-                //         game_mod: "cstrike_downloads".to_string(),
-                //     }))
-                //     .unwrap_or_else(|_| warn!("cannot send debug request"));
+                // request common resource at the same time as well because why not
+                self.event_loop_proxy
+                    .send_event(CustomEvent::RequestCommonResource)
+                    .unwrap_or_else(|_| warn!("Failed to send RequestCommonResource"));
             }
             CustomEvent::CreateEgui => {
                 info!("Creating egui renderer");
@@ -396,7 +399,7 @@ impl ApplicationHandler<CustomEvent> for App {
                 // This is to guaranteed that there are some user actions taken
                 // and the browser will kindly let us start audio stream.
                 self.event_loop_proxy
-                    .send_event(CustomEvent::MaybeStartAudio)
+                    .send_event(CustomEvent::MaybeStartAudioBackEnd)
                     .unwrap_or_else(|_| warn!("Failed to send StartAudio"));
 
                 // when we have a ghost and we wnat to load a map instead, we need to know what is being loaded
@@ -404,7 +407,7 @@ impl ApplicationHandler<CustomEvent> for App {
                 // so, if we want to load map, that means we have to restart ghost if we play ghost previously
                 // however, due to the resource loading order, we cannot just do that
                 // so here, we need to know what kind of resource is being loaded to reset data correctly
-                if matches!(self.state.resource_state, ResourceState::Bsp) {
+                if matches!(self.state.input_file_type, InputFileType::Bsp) {
                     self.state.replay = None;
                 }
 
@@ -489,7 +492,7 @@ impl ApplicationHandler<CustomEvent> for App {
                 self.state.render_state.render_options = RenderOptions::default();
             }
             CustomEvent::NewFileSelected => {
-                self.state.resource_state = ResourceState::None;
+                self.state.input_file_type = InputFileType::None;
 
                 let Some(file_path) = &self.state.selected_file else {
                     warn!("New file is said to be selected but no new file found");
@@ -532,7 +535,7 @@ impl ApplicationHandler<CustomEvent> for App {
                             warn!("Cannot send resource request message after file dialogue")
                         });
 
-                    self.state.resource_state = ResourceState::Bsp;
+                    self.state.input_file_type = InputFileType::Bsp;
                 } else if file_extension == "dem" {
                     info!("Received .dem from file dialogue. Processing .dem");
 
@@ -593,7 +596,7 @@ impl ApplicationHandler<CustomEvent> for App {
                         });
                     }
 
-                    self.state.resource_state = ResourceState::Replay;
+                    self.state.input_file_type = InputFileType::Replay;
                 } else {
                     warn!("Bad resource: {}", file_path.display());
                 }
@@ -649,17 +652,17 @@ impl ApplicationHandler<CustomEvent> for App {
                     .get_gray_scale_toggle()
                     .map(|res| *res = state.gray_scale);
             }
-            CustomEvent::MaybeStartAudio => {
+            CustomEvent::MaybeStartAudioBackEnd => {
                 // We can only start audio manager after the user interacts with the site.
-                if self.state.audio_state.is_some() {
+                if self.state.audio_state.backend.is_some() {
                     return;
                 }
 
                 info!("Starting audio manager");
 
-                match AudioState::start() {
-                    Ok(audio_state) => {
-                        self.state.audio_state = audio_state.into();
+                match AudioBackend::start() {
+                    Ok(backend) => {
+                        self.state.audio_state.backend = backend.into();
                     }
                     Err(err) => {
                         self.event_loop_proxy
@@ -669,6 +672,54 @@ impl ApplicationHandler<CustomEvent> for App {
                             .unwrap_or_else(|_| warn!("Failed to send ErrorEvent"));
                     }
                 }
+            }
+            CustomEvent::RequestCommonResource => {
+                info!("Requesting common resource");
+
+                #[cfg(target_arch = "wasm32")]
+                {
+                    let Some(resource_provider) = &self.web_resource_provider else {
+                        warn!("Attempting to request common resource without provider");
+                        self.event_loop_proxy
+                            .send_event(CustomEvent::ErrorEvent(AppError::NoProvider))
+                            .unwrap_or_else(|_| warn!("Cannot send ErrorEvent"));
+
+                        return;
+                    };
+
+                    let resource_provider = resource_provider.clone();
+                    let event_loop_proxy = self.event_loop_proxy.clone();
+
+                    wasm_bindgen_futures::spawn_local(async move {
+                        // can clone this however much we want
+
+                        let common_resource_future = resource_provider.request_common_resource();
+                        match common_resource_future.await {
+                            Ok(common_res) => event_loop_proxy
+                                .send_event(CustomEvent::ReceivedCommonResource(common_res))
+                                .unwrap_or_else(|_| warn!("Cannot send ReceivedCommonResource")),
+                            Err(err) => {
+                                warn!("Failed to get common resource");
+
+                                event_loop_proxy
+                                    .send_event(CustomEvent::ErrorEvent(AppError::ProviderError {
+                                        source: err,
+                                    }))
+                                    .unwrap_or_else(|_| warn!("Failed to send ErrorEvent"))
+                            }
+                        }
+                    });
+                }
+            }
+            // this event isnt very necessary but whatever
+            CustomEvent::ReceivedCommonResource(common_resource) => {
+                info!("Received common resource");
+
+                if common_resource.is_empty() {
+                    info!("Common resource data is empty");
+                }
+
+                self.state.common_resource = common_resource;
             }
             CustomEvent::ErrorEvent(app_error) => {
                 warn!("Error: {}", app_error.to_string());

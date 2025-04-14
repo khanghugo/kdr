@@ -8,6 +8,7 @@ use egui::ahash::{HashMap, HashMapExt};
 use futures::FutureExt;
 use input::InputState;
 use kira::sound::static_sound::StaticSoundData;
+use loader::ResourceMap;
 use overlay::{
     text::TextState,
     ui::{PostProcessingState, UIState},
@@ -28,7 +29,7 @@ pub mod overlay;
 pub mod replay;
 
 /// This is just to simply tell the program what kind of thing is being loaded so it can reasonably resetting stuffs
-pub enum ResourceState {
+pub enum InputFileType {
     Bsp,
     Replay,
     None,
@@ -43,10 +44,8 @@ pub struct AppState {
     pub paused: bool,
     pub playback_speed: f32,
 
-    // stuffs
-    // TODO future render state might need to be optional so that we can reload map or something?? not sure
-    // like we can start the app with nothing going on and hten drag and rdop the map 🤤
     pub render_state: RenderState,
+
     // optional ghost because we might just want to render bsp
     pub replay: Option<Replay>,
     pub selected_file: Option<String>,
@@ -54,14 +53,19 @@ pub struct AppState {
     pub selected_file_bytes: Option<Vec<u8>>,
     file_dialogue_future: Option<Pin<Box<dyn Future<Output = Option<rfd::FileHandle>> + 'static>>>,
     file_bytes_future: Option<Pin<Box<dyn Future<Output = Vec<u8>> + 'static>>>,
+    // resources that are shared when first connecting to server and shared across all replay/bsp such as foot step sound
+    // TODO, some how parse there resources, because right now, they aren't parsed
+    // and they will be repeated parsed when new maps are loaded in, hmmm
+    // even though this is mostly meant for sound, it is nice that we can keep everything else inbetween
+    pub common_resource: ResourceMap,
 
     // other states
     pub input_state: InputState,
     ui_state: UIState,
     post_processing_state: PostProcessingState,
-    pub resource_state: ResourceState,
+    pub input_file_type: InputFileType,
     text_state: TextState,
-    pub audio_state: Option<AudioState>,
+    pub audio_state: AudioState,
     pub audio_resource: HashMap<String, StaticSoundData>,
 
     // talk with other modules
@@ -85,13 +89,14 @@ impl AppState {
             selected_file_bytes: None,
             file_dialogue_future: None,
             file_bytes_future: None,
+            common_resource: ResourceMap::new(),
 
             input_state: InputState::default(),
             ui_state: UIState::default(),
             post_processing_state: PostProcessingState::default(),
-            resource_state: ResourceState::None,
+            input_file_type: InputFileType::None,
             text_state: TextState::default(),
-            audio_state: None,
+            audio_state: AudioState::default(),
             audio_resource: HashMap::new(),
 
             event_loop_proxy,

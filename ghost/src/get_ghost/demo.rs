@@ -103,6 +103,7 @@ pub fn demo_ghost_parse(filename: &str, demo: &Demo) -> eyre::Result<GhostInfo> 
             FrameData::Sound(sound) => {
                 let sound_frame = GhostFrameSound {
                     file_name: sound.sample.to_str().unwrap().to_owned(),
+                    channel: sound.channel,
                     volume: sound.volume,
                     origin: None,
                 };
@@ -239,9 +240,7 @@ pub fn demo_ghost_parse(filename: &str, demo: &Demo) -> eyre::Result<GhostInfo> 
                                         + text_entity.fade_in_time
                                         + text_entity.fade_out_time)
                                         as f32
-                                        / 1000.
-                                        // these text persists for a very long time
-                                        * 2.,
+                                        / 1000.,
                                     channel: text_entity.channel,
                                 };
 
@@ -291,6 +290,7 @@ pub fn demo_ghost_parse(filename: &str, demo: &Demo) -> eyre::Result<GhostInfo> 
                             let sound_frame = GhostFrameSound {
                                 // excluding null terminator
                                 file_name: sound_name[..sound_name_length - 1].to_owned(),
+                                channel: sound.channel.to_i32(),
                                 volume,
                                 origin,
                             };
@@ -342,6 +342,12 @@ pub fn demo_ghost_parse(filename: &str, demo: &Demo) -> eyre::Result<GhostInfo> 
 
     let map_name = demo.header.map_name.to_str()?.to_string();
     let game_mod = demo.header.game_directory.to_str()?.to_string();
+
+    ghost_frames
+        .iter()
+        .filter_map(|f| f.extras.as_ref())
+        .filter(|f| !f.sound.is_empty())
+        .for_each(|f| println!("{:?}", f.sound));
 
     Ok(GhostInfo {
         ghost_name: filename.to_owned(),

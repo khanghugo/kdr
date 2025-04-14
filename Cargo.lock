@@ -3977,6 +3977,7 @@ dependencies = [
  "actix-cors",
  "actix-web",
  "clap",
+ "common",
  "loader",
  "serde",
  "serde_json",

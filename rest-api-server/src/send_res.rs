@@ -83,6 +83,9 @@ pub async fn gchimp_resmake_way(
     Ok(zip_bytes)
 }
 
+// If you use native_way, you don't need to pack common files because NativeResourceProvider will search for those files.
+// But, it will redistribute those files every time a new map is loaded.
+// So, to save on bandwidth, it is best to just use gchimp way and select common resource.
 pub async fn native_way(
     identifier: &ResourceIdentifier,
     resource_provider: &NativeResourceProvider,

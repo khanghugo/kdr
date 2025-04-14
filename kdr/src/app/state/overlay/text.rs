@@ -8,16 +8,18 @@ use crate::app::state::AppState;
 pub struct TextState {
     /// Entity text from SVC Temp Entity (23) Text Message (29)
     ///
-    /// Key: Text channel
+    /// ~~Key: Text channel~~
     ///
-    /// Value: (Ghost frame index, Frame text)
+    /// ~~Value: (Ghost frame index, Frame text)~~
     ///
-    /// We need the channel to correctly erase another text like how the game does. And we need the ghost frame index
+    /// ~~We need the channel to correctly erase another text like how the game does.~~ And we need the ghost frame index
     /// to correctly create an egui Id for the widget.
-    // TODO: extremely sophisticated state accumulation that even dota2 pepole cant even do it properly
-    // at the moment, this works by getting the current timer and the text life time and then this overlay text tick
-    // will check if the timer is beyond the given time and delete accordingly
-    pub entity_text: HashMap<i8, (usize, GhostFrameText)>,
+    ///
+    /// UPDATE: I am in favor of not doing text erasure becuase of channel. This seems like a bug from the plugin side and I will not be complicit.
+    /// This means, a vector is used instead of a hash map to remove the limit of text channel.
+    ///
+    /// (Frame Index, Ghost Frame Text)
+    pub entity_text: Vec<(usize, GhostFrameText)>,
 }
 
 impl AppState {
@@ -29,7 +31,7 @@ impl AppState {
         self.text_state
             .entity_text
             .iter()
-            .for_each(|(_, (frame_idx, text))| {
+            .for_each(|(frame_idx, text)| {
                 egui::Area::new(
                     // need to use two values for hash so that we have a truly unique area
                     egui::Id::new((text.channel, frame_idx)),
@@ -44,8 +46,14 @@ impl AppState {
                     text.location[1] * height as f32,
                 ])
                 .show(ctx, |ui| {
-                    let entity_text = egui::Label::new(&text.text).selectable(false);
-                    ui.add(entity_text);
+                    let styled_text = egui::RichText::new(&text.text)
+                        .color(egui::Color32::WHITE)
+                        .strong()
+                        .size(14.0);
+
+                    let main_text = egui::Label::new(styled_text).selectable(false);
+
+                    ui.add(main_text);
                 });
             });
     }
@@ -53,6 +61,6 @@ impl AppState {
     pub fn text_tick(&mut self) {
         self.text_state
             .entity_text
-            .retain(|_, (_, text)| text.life >= self.time);
+            .retain(|(_, text)| text.life > self.time);
     }
 }

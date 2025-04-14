@@ -78,6 +78,20 @@ pub struct AmbientTrack {
 }
 
 pub struct AudioState {
+    pub backend: Option<AudioBackend>,
+    pub volume: f32,
+}
+
+impl Default for AudioState {
+    fn default() -> Self {
+        Self {
+            backend: None,
+            volume: 0.5,
+        }
+    }
+}
+
+pub struct AudioBackend {
     pub audio_manager: AudioManager,
     pub listener: ListenerHandle,
     // Key is track name
@@ -111,7 +125,7 @@ pub enum AudioStateError {
     },
 }
 
-impl AudioState {
+impl AudioBackend {
     pub fn start() -> Result<Self, AudioStateError> {
         let mut audio_manager = AudioManager::new(AudioManagerSettings::default())
             .map_err(|op| AudioStateError::FailedToStartAudioManager { source: op })?;
@@ -173,56 +187,52 @@ impl AudioState {
         })
     }
 
-    pub fn get_free_track(
-        &mut self,
-        preferred_track: usize,
-        is_spatial: bool,
-    ) -> &mut DynamicTrack {
-        let preferred_track = preferred_track.min(TRACK_COUNT - 1);
-
+    pub fn get_track(&mut self, track: usize, is_spatial: bool) -> &mut DynamicTrack {
         let my_my = if is_spatial {
             &mut self.spatial_dynamic_tracks
         } else {
             &mut self.dynamic_tracks
         };
 
-        // get the track we want
-        if my_my[preferred_track].is_free() {
-            return &mut my_my[preferred_track];
-        }
-
-        // get a free track
-        let free_track = my_my.iter_mut().position(|track| track.is_free());
-
-        // return it
-        if let Some(free_track) = free_track {
-            return &mut my_my[free_track];
-        }
-
-        // or then override our playing track
-        return &mut my_my[preferred_track];
+        return my_my
+            .get_mut(track)
+            .unwrap_or_else(|| panic!("Track {} is not allocated", track));
     }
 
-    pub fn play_audio(
+    pub fn play_audio_on_track(
         &mut self,
         audio_data: StaticSoundData,
-        preferred_track: usize,
+        track: usize,
         pos: Option<[f32; 3]>,
         loop_: bool,
+        volume: f32,
     ) {
+        // dont play sound if volume is this low
+        if volume <= 0.01 {
+            return;
+        }
+
         let is_spatial = pos.is_some();
 
-        let track = self.get_free_track(preferred_track, is_spatial);
+        let track = self.get_track(track, is_spatial);
         if let Some(pos) = pos {
             if let TrackHandleType::Spatial(track) = &mut track.handle {
                 track.set_position(pos, BASIC_TWEEN);
             }
         }
 
+        // stop current sound becuase we are playing on this track
+        if let Some(current_sound) = &mut track.current_sound {
+            current_sound.stop(BASIC_TWEEN);
+        }
+
         let Ok(mut audio_handle) = track.handle.play(audio_data) else {
             warn!("Cannot play audio");
             return;
         };
+
+        // amplitude to loudness
+        audio_handle.set_volume(20. * volume.log10(), BASIC_TWEEN);
 
         if loop_ {
             audio_handle.set_loop_region(..);
@@ -249,9 +259,10 @@ impl AppState {
         let sound_file = StaticSoundData::from_cursor(cursor).unwrap();
 
         self.audio_state
+            .backend
             .as_mut()
             .unwrap()
-            .play_audio(sound_file, 0, None, false);
+            .play_audio_on_track(sound_file, 0, None, false, 0.5);
     }
 
     pub fn play_audio_test2(&mut self) {
@@ -263,13 +274,14 @@ impl AppState {
         let sound_file = StaticSoundData::from_cursor(cursor).unwrap();
 
         self.audio_state
+            .backend
             .as_mut()
             .unwrap()
-            .play_audio(sound_file, 0, None, true);
+            .play_audio_on_track(sound_file, 0, None, true, 0.5);
     }
 
     pub fn audio_state_tick(&mut self) {
-        let Some(audio) = &mut self.audio_state else {
+        let Some(backend) = &mut self.audio_state.backend else {
             return;
         };
 
@@ -292,11 +304,11 @@ impl AppState {
 
         let kira_quat_v = [kira_quat.v.x, kira_quat.v.y, kira_quat.v.z];
 
-        audio
+        backend
             .listener
             .set_position([pos.x, pos.y, pos.z], BASIC_TWEEN);
 
-        audio.listener.set_orientation(
+        backend.listener.set_orientation(
             mint::Quaternion {
                 v: kira_quat_v.into(),
                 s: kira_quat.s,
@@ -305,7 +317,7 @@ impl AppState {
         );
 
         // update the states of channels
-        audio.spatial_dynamic_tracks.iter_mut().for_each(|track| {
+        backend.spatial_dynamic_tracks.iter_mut().for_each(|track| {
             if let Some(ref mut sound) = track.current_sound {
                 if matches!(sound.state(), kira::sound::PlaybackState::Stopped) {
                     track.current_sound = None;

@@ -1,7 +1,7 @@
 //! You MUST have gchimp and then do this over your maps folder so that the server doesn't have to process much data.
 //!
 //! gchimp resmake -f /path/to/<"maps" folder> --wad-check --include-default
-use std::sync::LazyLock;
+use std::{path::PathBuf, sync::LazyLock};
 
 use clap::Parser;
 use loader::native::NativeResourceProvider;
@@ -37,6 +37,18 @@ pub struct ApiServerArgs {
     /// Port the application listens on
     #[arg(short, long)]
     port: Option<u16>,
+
+    /// Resource that is distributed when loading into the server first time. They are used between maps/demos.
+    ///
+    /// These type of files include foot step and hud use and whatnot.
+    #[arg(short, long)]
+    common_resource: Option<PathBuf>,
+}
+
+pub struct ServerArgs {
+    resource_provider: NativeResourceProvider,
+    port: u16,
+    common_resource: Option<PathBuf>,
 }
 
 fn main() -> std::io::Result<()> {
@@ -53,5 +65,13 @@ fn main() -> std::io::Result<()> {
 
     let resource_provider = NativeResourceProvider::new(game_dir.as_str());
 
-    return start_server(resource_provider, port);
+    let common_resource = args.common_resource;
+
+    let server_args = ServerArgs {
+        resource_provider,
+        port,
+        common_resource,
+    };
+
+    return start_server(server_args);
 }

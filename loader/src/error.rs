@@ -38,20 +38,16 @@ pub enum ResourceProviderError {
         source: std::io::Error,
     },
 
-    // platform specific error :()
     #[cfg(target_arch = "wasm32")]
-    #[error("Cannot send POST map request: {source}")]
-    PostError {
+    #[error("Error from request: {source}")]
+    RequestError {
         #[source]
         source: reqwest::Error,
     },
 
     #[cfg(target_arch = "wasm32")]
-    #[error("Error from response: {source}")]
-    ResponseError {
-        #[source]
-        source: reqwest::Error,
-    },
+    #[error("Error from response (code {status_code}): {message}")]
+    ResponseError { status_code: u16, message: String },
 
     #[cfg(target_arch = "wasm32")]
     #[error("Error from response bytes: {source}")]
@@ -68,4 +64,8 @@ pub enum ResourceProviderError {
 
     #[error("Cannot .bsp map file from archive")]
     BspFromArchive,
+
+    #[cfg(target_arch = "wasm32")]
+    #[error("The server does not contain this map")]
+    NoMapFound {},
 }

@@ -4,7 +4,7 @@ use std::{
 };
 
 use bsp::Bsp;
-use common::constants::UNKNOWN_GAME_MOD;
+use common::UNKNOWN_GAME_MOD;
 use tracing::{info, warn};
 use wad::types::Wad;
 
@@ -465,7 +465,12 @@ const OTHER_SOUND: &[&str] = &[
     "sound/player/pl_step2.wav",
     "sound/player/pl_step3.wav",
     "sound/player/pl_step4.wav",
+    "sound/common/wpn_select.wav",
+    "sound/weapons/knife_hitwall1.wav",
+    "sound/common/wpn_denyselect.wav",
+    "sound/weapons/knife_slash2.wav",
 ];
+
 fn get_other_sound(resource_map: &mut ResourceMap, game_dir: &Path, game_mod: &str) {
     OTHER_SOUND.iter().for_each(|&sound_path| {
         let Some(sound_absolute_path) =

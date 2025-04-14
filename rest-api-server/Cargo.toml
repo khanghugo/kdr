@@ -6,6 +6,7 @@ edition.workspace = true
 
 [dependencies]
 loader = { path = "../loader" }
+common = { path = "../common" }
 
 actix-cors = "0.7.1"
 actix-web = "4.10.2"

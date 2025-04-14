@@ -243,8 +243,6 @@ impl AppState {
 
                 // settings
                 ui.separator();
-                ui.label("Controls");
-
                 ui.horizontal(|ui| {
                     let sensitivity_slider =
                         egui::DragValue::new(&mut self.input_state.sensitivity)
@@ -255,6 +253,11 @@ impl AppState {
                         egui::DragValue::new(&mut self.input_state.noclip_speed)
                             .range(0.0..=4000.0)
                             .speed(10);
+                    let volume_slider = egui::DragValue::new(&mut self.audio_state.volume)
+                        // goes to 2 so it can be a lot louder
+                        .range(0.0..=2.)
+                        .speed(0.025)
+                        .fixed_decimals(2);
 
                     ui.label("Sensitivity:");
                     let response = ui.add(sensitivity_slider);
@@ -272,6 +275,13 @@ impl AppState {
                         self.input_state.noclip_speed = DEFAULT_NOCLIP_SPEED;
                     }
 
+                    // volume
+                    ui.label("Volume:");
+                    ui.add(volume_slider);
+                });
+
+                // other settings but in a different row
+                ui.horizontal(|ui| {
                     ui.checkbox(&mut self.input_state.free_cam, "Freecam");
 
                     ui.checkbox(&mut self.ui_state.crosshair, "Crosshair");

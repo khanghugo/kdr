@@ -39,6 +39,7 @@ pub fn get_ghost<'a>(
 #[derive(Debug, Clone)]
 pub struct GhostFrameSound {
     pub file_name: String,
+    pub channel: i32,
     pub volume: f32,
     pub origin: Option<[f32; 3]>,
 }
