@@ -149,11 +149,6 @@ impl AppState {
                             self.input_state.keys.intersection(Key::Alt.complement());
                     }
                 }
-                KeyCode::KeyQ => {
-                    if state.is_pressed() {
-                        panic!()
-                    }
-                }
                 KeyCode::Escape => {
                     if state.is_pressed() {
                         self.ui_state.is_main_ui_enabled = !self.ui_state.is_main_ui_enabled;

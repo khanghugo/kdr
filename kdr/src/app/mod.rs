@@ -765,7 +765,12 @@ impl ApplicationHandler<CustomEvent> for App {
                     };
 
                 #[cfg(target_arch = "wasm32")]
-                {}
+                {
+                    wasm_bindgen_futures::spawn_local(async move {
+                        let map_list = resource_provider.get_map_list().await;
+                        send_receive_message(map_list);
+                    });
+                }
 
                 #[cfg(not(target_arch = "wasm32"))]
                 {

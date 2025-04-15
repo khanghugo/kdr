@@ -2,7 +2,8 @@ use std::path::PathBuf;
 
 use actix_web::{App, HttpResponse, HttpServer, Responder, get, post, web};
 use common::CANNOT_FIND_REQUESTED_MAP_ERROR;
-use loader::{ResourceIdentifier, native::NativeResourceProvider};
+use loader::{MapList, ResourceIdentifier, ResourceProvider, native::NativeResourceProvider};
+use pollster::FutureExt;
 use tracing::{info, info_span, warn};
 use uuid::Uuid;
 
@@ -19,16 +20,7 @@ struct AppData {
     // .zip file already loaded into memory
     // optional to make sure that we have a file to distribute
     common_resource: Option<PathBuf>,
-}
-
-#[get("/")]
-async fn hello() -> impl Responder {
-    HttpResponse::Ok().body("Hello world!")
-}
-
-#[post("/echo")]
-async fn echo(req_body: String) -> impl Responder {
-    HttpResponse::Ok().body(req_body)
+    map_list: MapList,
 }
 
 #[get("/request-common")]
@@ -101,11 +93,9 @@ async fn request_map(
     };
 }
 
-async fn manual_hello(data: web::Data<AppData>) -> impl Responder {
-    HttpResponse::Ok().body(format!(
-        "Hey there! {} ",
-        data.resource_provider.game_dir.display()
-    ))
+#[get("/request-map-list")]
+async fn request_map_list(data: web::Data<AppData>) -> impl Responder {
+    HttpResponse::Ok().json(&data.map_list)
 }
 
 #[actix_web::main]
@@ -116,9 +106,15 @@ pub async fn start_server(args: ServerArgs) -> std::io::Result<()> {
         common_resource,
     } = args;
 
+    let map_list = resource_provider
+        .get_map_list()
+        .block_on()
+        .expect("cannot get map list");
+
     let data = AppData {
         resource_provider,
         common_resource,
+        map_list,
     };
 
     info!("Staring kdr API server");
@@ -138,11 +134,9 @@ pub async fn start_server(args: ServerArgs) -> std::io::Result<()> {
         let cors = actix_cors::Cors::permissive();
 
         let app = App::new()
-            .service(hello)
-            .service(echo)
             .service(request_map)
             .service(request_common_resource)
-            .route("/hey", web::get().to(manual_hello))
+            .service(request_map_list)
             .app_data(web::Data::new(data.clone()));
 
         #[cfg(feature = "cors")]

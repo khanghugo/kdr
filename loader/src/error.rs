@@ -50,8 +50,8 @@ pub enum ResourceProviderError {
     ResponseError { status_code: u16, message: String },
 
     #[cfg(target_arch = "wasm32")]
-    #[error("Error from response bytes: {source}")]
-    ResponseBytesError {
+    #[error("Error from response payload: {source}")]
+    ResponsePayloadError {
         #[source]
         source: reqwest::Error,
     },

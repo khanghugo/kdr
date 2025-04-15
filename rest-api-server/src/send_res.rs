@@ -32,10 +32,11 @@
 use std::path::PathBuf;
 
 use loader::{
-    ResourceIdentifier, ResourceProvider,
+    MapList, ResourceIdentifier, ResourceProvider,
     error::ResourceProviderError,
     native::{NativeResourceProvider, search_game_resource},
 };
+use pollster::FutureExt;
 
 use crate::utils::{WasmFile, zip_files};
 
