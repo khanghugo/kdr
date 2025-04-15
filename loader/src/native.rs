@@ -3,12 +3,13 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use bsp::Bsp;
 use common::UNKNOWN_GAME_MOD;
 use tracing::{info, warn};
+
+use bsp::Bsp;
 use wad::types::Wad;
 
-use crate::{MODEL_ENTITIES, ResourceMap, SOUND_ENTITIES};
+use crate::{MODEL_ENTITIES, MapList, ResourceMap, SOUND_ENTITIES};
 
 use super::{ResourceProvider, SKYBOX_SUFFIXES, error::ResourceProviderError, fix_bsp_file_name};
 
@@ -110,6 +111,50 @@ impl ResourceProvider for NativeResourceProvider {
             bsp,
             resources: resource_map,
         })
+    }
+
+    // TODO: maybe write this into a file
+    async fn get_map_list(&self) -> Result<crate::MapList, ResourceProviderError> {
+        let mut map_list = MapList::new();
+
+        // TODO: maybe par_iter?
+        COMMON_GAME_MODS.iter().for_each(|game_mod| {
+            let path = self.game_dir.join(game_mod).join("maps");
+
+            let map_entry = map_list
+                .entry(game_mod.to_string())
+                .or_insert(HashSet::new());
+
+            // quick exit
+            if !path.exists() {
+                return;
+            }
+
+            let entries = std::fs::read_dir(path).expect("cannot read folder");
+
+            entries
+                .filter_map(|entry| entry.ok())
+                .map(|entry| entry.path())
+                .filter(|entry| entry.extension().is_some() && entry.is_file())
+                .filter_map(|entry| {
+                    let ext = entry.extension().unwrap();
+
+                    if ext == "bsp" {
+                        return Some(entry.file_stem().unwrap().to_str()?.to_string());
+                    }
+
+                    None
+                })
+                .for_each(|map_name| {
+                    map_entry.insert(map_name);
+                });
+        });
+
+        Ok(map_list)
+    }
+
+    async fn get_replay_list(&self) -> Result<crate::ReplayList, ResourceProviderError> {
+        todo!()
     }
 }
 
@@ -530,6 +575,8 @@ pub fn search_game_resource(
 }
 
 // must include the downloads variance because that is easier for me
+// TODO: make this inside a config file, maybe a do a lazy cell to parse the config
+// the worst to come is that we have to read a config file once multiple times wherever applicable :()
 const COMMON_GAME_MODS: &[&str] = &[
     // "valve", // no need for valve because it is guaranteed to be inside "get_game_mods_to_check"
     // "valve_downloads", // likewise

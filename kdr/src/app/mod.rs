@@ -7,7 +7,7 @@ use ghost::GhostInfo;
 use state::{
     AppState, InputFileType,
     audio::{AudioBackend, AudioStateError},
-    overlay::ui::PostProcessingState,
+    overlay::control_panel::PostProcessingControlState,
     replay::{Replay, ReplayPlaybackMode},
 };
 // pollster for native use only
@@ -37,7 +37,8 @@ use crate::renderer::{
     world_buffer::WorldLoader,
 };
 use loader::{
-    Resource, ResourceIdentifier, ResourceMap, ResourceProvider, error::ResourceProviderError,
+    MapList, Resource, ResourceIdentifier, ResourceMap, ResourceProvider,
+    error::ResourceProviderError,
 };
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -67,11 +68,13 @@ pub enum CustomEvent {
     ReceiveResource(Resource),
     NewFileSelected,
     ReceiveGhostRequest(ResourceIdentifier, GhostInfo),
-    ReceivePostProcessingUpdate(PostProcessingState),
+    ReceivePostProcessingUpdate(PostProcessingControlState),
     MaybeStartAudioBackEnd,
     RequestCommonResource,
     #[allow(dead_code)]
     ReceivedCommonResource(ResourceMap),
+    RequestMapList,
+    ReceivedMapList(MapList),
     ErrorEvent(AppError),
 }
 
@@ -366,6 +369,11 @@ impl ApplicationHandler<CustomEvent> for App {
                 self.event_loop_proxy
                     .send_event(CustomEvent::RequestCommonResource)
                     .unwrap_or_else(|_| warn!("Failed to send RequestCommonResource"));
+
+                // also requesting map list
+                self.event_loop_proxy
+                    .send_event(CustomEvent::RequestMapList)
+                    .unwrap_or_else(|_| warn!("Failed to send RequestMapList"));
             }
             CustomEvent::CreateEgui => {
                 info!("Creating egui renderer");
@@ -719,7 +727,79 @@ impl ApplicationHandler<CustomEvent> for App {
                     info!("Common resource data is empty");
                 }
 
-                self.state.common_resource = common_resource;
+                self.state.other_resources.common_resource = common_resource;
+            }
+            CustomEvent::RequestMapList => {
+                info!("Requesting map list");
+
+                #[cfg(target_arch = "wasm32")]
+                let Some(resource_provider) = &self.web_resource_provider else {
+                    warn!("Requesting map list without resource provider");
+                    return;
+                };
+
+                #[cfg(not(target_arch = "wasm32"))]
+                let Some(resource_provider) = &self.native_resource_provider else {
+                    warn!("Requesting map list without resource provider");
+                    return;
+                };
+
+                // need to clone resource_provider because it is borrowed from self with &'1 lifetime
+                // meanwhile, the spawn_local has 'static lifetime
+                // resource_provider is just a url/path, so we are all good in cloning
+                let resource_provider = resource_provider.to_owned();
+
+                let event_loop_proxy = self.event_loop_proxy.clone();
+                let send_receive_message =
+                    move |res: Result<MapList, ResourceProviderError>| match res {
+                        Ok(map_list) => {
+                            event_loop_proxy
+                                .send_event(CustomEvent::ReceivedMapList(map_list))
+                                .unwrap_or_else(|_| warn!("cannot send ReceivedMapList"));
+                        }
+                        Err(err) => event_loop_proxy
+                            .send_event(CustomEvent::ErrorEvent(AppError::ProviderError {
+                                source: err,
+                            }))
+                            .unwrap_or_else(|_| warn!("cannot send AppError::ProviderError")),
+                    };
+
+                #[cfg(target_arch = "wasm32")]
+                {}
+
+                #[cfg(not(target_arch = "wasm32"))]
+                {
+                    let map_list = resource_provider.get_map_list().block_on();
+                    send_receive_message(map_list);
+                }
+            }
+            CustomEvent::ReceivedMapList(map_list) => {
+                let mod_count = map_list.len();
+                let map_count: usize = map_list.values().map(|k| k.len()).sum();
+
+                info!(
+                    "Received a map list of {} maps over {} game mods",
+                    map_count, mod_count
+                );
+
+                // sorting stuffs so it appears prettier
+                // sorting keys
+                let mut sorted_game_mod: Vec<_> = map_list.into_iter().collect();
+
+                sorted_game_mod.sort_by(|a, b| a.0.cmp(&b.0));
+
+                // sorting values
+                let sorted_map_list: Vec<_> = sorted_game_mod
+                    .into_iter()
+                    .map(|(game_mod, maps)| {
+                        let mut sorted_maps: Vec<_> = maps.into_iter().collect();
+                        sorted_maps.sort();
+
+                        (game_mod, sorted_maps)
+                    })
+                    .collect();
+
+                self.state.other_resources.map_list = sorted_map_list;
             }
             CustomEvent::ErrorEvent(app_error) => {
                 warn!("Error: {}", app_error.to_string());

@@ -9,10 +9,7 @@ use futures::FutureExt;
 use input::InputState;
 use kira::sound::static_sound::StaticSoundData;
 use loader::ResourceMap;
-use overlay::{
-    text::TextState,
-    ui::{PostProcessingState, UIState},
-};
+use overlay::{UIState, text::TextState};
 use replay::Replay;
 use rfd::AsyncFileDialog;
 use tracing::warn;
@@ -35,6 +32,15 @@ pub enum InputFileType {
     None,
 }
 
+pub type SortedMapList = Vec<(String, Vec<String>)>;
+
+#[derive(Default)]
+pub struct OtherResources {
+    // from MapList type, we sort it so it becomes a vector
+    pub common_resource: ResourceMap,
+    pub map_list: SortedMapList,
+}
+
 // Decouples states from App so that we can impl specific stuffs that affect states without affecting App.
 pub struct AppState {
     // time
@@ -53,20 +59,15 @@ pub struct AppState {
     pub selected_file_bytes: Option<Vec<u8>>,
     file_dialogue_future: Option<Pin<Box<dyn Future<Output = Option<rfd::FileHandle>> + 'static>>>,
     file_bytes_future: Option<Pin<Box<dyn Future<Output = Vec<u8>> + 'static>>>,
-    // resources that are shared when first connecting to server and shared across all replay/bsp such as foot step sound
-    // TODO, some how parse there resources, because right now, they aren't parsed
-    // and they will be repeated parsed when new maps are loaded in, hmmm
-    // even though this is mostly meant for sound, it is nice that we can keep everything else inbetween
-    pub common_resource: ResourceMap,
+    pub other_resources: OtherResources,
 
     // other states
     pub input_state: InputState,
-    ui_state: UIState,
-    post_processing_state: PostProcessingState,
     pub input_file_type: InputFileType,
     text_state: TextState,
     pub audio_state: AudioState,
     pub audio_resource: HashMap<String, StaticSoundData>,
+    pub ui_state: UIState,
 
     // talk with other modules
     event_loop_proxy: EventLoopProxy<CustomEvent>,
@@ -89,11 +90,10 @@ impl AppState {
             selected_file_bytes: None,
             file_dialogue_future: None,
             file_bytes_future: None,
-            common_resource: ResourceMap::new(),
+            other_resources: OtherResources::default(),
 
             input_state: InputState::default(),
             ui_state: UIState::default(),
-            post_processing_state: PostProcessingState::default(),
             input_file_type: InputFileType::None,
             text_state: TextState::default(),
             audio_state: AudioState::default(),

@@ -156,7 +156,7 @@ impl AppState {
                 }
                 KeyCode::Escape => {
                     if state.is_pressed() {
-                        self.ui_state.main_ui = !self.ui_state.main_ui;
+                        self.ui_state.is_main_ui_enabled = !self.ui_state.is_main_ui_enabled;
                     }
                 }
                 KeyCode::Space | KeyCode::KeyK => {

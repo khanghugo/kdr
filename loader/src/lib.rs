@@ -17,7 +17,11 @@
 //!
 //! This means, all code in this client repo will think about not having access to file system even though it can be used natively.
 
-use std::{collections::HashMap, ffi::OsStr, path::Path};
+use std::{
+    collections::{HashMap, HashSet},
+    ffi::OsStr,
+    path::Path,
+};
 
 use bsp_resource::BspResource;
 use error::ResourceProviderError;
@@ -60,6 +64,11 @@ pub struct ResourceIdentifier {
 }
 
 pub type ResourceMap = HashMap<String, Vec<u8>>;
+/// Key: Game mod
+///
+/// Value: Set of names of maps in that game mod excluding ".bsp" at the end
+pub type MapList = HashMap<String, HashSet<String>>;
+pub type ReplayList = Vec<String>;
 
 /// .bsp resources is sent from server to client.
 pub struct Resource {
@@ -83,7 +92,6 @@ impl Resource {
 /// Trait to fetch resources. This is here so that we can have both native and web implementations.
 pub trait ResourceProvider {
     /// Gets map resource from given map identifier.
-    // TODO: implement some sort of error handling with custom enum?
     async fn get_resource(
         &self,
         identifier: &ResourceIdentifier,
@@ -112,6 +120,9 @@ pub trait ResourceProvider {
 
         Ok((map_identifier, ghost))
     }
+
+    async fn get_map_list(&self) -> Result<MapList, ResourceProviderError>;
+    async fn get_replay_list(&self) -> Result<ReplayList, ResourceProviderError>;
 }
 
 // this makes sure that we have ".bsp in the map name"
