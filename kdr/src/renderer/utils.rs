@@ -22,6 +22,8 @@ where
     r.unwrap()
 }
 
+const VERY_BLUE: [u8; 3] = [0, 0, 255];
+
 /// This does some tricks to render masked texture, read the code
 pub fn eightbpp_to_rgba8(
     img: &[u8],
@@ -41,10 +43,15 @@ pub fn eightbpp_to_rgba8(
         img.iter()
             .flat_map(|&idx| {
                 let color = palette[idx as usize];
-                // if the image is masked and the index is 255
-                // alpha is 0 and it is all black
-                // this makes things easier
-                if is_probably_masked_image && idx == 255 {
+
+                // due to how we do our data, we don't know how to render entities
+                // we only know the texture at this stage
+                // that means, we cannot assume that the texture is supposed to be alpha tested
+                // so here, we will go against our idea and assume it anyway
+                // maybe in the future, we might need to add more colors
+                let is_blue = color == VERY_BLUE;
+
+                if idx == 255 && (is_probably_masked_image || is_blue) {
                     [0, 0, 0, 0]
                 } else {
                     [color[0], color[1], color[2], override_alpha.unwrap_or(255)]
