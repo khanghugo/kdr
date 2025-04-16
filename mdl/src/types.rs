@@ -171,6 +171,12 @@ pub struct ModelHeader {
 pub struct Model {
     pub header: ModelHeader,
     pub meshes: Vec<Mesh>,
+    /// > """vertexinfoindex is the offset to an array of int.
+    /// This array is the same size as numverts and maps each vertex position to a bone index.
+    /// This bone index is used to tell which bone affects this vertex position."""
+    ///
+    /// But it is actually u8 type, not i32
+    pub vertex_info: Vec<u8>,
 }
 
 pub struct MeshHeader {

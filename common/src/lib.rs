@@ -1,3 +1,4 @@
+use cgmath::{Rad, Rotation, Rotation3};
 use nom::{IResult as _IResult, combinator::fail};
 
 pub type IResult<'a, T> = _IResult<&'a str, T>;
@@ -101,27 +102,64 @@ impl BspAngles {
     }
 }
 
-// all assuming that we only have 1 bone
-pub fn get_idle_sequence_origin_angles(mdl: &mdl::Mdl) -> ([f32; 3], MdlAngles) {
-    let sequence0 = &mdl.sequences[0];
-    let blend0 = &sequence0.anim_blends[0];
-    let bone_blend0 = &blend0[0];
-    let bone0 = &mdl.bones[0];
+pub fn get_bone_sequence_anim_origin_angles(
+    mdl: &mdl::Mdl,
+    bone_idx: usize,
+    sequence_idx: usize,
+    anim_idx: usize,
+) -> ([f32; 3], MdlAngles) {
+    let sequence_x = &mdl.sequences[sequence_idx];
+
+    // only take blend0 now
+    // TODO blending animations
+    let blend_0 = &sequence_x.anim_blends[0];
+
+    let bone_blend_0 = &blend_0[bone_idx];
+    let bone_x = &mdl.bones[bone_idx];
 
     let origin: [f32; 3] = from_fn(|i| {
-        bone_blend0[i] // motion type
-                    [0] // frame 0
+        bone_blend_0[i] // motion type
+                    [anim_idx] // frame animation
             as f32 // casting
-                * bone0.scale[i] // scale factor
-                + bone0.value[i] // bone default value
+                * bone_x.scale[i] // scale factor
+                + bone_x.value[i] // bone default value
     });
 
-    // ~~apparently origin doesnt matter~~
-    // UPDATE: it does matter
-    // let origin = [0f32; 3];
+    let angles: [f32; 3] = from_fn(|i| {
+        bone_blend_0[i + 3][anim_idx] as f32 * bone_x.scale[i + 3] + bone_x.value[i + 3]
+    });
 
-    let angles: [f32; 3] =
-        from_fn(|i| bone_blend0[i + 3][0] as f32 * bone0.scale[i + 3] + bone0.value[i + 3]);
+    let parent = bone_x.parent;
 
-    (origin, MdlAngles(angles))
+    // need to accumulate transformation from parents
+    // if this is parent, just return
+    if parent == -1 {
+        return (origin, MdlAngles(angles));
+    }
+
+    // now, some recursion stuffs
+    let (parent_origin, parent_angles) =
+        get_bone_sequence_anim_origin_angles(mdl, parent as usize, sequence_idx, anim_idx);
+
+    let child_rotation = cgmath::Quaternion::from_angle_z(cgmath::Rad(angles[2]))
+        * cgmath::Quaternion::from_angle_y(cgmath::Rad(angles[1]))
+        * cgmath::Quaternion::from_angle_x(cgmath::Rad(angles[0]));
+
+    let parent_rotation = cgmath::Quaternion::from_angle_z(cgmath::Rad(parent_angles.0[2]))
+        * cgmath::Quaternion::from_angle_y(cgmath::Rad(parent_angles.0[1]))
+        * cgmath::Quaternion::from_angle_x(cgmath::Rad(parent_angles.0[0]));
+
+    let rotated_child_origin = parent_rotation.rotate_vector(cgmath::Vector3::from(origin));
+
+    let accum_rotation = parent_rotation * child_rotation;
+    let angles_cast: cgmath::Euler<Rad<f32>> = accum_rotation.into();
+    let accum_angles = [angles_cast.x.0, angles_cast.y.0, angles_cast.z.0];
+
+    let accum_origin = [
+        parent_origin[0] + rotated_child_origin.x,
+        parent_origin[1] + rotated_child_origin.y,
+        parent_origin[2] + rotated_child_origin.z,
+    ];
+
+    (accum_origin.into(), MdlAngles(accum_angles))
 }

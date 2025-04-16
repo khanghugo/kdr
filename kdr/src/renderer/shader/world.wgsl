@@ -17,7 +17,9 @@ var<uniform> camera_proj: mat4x4f;
 @group(0) @binding(2)
 var<uniform> camera_pos: vec3f;
 @group(1) @binding(0)
-var<uniform> model_view_array: array<mat4x4f, 512>; // make sure to match the max entity count
+var<uniform> entity_mvp: array<mat4x4f, 512>; // make sure to match the max entity count
+@group(1) @binding(1)
+var<uniform> skeletal_mvp: array<mat4x4f, 512>; // make sure to match the max entity count
 
 @vertex
 fn skybox_mask_vs(
@@ -32,7 +34,24 @@ fn skybox_mask_vs(
 ) -> VertexOut {
     var output: VertexOut;
 
-    let model_view = model_view_array[model_idx];
+    var model_view: mat4x4f;
+    
+    // if it is world brush or world entity, just use mvp from entity_mvp
+    if type_ == 0 {
+        model_view = entity_mvp[model_idx];
+    } else if type_ == 1 {
+        let bone_idx = data_b[1];
+
+        if bone_idx == 0 {
+            // if boneidx is 0, which means we use mvp from entity mvp
+            model_view = entity_mvp[model_idx];
+        } else {
+            // if boneidx is not 0, it means we have to use it from our skeletal mvp
+            // make sure that this behavior is consistent
+            // subtract 1 because bone idx1 is idx0 in skeletal mvp
+            model_view = skeletal_mvp[bone_idx];   
+        }
+    }
 
     let clip_pos = camera_proj * camera_view * model_view * vec4(pos, 1.0);
 
@@ -79,7 +98,23 @@ fn vs_main(
 ) -> VertexOut {
     var output: VertexOut;
 
-    let model_view = model_view_array[model_idx];
+    var model_view: mat4x4f;
+    
+    // if it is world brush or world entity, just use mvp from entity_mvp
+    if type_ == 0 {
+        model_view = entity_mvp[model_idx];
+    } else if type_ == 1 {
+        let bone_idx = data_b[1];
+
+        if bone_idx == 0 {
+            // if boneidx is 0, which means we use mvp from entity mvp
+            model_view = entity_mvp[model_idx];
+        } else {
+            // if boneidx is not 0, it means we have to use it from our skeletal mvp
+            // make sure that this behavior is consistent
+            model_view = skeletal_mvp[bone_idx];
+        }
+    }
 
     let clip_pos = camera_proj * camera_view * model_view * vec4(pos, 1.0);
 

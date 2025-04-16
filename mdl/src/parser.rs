@@ -569,15 +569,21 @@ fn parse_model_header(i: &[u8]) -> IResult<ModelHeader> {
     )(i)
 }
 
+fn parse_vertex_info<'a>(start: &'a [u8], model_header: &ModelHeader) -> IResult<'a, Vec<u8>> {
+    count(le_u8, model_header.num_verts as usize)(&start[model_header.vert_info_index as usize..])
+}
+
 fn parse_model<'a>(i: &'a [u8], start: &'a [u8]) -> IResult<'a, Model> {
     let (end_of_header, model_header) = parse_model_header(i)?;
     let (_end_of_meshes, meshes) = parse_meshes(start, &model_header)?;
+    let (_end_of_vertex_info, vertex_info) = parse_vertex_info(start, &model_header)?;
 
     Ok((
         end_of_header,
         Model {
             header: model_header,
             meshes,
+            vertex_info,
         },
     ))
 }

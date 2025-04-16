@@ -2,11 +2,12 @@
 //!
 //! Now, they process all of them and feed that into the renderer context.
 
-use std::{collections::HashMap, io::Cursor, path::PathBuf};
+use std::{collections::HashMap, io::Cursor, path::PathBuf, str::from_utf8};
 
 use cgmath::{Rad, Rotation, Rotation3, Zero};
 use common::{
-    BspAngles, NO_DRAW_FUNC_BRUSHES, build_mvp_from_origin_angles, get_idle_sequence_origin_angles,
+    BspAngles, NO_DRAW_FUNC_BRUSHES, build_mvp_from_origin_angles,
+    get_bone_sequence_anim_origin_angles,
 };
 use image::RgbaImage;
 use kira::sound::static_sound::StaticSoundData;
@@ -48,15 +49,52 @@ pub struct CustomRender {
     pub renderfx: i32,
 }
 
+pub struct WorldTransformation {
+    /// World coordinate XYZ
+    pub origin: [f32; 3],
+    /// World rotation XYZ (RPY)
+    pub angles: cgmath::Quaternion<f32>,
+}
+
+impl WorldTransformation {
+    fn origin() -> Self {
+        Self {
+            origin: [0f32; 3],
+            angles: cgmath::Quaternion::zero(),
+        }
+    }
+}
+
+pub enum WorldTransformationType {
+    /// For entity brushes, they only have one transformation, so that is good.
+    Entity(WorldTransformation),
+    /// For skeletal system, multiple transformations means there are multiple bones.
+    ///
+    /// So, we store all bones transformation and then put it back in shader when possible.
+    Skeletal(Vec<WorldTransformation>),
+}
+
+impl WorldTransformationType {
+    fn worldspawn() -> Self {
+        Self::Entity(WorldTransformation::origin())
+    }
+}
+
 pub struct WorldEntity {
     /// World index based on the world aka current render context, not BSP.
     ///
     /// It is used for correctly allocating data without going overboard.
     pub world_index: usize,
     pub model: EntityModel,
-    pub origin: [f32; 3],
-    /// Roll Pitch Yaw (XYZ)
-    pub angles: cgmath::Quaternion<f32>,
+    /// The reason why it is a vector is so that we can have an entity with multiple transformation based on its vertices.
+    ///
+    /// This seems like a hack to retrofit mdl skeletal system. It does.
+    pub transformation: WorldTransformationType,
+}
+
+pub enum BuildMvpResult {
+    Entity(cgmath::Matrix4<f32>),
+    Skeletal(Vec<cgmath::Matrix4<f32>>),
 }
 
 impl WorldEntity {
@@ -64,13 +102,29 @@ impl WorldEntity {
         Self {
             world_index: 0,
             model: EntityModel::Bsp,
-            origin: [0f32; 3],
-            angles: cgmath::Quaternion::zero(),
+            transformation: WorldTransformationType::worldspawn(),
         }
     }
 
-    pub fn build_mvp(&self) -> cgmath::Matrix4<f32> {
-        build_mvp_from_origin_angles(self.origin, self.angles)
+    pub fn build_mvp(&self) -> BuildMvpResult {
+        match &self.transformation {
+            WorldTransformationType::Entity(world_transformation) => {
+                BuildMvpResult::Entity(build_mvp_from_origin_angles(
+                    world_transformation.origin,
+                    world_transformation.angles,
+                ))
+            }
+            WorldTransformationType::Skeletal(world_transformations) => {
+                let transformations: Vec<_> = world_transformations
+                    .iter()
+                    .map(|transformation| {
+                        build_mvp_from_origin_angles(transformation.origin, transformation.angles)
+                    })
+                    .collect();
+
+                BuildMvpResult::Skeletal(transformations)
+            }
+        }
     }
 }
 
@@ -247,8 +301,10 @@ fn load_world_entities(
                         } else {
                             unreachable!("trying to add an unknown brush type: {}", classname)
                         },
-                        origin,
-                        angles,
+                        transformation: WorldTransformationType::Entity(WorldTransformation {
+                            origin,
+                            angles,
+                        }),
                     },
                 );
 
@@ -284,51 +340,68 @@ fn load_world_entities(
                     return;
                 }
 
-                let (idle_origin, idle_angles) = get_idle_sequence_origin_angles(&mdl);
-                let idle_angles = idle_angles.get_world_angles();
+                let transformations: Vec<_> = mdl
+                    .bones
+                    .iter()
+                    .enumerate()
+                    .map(|(bone_idx, bone)| {
+                        println!("bone name {}", from_utf8(&bone.name).unwrap());
 
-                let bsp_angles = [
-                    Rad(angles[0].to_radians()),
-                    Rad(angles[1].to_radians()),
-                    Rad(angles[2].to_radians()),
-                ];
-                let mdl_angles = [
-                    Rad(idle_angles[0]),
-                    Rad(idle_angles[1]),
-                    Rad(idle_angles[2]),
-                ];
+                        let (idle_origin, idle_angles) =
+                            get_bone_sequence_anim_origin_angles(&mdl, bone_idx, 0, 0);
 
-                // "angles" is already correctly corrected by our helper
-                // just treat it like we are in our own world now, instead of bsp
-                let world_rotation = cgmath::Quaternion::from_angle_z(bsp_angles[2])
-                    * cgmath::Quaternion::from_angle_y(bsp_angles[1])
-                    * cgmath::Quaternion::from_angle_x(bsp_angles[0]);
+                        println!("origin {:?}", idle_origin);
 
-                let mdl_rotation = cgmath::Quaternion::from_angle_z(mdl_angles[2])
-                    * cgmath::Quaternion::from_angle_y(mdl_angles[1])
-                    * cgmath::Quaternion::from_angle_x(mdl_angles[0]);
+                        let idle_angles = idle_angles.get_world_angles();
 
-                let new_angles = world_rotation * mdl_rotation;
+                        let bsp_angles = [
+                            Rad(angles[0].to_radians()),
+                            Rad(angles[1].to_radians()),
+                            Rad(angles[2].to_radians()),
+                        ];
+                        let mdl_angles = [
+                            Rad(idle_angles[0]),
+                            Rad(idle_angles[1]),
+                            Rad(idle_angles[2]),
+                        ];
 
-                // need to find the direction of bone translation in world
-                // the goal is to derive two numbers, angles and origin
-                // that means, we cannot combine them
-                // so, we do things like this
-                let rotated_world_origin = world_rotation.rotate_vector(idle_origin.into());
+                        // "angles" is already correctly corrected by our helper
+                        // just treat it like we are in our own world now, instead of bsp
+                        let world_rotation = cgmath::Quaternion::from_angle_z(bsp_angles[2])
+                            * cgmath::Quaternion::from_angle_y(bsp_angles[1])
+                            * cgmath::Quaternion::from_angle_x(bsp_angles[0]);
 
-                let new_origin = [
-                    origin[0] + rotated_world_origin[0],
-                    origin[1] + rotated_world_origin[1],
-                    origin[2] + rotated_world_origin[2],
-                ];
+                        let mdl_rotation = cgmath::Quaternion::from_angle_z(mdl_angles[2])
+                            * cgmath::Quaternion::from_angle_y(mdl_angles[1])
+                            * cgmath::Quaternion::from_angle_x(mdl_angles[0]);
+
+                        let new_angles = world_rotation * mdl_rotation;
+
+                        // need to find the direction of bone translation in world
+                        // the goal is to derive two numbers, angles and origin
+                        // that means, we cannot combine them
+                        // so, we do things like this
+                        let rotated_world_origin = world_rotation.rotate_vector(idle_origin.into());
+
+                        let new_origin = [
+                            origin[0] + rotated_world_origin[0],
+                            origin[1] + rotated_world_origin[1],
+                            origin[2] + rotated_world_origin[2],
+                        ];
+
+                        WorldTransformation {
+                            origin: new_origin,
+                            angles: new_angles,
+                        }
+                    })
+                    .collect();
 
                 entity_dictionary.insert(
                     bsp_entity_index,
                     WorldEntity {
                         world_index: assign_world_index(),
                         model: EntityModel::Mdl(model_path.to_string()),
-                        origin: new_origin,
-                        angles: new_angles,
+                        transformation: WorldTransformationType::Skeletal(transformations),
                     },
                 );
             }

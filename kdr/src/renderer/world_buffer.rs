@@ -59,7 +59,8 @@ pub struct WorldVertex {
     // for mdl: unused
     data_a: [f32; 3],
     // for bsp: [rendermode, is_sky]
-    // for mdl: [textureflag, unused]
+    // for mdl: [textureflag, bone index]
+    //      if bone index is 0, use mvp, starting from 1, calculate the actual bone index, somehow
     data_b: [u32; 2],
 }
 
@@ -368,20 +369,21 @@ impl WorldLoader {
         resource: &BspResource,
     ) -> WorldBuffer {
         let lightmap = LightMapAtlasBuffer::load_lightmap(device, queue, &resource.bsp);
+
+        // turn to vec and then sort by key
+        let mut sorted_entity_infos: Vec<&WorldEntity> =
+            resource.entity_dictionary.iter().map(|(_, v)| v).collect();
+
+        sorted_entity_infos.sort_by_key(|v| v.world_index);
+
+        let entity_infos: Vec<&WorldEntity> = sorted_entity_infos.into_iter().map(|v| v).collect();
+
         let (lookup_table, texture_arrays) = Self::load_textures(device, queue, resource);
         let (opaque_batch, transparent_batch) =
-            create_batch_lookups(resource, &lookup_table, &lightmap);
+            create_batch_lookups(resource, &entity_infos, &lookup_table, &lightmap);
 
         let opaque_vertex_buffer = create_world_vertex_buffer(device, opaque_batch);
         let transparent_vertex_buffer = create_world_vertex_buffer(device, transparent_batch);
-
-        // turn to vec and then sort by key
-        let mut entity_infos: Vec<&WorldEntity> =
-            resource.entity_dictionary.iter().map(|(_, v)| v).collect();
-
-        entity_infos.sort_by_key(|v| v.world_index);
-
-        let entity_infos: Vec<&WorldEntity> = entity_infos.into_iter().map(|v| v).collect();
 
         let mvp_buffer = MvpBuffer::create_mvp(device, &entity_infos);
 
@@ -563,6 +565,8 @@ struct ProcessBspFaceData<'a> {
 // Returns (opaque batch lookup, transparent batch lookup)
 fn create_batch_lookups(
     resource: &BspResource,
+    // make sure entity info is sorted by world index
+    sorted_entity_infos: &[&WorldEntity],
     world_texture_lookup: &WorldTextureLookupTable,
     lightmap: &LightMapAtlasBuffer,
 ) -> (BatchLookup, BatchLookup) {
@@ -570,7 +574,12 @@ fn create_batch_lookups(
     let mut transparent_lookup = BatchLookup::new();
     let bsp = &resource.bsp;
 
-    resource.entity_dictionary.iter().for_each(|(_, entity)| {
+    // we don't use index 0 because index 0 in skeletal bone mvp is unambiguous
+    // imagine we calculate to get index 0, is that for skeletal or mvp?
+    // so, we start from index 1
+    let mut current_model_skeletal_bone_mvp_idx = 1;
+
+    sorted_entity_infos.iter().for_each(|entity| {
         let world_entity_index = entity.world_index;
 
         let is_transparent = matches!(
@@ -667,11 +676,13 @@ fn create_batch_lookups(
             }
             // for some reasons this is inline but the bsp face is not
             EntityModel::Mdl(mdl_name) => {
+                // REMINDER: at the end of this scope, need to increment the bone number
                 let Some(mdl) = resource.model_lookup.get(mdl_name) else {
                     warn!("Cannot find model `{mdl_name}` to create a batch lookup");
 
                     return;
                 };
+
                 mdl.bodyparts.iter().for_each(|bodypart| {
                     bodypart.models.iter().for_each(|model| {
                         model.meshes.iter().for_each(|mesh| {
@@ -708,6 +719,22 @@ fn create_batch_lookups(
                                         trivert.header.t as f32 / height as f32,
                                     ];
 
+                                    let bone_index = model.vertex_info
+                                        [trivert.header.vert_index as usize]
+                                        as usize;
+
+                                    // now this is some stuffs that seems dumb
+                                    // in skeletal mvp, we just don't use index 0
+                                    // with this, if bone index is 0, it means model uses entity mvp
+                                    // so, skeletal mvp 0 is empty
+                                    let buffer_bone_idx = if bone_index == 0 {
+                                        0
+                                    } else {
+                                        // assign_skeletal_bone_idx()
+                                        // need to subtract 1 because bone idx 1 will have idx 0 in skeletal
+                                        current_model_skeletal_bone_mvp_idx + bone_index - 1
+                                    };
+
                                     WorldVertex {
                                         pos: trivert.vertex.to_array(),
                                         tex_coord: [u, v],
@@ -718,7 +745,10 @@ fn create_batch_lookups(
                                         model_idx: world_entity_index as u32,
                                         type_: 1,
                                         data_a: [0f32; 3],
-                                        data_b: [texture_flags.bits() as u32; 2],
+                                        data_b: [
+                                            texture_flags.bits() as u32,
+                                            buffer_bone_idx as u32,
+                                        ],
                                     }
                                 });
 
@@ -764,6 +794,11 @@ fn create_batch_lookups(
                         });
                     });
                 });
+
+                // REMINDER: add the bone idx for the current model
+                // need to sub 1 because one bone is in another buffer
+                // make sure it is saturating sub just in case someone made a model with 0 bone
+                current_model_skeletal_bone_mvp_idx += mdl.bones.len().saturating_sub(1);
             }
             EntityModel::Sprite => todo!("sprite world vertex is not supported"),
         };
