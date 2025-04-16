@@ -276,6 +276,12 @@ fn load_world_entities(
                     // this this should always work
                     .expect("cannot get recently inserted model.");
 
+                // if model has external textures, just stop bothering
+                // TODO: work for models with external textures
+                if mdl.textures.is_empty() {
+                    return;
+                }
+
                 let (idle_origin, idle_angles) = get_idle_sequence_origin_angles(&mdl);
                 let idle_angles = idle_angles.get_world_angles();
 

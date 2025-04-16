@@ -15,7 +15,7 @@ mod test {
     use std::mem;
 
     use crate::{
-        BodypartHeader, Bone, BoneController, Hitbox, MeshHeader, ModelHeader, SequenceGroup,
+        BodypartHeader, Bone, BoneController, Hitbox, Mdl, MeshHeader, ModelHeader, SequenceGroup,
         TrivertHeader,
         types::{Header, SequenceHeader, TextureHeader},
     };
@@ -33,5 +33,14 @@ mod test {
         assert_eq!(mem::size_of::<BoneController>(), 24);
         assert_eq!(mem::size_of::<Hitbox>(), 32);
         assert_eq!(mem::size_of::<SequenceGroup>(), 104);
+    }
+
+    #[test]
+    /// Model with external texture
+    fn parse_orange() {
+        let bytes = include_bytes!("./tests/orange.mdl");
+        let mdl = Mdl::open_from_bytes(bytes).unwrap();
+
+        assert_eq!(mdl.textures.len(), 0);
     }
 }
