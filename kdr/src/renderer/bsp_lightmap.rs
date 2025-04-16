@@ -293,39 +293,25 @@ struct LightmapDimension {
     pub min_v: i32,
 }
 
-// minimum light map size is always 2x2
-// https://github.com/rein4ce/hlbsp/blob/1546eaff4e350a2329bc2b67378f042b09f0a0b7/js/hlbsp.js#L499
-// TODO: fix weird lightmap alignment. It seems like noclip.website has it correctly so take a look at that.
+// https://github.com/magcius/noclip.website/blob/e748c03dbf626da5ae5f04868be410c3723724e2/src/GoldSrc/BSPFile.ts#L259
 fn get_lightmap_dimensions(uvs: &[[f32; 2]]) -> LightmapDimension {
-    let mut min_u = uvs[0][0].floor() as i32;
-    let mut min_v = uvs[0][1].floor() as i32;
-    let mut max_u = uvs[0][0].floor() as i32;
-    let mut max_v = uvs[0][1].floor() as i32;
+    let min_u = uvs.iter().min_by(|a, b| a[0].total_cmp(&b[0])).unwrap()[0];
+    let min_v = uvs.iter().min_by(|a, b| a[1].total_cmp(&b[1])).unwrap()[1];
+    let max_u = uvs.iter().max_by(|a, b| a[0].total_cmp(&b[0])).unwrap()[0];
+    let max_v = uvs.iter().max_by(|a, b| a[1].total_cmp(&b[1])).unwrap()[1];
 
-    for i in 1..uvs.len() {
-        let u = uvs[i][0].floor() as i32;
-        let v = uvs[i][1].floor() as i32;
+    const LIGHTMAP_SCALE: f32 = 1. / 16.;
 
-        if u < min_u {
-            min_u = u;
-        }
-        if v < min_v {
-            min_v = v;
-        }
-        if u > max_u {
-            max_u = u;
-        }
-        if v > max_v {
-            max_v = v;
-        }
-    }
+    let lightmap_width =
+        (max_u * LIGHTMAP_SCALE).ceil() as i32 - (min_u * LIGHTMAP_SCALE).floor() as i32 + 1;
+    let lightmap_height =
+        (max_v * LIGHTMAP_SCALE).ceil() as i32 - (min_v * LIGHTMAP_SCALE).floor() as i32 + 1;
 
-    // light map dimension is basically the face dimensions divided by 16
-    // because luxel is 1 per 16 texel
     return LightmapDimension {
-        width: ((max_u as f32 / 16.0).ceil() as i32) - ((min_u as f32 / 16.0).floor() as i32) + 1,
-        height: ((max_v as f32 / 16.0).ceil() as i32) - ((min_v as f32 / 16.0).floor() as i32) + 1,
-        min_u,
-        min_v,
+        width: lightmap_width,
+        height: lightmap_height,
+        // it has to be floor
+        min_u: min_u.floor() as i32,
+        min_v: min_v.floor() as i32,
     };
 }
