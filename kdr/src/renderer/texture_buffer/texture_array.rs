@@ -69,13 +69,13 @@ pub fn create_texture_array(
     let gles_texture_array_fix = textures.len() % 6 == 0 || textures.len() == 1;
 
     if gles_texture_array_fix {
-        warn!(
-            "Creating a texture array with {} images. \
-If backend is GLES, an additional image is added to the array to avoid being interpreted as a cube texture in case of multiples of 6 \
-or a singular texture in case of 1 texture. \
-This is an ongoing issue in wgpu (https://github.com/gfx-rs/wgpu/issues/4081).",
-            textures.len()
-        );
+        //         warn!(
+        //             "Creating a texture array with {} images. \
+        // If backend is GLES, an additional image is added to the array to avoid being interpreted as a cube texture in case of multiples of 6 \
+        // or a singular texture in case of 1 texture. \
+        // This is an ongoing issue in wgpu (https://github.com/gfx-rs/wgpu/issues/4081).",
+        //             textures.len()
+        //         );
     }
 
     // wgpu fix
