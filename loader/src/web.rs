@@ -7,7 +7,7 @@ use bsp::Bsp;
 use common::{REQUEST_COMMON_RESOURCE_ENDPOINT, REQUEST_MAP_ENDPOINT, REQUEST_MAP_LIST_ENDPOINT};
 use zip::ZipArchive;
 
-use crate::{error::ResourceProviderError, fix_bsp_file_name, MapList, ResourceMap};
+use crate::{MapList, ResourceMap, error::ResourceProviderError, fix_bsp_file_name};
 
 use super::ResourceProvider;
 
@@ -100,20 +100,24 @@ impl ResourceProvider for WebResourceProvider {
             resources: extracted_files,
         })
     }
-    
+
     async fn get_map_list(&self) -> Result<crate::MapList, ResourceProviderError> {
         let url = format!("{}/{}", self.base_url, REQUEST_MAP_LIST_ENDPOINT);
 
-        let response = reqwest::get(url).await.and_then(|response| response.error_for_status()).map_err(|op| ResourceProviderError::RequestError { source: op })?;
+        let response = reqwest::get(url)
+            .await
+            .and_then(|response| response.error_for_status())
+            .map_err(|op| ResourceProviderError::RequestError { source: op })?;
 
-        response.json().await.map_err(|op| ResourceProviderError::ResponsePayloadError { source: op })
+        response
+            .json()
+            .await
+            .map_err(|op| ResourceProviderError::ResponsePayloadError { source: op })
     }
-    
+
     async fn get_replay_list(&self) -> Result<crate::ReplayList, ResourceProviderError> {
         todo!()
     }
-
-    
 }
 
 impl WebResourceProvider {
