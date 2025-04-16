@@ -169,8 +169,8 @@ fn parse_header(i: &[u8]) -> IResult<Header> {
 }
 
 // https://github.com/LogicAndTrick/sledge-formats/blob/7a3bfb33562aece483e15796b8573b23d71319ab/Sledge.Formats.Model/Goldsource/MdlFile.cs#L442
-fn parse_animation_frame_values(br: &[u8], read_count: usize) -> IResult<Vec<u16>> {
-    let mut values: Vec<u16> = vec![0; read_count];
+fn parse_animation_frame_values(br: &[u8], read_count: usize) -> IResult<Vec<i16>> {
+    let mut values: Vec<i16> = vec![0; read_count];
 
     let mut i = 0;
 
@@ -178,7 +178,7 @@ fn parse_animation_frame_values(br: &[u8], read_count: usize) -> IResult<Vec<u16
 
     while i < read_count {
         let (br, run) = take(2usize)(reader)?;
-        let (br, vals) = count(le_u16, run[0] as usize)(br)?;
+        let (br, vals) = count(le_i16, run[0] as usize)(br)?;
 
         reader = br;
 
@@ -234,7 +234,7 @@ fn parse_blend<'a>(
     // at the moment, we have the bone count and the offsets
     // now we have to fit animations inside the bone count
     for bone in blend {
-        let mut bone_values: [Vec<u16>; 6] = from_fn(|_| vec![0; num_frames]);
+        let mut bone_values: [Vec<i16>; 6] = from_fn(|_| vec![0; num_frames]);
 
         for (motion_idx, offset) in bone.into_iter().enumerate() {
             if offset == 0 {

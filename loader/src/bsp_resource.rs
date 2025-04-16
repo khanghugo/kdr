@@ -4,7 +4,7 @@
 
 use std::{collections::HashMap, io::Cursor, path::PathBuf};
 
-use cgmath::{Rad, Rotation3, Zero};
+use cgmath::{Rad, Rotation, Rotation3, Zero};
 use common::{
     BspAngles, NO_DRAW_FUNC_BRUSHES, build_mvp_from_origin_angles, get_idle_sequence_origin_angles,
 };
@@ -287,12 +287,6 @@ fn load_world_entities(
                 let (idle_origin, idle_angles) = get_idle_sequence_origin_angles(&mdl);
                 let idle_angles = idle_angles.get_world_angles();
 
-                let new_origin = [
-                    origin[0] + idle_origin[0],
-                    origin[1] + idle_origin[1],
-                    origin[2] + idle_origin[2],
-                ];
-
                 let bsp_angles = [
                     Rad(angles[0].to_radians()),
                     Rad(angles[1].to_radians()),
@@ -304,10 +298,29 @@ fn load_world_entities(
                     Rad(idle_angles[2]),
                 ];
 
-                // dont touch this, this is the order, it has to be like that
-                let new_angles = cgmath::Quaternion::from_angle_z(mdl_angles[2] + bsp_angles[2])
-                    * cgmath::Quaternion::from_angle_y(mdl_angles[1] + bsp_angles[1])
-                    * cgmath::Quaternion::from_angle_x(mdl_angles[0] + bsp_angles[0]);
+                // "angles" is already correctly corrected by our helper
+                // just treat it like we are in our own world now, instead of bsp
+                let world_rotation = cgmath::Quaternion::from_angle_z(bsp_angles[2])
+                    * cgmath::Quaternion::from_angle_y(bsp_angles[1])
+                    * cgmath::Quaternion::from_angle_x(bsp_angles[0]);
+
+                let mdl_rotation = cgmath::Quaternion::from_angle_z(mdl_angles[2])
+                    * cgmath::Quaternion::from_angle_y(mdl_angles[1])
+                    * cgmath::Quaternion::from_angle_x(mdl_angles[0]);
+
+                let new_angles = world_rotation * mdl_rotation;
+
+                // need to find the direction of bone translation in world
+                // the goal is to derive two numbers, angles and origin
+                // that means, we cannot combine them
+                // so, we do things like this
+                let rotated_world_origin = world_rotation.rotate_vector(idle_origin.into());
+
+                let new_origin = [
+                    origin[0] + rotated_world_origin[0],
+                    origin[1] + rotated_world_origin[1],
+                    origin[2] + rotated_world_origin[2],
+                ];
 
                 entity_dictionary.insert(
                     bsp_entity_index,

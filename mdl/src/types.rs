@@ -88,7 +88,9 @@ pub struct SequenceHeader {
 }
 
 /// [[[animation value; frame count]; 6 motion types]; bone count]
-pub type Blend = Vec<[Vec<u16>; 6]>;
+///
+/// Number is i16, not u16 because we want signed.
+pub type Blend = Vec<[Vec<i16>; 6]>;
 
 #[derive(Debug)]
 pub struct Sequence {

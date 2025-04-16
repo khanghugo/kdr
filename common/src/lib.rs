@@ -77,22 +77,27 @@ pub fn build_mvp_from_origin_angles(
     cgmath::Matrix4::from_translation(origin.into()) * rotation
 }
 
+/// "The Half-Life engine uses a left handed coordinate system, where X is forward, Y is left and Z is up."
 pub struct MdlAngles(pub [f32; 3]);
 
 impl MdlAngles {
-    // "The Half-Life engine uses a left handed coordinate system, where X is forward, Y is left and Z is up."
+    /// XYZ -> XYZ
     pub fn get_world_angles(&self) -> [f32; 3] {
         let angles = self.0;
         [angles[0], angles[1], angles[2]]
     }
 }
 
+/// YZX
 pub struct BspAngles(pub [f32; 3]);
 
 impl BspAngles {
+    /// YZX -> XYZ
+    ///
+    /// But pitch in this game is flipped since Doom.
     pub fn get_world_angles(&self) -> [f32; 3] {
         let angles = self.0;
-        [-angles[0], angles[2], angles[1]]
+        [angles[2], -angles[0], angles[1]]
     }
 }
 
@@ -103,16 +108,17 @@ pub fn get_idle_sequence_origin_angles(mdl: &mdl::Mdl) -> ([f32; 3], MdlAngles) 
     let bone_blend0 = &blend0[0];
     let bone0 = &mdl.bones[0];
 
-    // let origin: [f32; 3] = from_fn(|i| {
-    //     bone_blend0[i] // motion type
-    //                 [0] // frame 0
-    //         as f32 // casting
-    //             * bone0.scale[i] // scale factor
-    //             + bone0.value[i] // bone default value
-    // });
+    let origin: [f32; 3] = from_fn(|i| {
+        bone_blend0[i] // motion type
+                    [0] // frame 0
+            as f32 // casting
+                * bone0.scale[i] // scale factor
+                + bone0.value[i] // bone default value
+    });
 
-    // apparently origin doesnt matter
-    let origin = [0f32; 3];
+    // ~~apparently origin doesnt matter~~
+    // UPDATE: it does matter
+    // let origin = [0f32; 3];
 
     let angles: [f32; 3] =
         from_fn(|i| bone_blend0[i + 3][0] as f32 * bone0.scale[i + 3] + bone0.value[i + 3]);
