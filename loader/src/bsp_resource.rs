@@ -5,7 +5,9 @@
 use std::{collections::HashMap, io::Cursor, path::PathBuf};
 
 use cgmath::{Rad, Rotation3, Zero};
-use common::{BspAngles, build_mvp_from_origin_angles, get_idle_sequence_origin_angles};
+use common::{
+    BspAngles, NO_DRAW_FUNC_BRUSHES, build_mvp_from_origin_angles, get_idle_sequence_origin_angles,
+};
 use image::RgbaImage;
 use kira::sound::static_sound::StaticSoundData;
 use tracing::warn;
@@ -414,8 +416,6 @@ fn vec3(i: &str) -> Option<[f32; 3]> {
 
     Some([res[0], res[1], res[2]])
 }
-
-const NO_DRAW_FUNC_BRUSHES: &[&str] = &["func_hostage_rescue", "func_ladder"];
 
 fn is_nodraw(classname: &str) -> bool {
     let is_trigger = classname.starts_with("trigger_");

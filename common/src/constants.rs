@@ -6,3 +6,10 @@ pub const REQUEST_MAP_LIST_ENDPOINT: &str = "request-map-list";
 pub const REQUEST_REPLAY_LIST: &str = "request-replay-list";
 
 pub const CANNOT_FIND_REQUESTED_MAP_ERROR: &str = "Cannot find requested map";
+
+pub const NO_DRAW_FUNC_BRUSHES: &[&str] = &[
+    "func_hostage_rescue",
+    "func_ladder",
+    "func_buyzone",
+    "func_bomb_target",
+];

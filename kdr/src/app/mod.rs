@@ -498,6 +498,9 @@ impl ApplicationHandler<CustomEvent> for App {
 
                 self.state.render_state.camera = Camera::default();
                 self.state.render_state.render_options = RenderOptions::default();
+
+                // reset file input tpye
+                self.state.input_file_type = InputFileType::None;
             }
             CustomEvent::NewFileSelected => {
                 self.state.input_file_type = InputFileType::None;

@@ -3,7 +3,10 @@ use std::collections::HashSet;
 use loader::ResourceIdentifier;
 use tracing::warn;
 
-use crate::app::{CustomEvent, state::AppState};
+use crate::app::{
+    CustomEvent,
+    state::{AppState, InputFileType},
+};
 
 #[derive(Default)]
 pub struct MapListUIState {
@@ -110,6 +113,10 @@ impl AppState {
                                 self.event_loop_proxy
                                     .send_event(CustomEvent::RequestResource(identifier))
                                     .unwrap_or_else(|_| warn!("Cannot send RequestResource"));
+
+                                // auxillary stuffs
+                                self.input_file_type = InputFileType::Bsp;
+                                self.selected_file = map_name.clone().into();
                             }
                         }
                     });

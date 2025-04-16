@@ -148,13 +148,22 @@ impl LightMapAtlasBuffer {
                 assert_eq!(face.lightmap_offset % 3, 0);
                 let tupled_offset = face.lightmap_offset as usize / 3; // the the original offset is on byte but we have rgb
 
-                let lightmap_run =
-                    &bsp.lightmap[tupled_offset..(tupled_offset + lightmap_run_end as usize)];
+                // fixing edge cases for map like de_airstrip
+                let lightmap_len = bsp.lightmap.len();
+
+                let lightmap_run = &bsp.lightmap
+                    [tupled_offset..(tupled_offset + lightmap_run_end as usize).min(lightmap_len)];
 
                 // main texture
                 for y in 0..(lightmap_dimensions.height) {
                     for x in 0..(lightmap_dimensions.width) {
                         let curr_element = x + y * (lightmap_dimensions.width);
+
+                        // fixing edge cases for map like de_airstrip
+                        if curr_element >= lightmap_run.len() as i32 {
+                            continue;
+                        }
+
                         let curr_pixel = lightmap_run[curr_element as usize];
                         let curr_rgba = [curr_pixel[0], curr_pixel[1], curr_pixel[2], 255];
 
