@@ -169,7 +169,7 @@ fn parse_header(i: &[u8]) -> IResult<Header> {
 }
 
 // https://github.com/LogicAndTrick/sledge-formats/blob/7a3bfb33562aece483e15796b8573b23d71319ab/Sledge.Formats.Model/Goldsource/MdlFile.cs#L442
-fn parse_animation_frame_values(br: &[u8], read_count: usize) -> IResult<Vec<i16>> {
+fn _parse_animation_frame_values(br: &[u8], read_count: usize) -> IResult<Vec<i16>> {
     let mut values: Vec<i16> = vec![0; read_count];
 
     let mut i = 0;
@@ -196,6 +196,78 @@ fn parse_animation_frame_values(br: &[u8], read_count: usize) -> IResult<Vec<i16
     }
 
     Ok((reader, values))
+}
+
+// gemini2.5 solution. just send it the entire mdl documentation and send it the other implementation
+fn parse_animation_frame_values4(
+    mut reader: &[u8], // Track input slice consumption
+    num_frames: usize,
+) -> IResult<Vec<i16>> {
+    let mut output_values: Vec<i16> = vec![0; num_frames]; // Pre-allocate result
+    let mut current_frame_index = 0; // Track how many frames we've filled
+
+    // Loop until all expected frames are filled
+    while current_frame_index < num_frames {
+        // Read the RLE header (valid_count, total_frames_in_run)
+        let (next_reader, header_bytes) = take(2usize)(reader)?;
+        let valid_count = header_bytes[0] as usize;
+        let total_frames_in_run = header_bytes[1] as usize;
+
+        // Basic sanity check for potentially corrupt data
+        // A run should ideally have at least one frame and one valid value.
+        if total_frames_in_run == 0 {
+            // eprintln!("Warning: Encountered RLE run with total_frames_in_run = 0. Stopping parse for this channel.");
+            break; // Stop processing this channel if run is empty
+        }
+        if valid_count == 0 {
+            // eprintln!("Warning: Encountered RLE run with valid_count = 0. Treating as 0s for {} frames.", total_frames_in_run);
+            // If valid is 0, we technically don't have values. Fill with 0?
+            for _ in 0..total_frames_in_run {
+                if current_frame_index >= num_frames {
+                    break;
+                }
+                output_values[current_frame_index] = 0;
+                current_frame_index += 1;
+            }
+            reader = next_reader; // Consume header, but no values read.
+            continue; // Move to next run
+        }
+
+        // Read the 'valid_count' actual i16 values for this run
+        let (next_reader, run_values) = count(le_i16, valid_count)(next_reader)?;
+
+        // Apply the run to the output_values buffer
+        for j in 0..total_frames_in_run {
+            // Check if we've already filled all required frames
+            if current_frame_index >= num_frames {
+                // eprintln!("Warning: RLE data seems longer than expected num_frames ({}). Stopping early.", num_frames);
+                // Update reader state to where we stopped reading *values*
+                reader = next_reader;
+                // Return Ok, but the caller should be aware data might be truncated/extra
+                return Ok((reader, output_values));
+            }
+
+            // Determine the index into run_values: repeat the last one if j >= valid_count
+            let value_index = j.min(valid_count - 1); // Correct indexing
+            output_values[current_frame_index] = run_values[value_index];
+
+            current_frame_index += 1; // Move to the next frame slot
+        }
+
+        // Update the reader to point after the values read for this run
+        reader = next_reader;
+    }
+
+    // Check if we exactly filled the buffer (optional sanity check)
+    // if current_frame_index != num_frames {
+    //     eprintln!(
+    //         "Warning: RLE parsing filled {} frames, but expected {}.",
+    //         current_frame_index, num_frames
+    //     );
+    // }
+
+    // Return the remaining unparsed slice and the decoded values
+    Ok((reader, output_values))
 }
 
 // parse starting from animation offset
@@ -242,7 +314,7 @@ fn parse_blend<'a>(
             }
 
             let rle_start = &panimvalue[offset as usize..];
-            let (_, values) = parse_animation_frame_values(rle_start, num_frames)?;
+            let (_, values) = parse_animation_frame_values4(rle_start, num_frames)?;
 
             bone_values[motion_idx] = values;
         }
