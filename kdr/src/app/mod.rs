@@ -11,9 +11,6 @@ use state::{
     overlay::control_panel::PostProcessingControlState,
     replay::{Replay, ReplayPlaybackMode},
 };
-// pollster for native use only
-#[cfg(not(target_arch = "wasm32"))]
-use pollster::FutureExt;
 
 // can use this for both native and web
 use web_time::{Duration, Instant};
@@ -33,9 +30,12 @@ use winit::platform::web::{EventLoopExtWebSys, WindowAttributesExtWebSys};
 pub mod constants;
 mod state;
 
-use crate::renderer::{
-    RenderContext, RenderOptions, camera::Camera, egui_renderer::EguiRenderer,
-    world_buffer::WorldLoader,
+use crate::{
+    renderer::{
+        RenderContext, RenderOptions, camera::Camera, egui_renderer::EguiRenderer,
+        world_buffer::WorldLoader,
+    },
+    utils::spawn_async,
 };
 use loader::{
     MapList, Resource, ResourceIdentifier, ResourceMap, ResourceProvider,
@@ -340,21 +340,26 @@ impl ApplicationHandler<AppEvent> for App {
                         .unwrap_or_else(|_| warn!("Failed to send FinishCreateRenderContext"));
                 };
 
-                #[cfg(target_arch = "wasm32")]
-                {
-                    wasm_bindgen_futures::spawn_local(async move {
-                        let render_context = render_context_future.await;
-                        send_message(render_context);
-                    });
-                }
+                // #[cfg(target_arch = "wasm32")]
+                // {
+                //     wasm_bindgen_futures::spawn_local(async move {
+                //         let render_context = render_context_future.await;
+                //         send_message(render_context);
+                //     });
+                // }
 
-                // we can do it like wasm where we send message and what not?
-                // TOOD maybe follow the same thing in wasm so things look samey everywhere
-                #[cfg(not(target_arch = "wasm32"))]
-                {
-                    let render_context = render_context_future.block_on();
-                    send_message(render_context)
-                }
+                // // we can do it like wasm where we send message and what not?
+                // // TOOD maybe follow the same thing in wasm so things look samey everywhere
+                // #[cfg(not(target_arch = "wasm32"))]
+                // {
+                //     let render_context = render_context_future.block_on();
+                //     send_message(render_context)
+                // }
+
+                spawn_async(async move {
+                    let render_context = render_context_future.await;
+                    send_message(render_context);
+                });
             }
             AppEvent::FinishCreateRenderContext(render_context) => {
                 info!("Finished creating a render context");
@@ -453,24 +458,29 @@ impl ApplicationHandler<AppEvent> for App {
                             .unwrap_or_else(|_| warn!("cannot send AppError::ProviderError")),
                     };
 
-                #[cfg(target_arch = "wasm32")]
-                {
-                    wasm_bindgen_futures::spawn_local(async move {
-                        // resource identifier stays in here as well so no lifetime shenanigans can happen
-                        let resource_res =
-                            resource_provider.get_resource(&resource_identifier).await;
-                        send_receive_message(resource_res);
-                    });
-                }
+                // #[cfg(target_arch = "wasm32")]
+                // {
+                //     wasm_bindgen_futures::spawn_local(async move {
+                //         // resource identifier stays in here as well so no lifetime shenanigans can happen
+                //         let resource_res =
+                //             resource_provider.get_resource(&resource_identifier).await;
+                //         send_receive_message(resource_res);
+                //     });
+                // }
 
-                #[cfg(not(target_arch = "wasm32"))]
-                {
-                    let resource = resource_provider
-                        .get_resource(&resource_identifier)
-                        .block_on();
+                // #[cfg(not(target_arch = "wasm32"))]
+                // {
+                //     let resource = resource_provider
+                //         .get_resource(&resource_identifier)
+                //         .block_on();
 
-                    send_receive_message(resource);
-                }
+                //     send_receive_message(resource);
+                // }
+
+                spawn_async(async move {
+                    let resource_res = resource_provider.get_resource(&resource_identifier).await;
+                    send_receive_message(resource_res);
+                });
             }
             AppEvent::ReceiveResource(resource) => {
                 info!("Received resources");
@@ -601,10 +611,45 @@ impl ApplicationHandler<AppEvent> for App {
                         return;
                     };
 
-                    #[cfg(not(target_arch = "wasm32"))]
-                    {
+                    // #[cfg(not(target_arch = "wasm32"))]
+                    // {
+                    //     let Ok((identifier, ghost)) =
+                    //         provider.get_ghost_data(file_path, file_bytes).block_on()
+                    //     else {
+                    //         warn!("Cannot load ghost data");
+                    //         // TODO send error here
+                    //         return;
+                    //     };
+
+                    //     send_message(identifier, ghost);
+                    // }
+
+                    // #[cfg(target_arch = "wasm32")]
+                    // {
+                    //     let provider = provider.clone();
+                    //     let file_path = file_path.to_owned();
+                    //     let file_bytes = file_bytes.to_owned();
+
+                    //     wasm_bindgen_futures::spawn_local(async move {
+                    //         let Ok((identifier, ghost)) =
+                    //             provider.get_ghost_data(file_path, &file_bytes).await
+                    //         else {
+                    //             warn!("Cannot load ghost data");
+                    //             // TODO send error here
+                    //             return;
+                    //         };
+
+                    //         send_message(identifier, ghost);
+                    //     });
+                    // }
+
+                    let provider = provider.clone();
+                    let file_path = file_path.to_owned();
+                    let file_bytes = file_bytes.to_owned();
+
+                    spawn_async(async move {
                         let Ok((identifier, ghost)) =
-                            provider.get_ghost_data(file_path, file_bytes).block_on()
+                            provider.get_ghost_data(file_path, &file_bytes).await
                         else {
                             warn!("Cannot load ghost data");
                             // TODO send error here
@@ -612,26 +657,7 @@ impl ApplicationHandler<AppEvent> for App {
                         };
 
                         send_message(identifier, ghost);
-                    }
-
-                    #[cfg(target_arch = "wasm32")]
-                    {
-                        let provider = provider.clone();
-                        let file_path = file_path.to_owned();
-                        let file_bytes = file_bytes.to_owned();
-
-                        wasm_bindgen_futures::spawn_local(async move {
-                            let Ok((identifier, ghost)) =
-                                provider.get_ghost_data(file_path, &file_bytes).await
-                            else {
-                                warn!("Cannot load ghost data");
-                                // TODO send error here
-                                return;
-                            };
-
-                            send_message(identifier, ghost);
-                        });
-                    }
+                    });
 
                     self.state.file_state.selected_file_type = SelectedFileType::Replay;
                 } else {
@@ -791,19 +817,24 @@ impl ApplicationHandler<AppEvent> for App {
                             .unwrap_or_else(|_| warn!("cannot send AppError::ProviderError")),
                     };
 
-                #[cfg(target_arch = "wasm32")]
-                {
-                    wasm_bindgen_futures::spawn_local(async move {
-                        let map_list = resource_provider.get_map_list().await;
-                        send_receive_message(map_list);
-                    });
-                }
+                // #[cfg(target_arch = "wasm32")]
+                // {
+                //     wasm_bindgen_futures::spawn_local(async move {
+                //         let map_list = resource_provider.get_map_list().await;
+                //         send_receive_message(map_list);
+                //     });
+                // }
 
-                #[cfg(not(target_arch = "wasm32"))]
-                {
-                    let map_list = resource_provider.get_map_list().block_on();
+                // #[cfg(not(target_arch = "wasm32"))]
+                // {
+                //     let map_list = resource_provider.get_map_list().block_on();
+                //     send_receive_message(map_list);
+                // }
+
+                spawn_async(async move {
+                    let map_list = resource_provider.get_map_list().await;
                     send_receive_message(map_list);
-                }
+                });
             }
             AppEvent::ReceivedMapList(map_list) => {
                 let mod_count = map_list.len();

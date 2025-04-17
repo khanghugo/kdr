@@ -18,3 +18,22 @@ macro_rules! err {
         Err(eyre!($($arg)*))
     }};
 }
+
+#[cfg(target_arch = "wasm32")]
+pub fn spawn_async<F>(future: F)
+where
+    F: Future<Output = ()> + 'static,
+{
+    wasm_bindgen_futures::spawn_local(future);
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub fn spawn_async<F>(future: F)
+where
+    F: Future<Output = ()> + Send + 'static,
+    F::Output: Send + 'static,
+{
+    std::thread::spawn(move || {
+        futures::executor::block_on(future);
+    });
+}
