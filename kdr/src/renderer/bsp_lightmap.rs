@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, io::Write};
 
 use image::RgbaImage;
 
@@ -93,10 +93,17 @@ impl LightMapAtlasBuffer {
         const DIMENSION: u32 = 1024;
         const PADDING: i32 = 0;
 
-        let mut atlas = guillotiere::AtlasAllocator::new(guillotiere::size2(
-            DIMENSION as i32,
-            DIMENSION as i32,
-        ));
+        let atlas_options = guillotiere::AllocatorOptions {
+            small_size_threshold: 4,
+            large_size_threshold: 16,
+            ..Default::default()
+        };
+
+        let mut atlas = guillotiere::AtlasAllocator::with_options(
+            guillotiere::size2(DIMENSION as i32, DIMENSION as i32),
+            &atlas_options,
+        );
+
         let mut allocations = HashMap::new();
 
         let mut atlas_image = RgbaImage::new(DIMENSION, DIMENSION);
@@ -124,9 +131,36 @@ impl LightMapAtlasBuffer {
                 let alloc_width = lightmap_dimensions.width + 2 * PADDING;
                 let alloc_height = lightmap_dimensions.height + 2 * PADDING;
 
+                // TODO: fix kzkl_soraia420 some how
+                // if the atlas is slightly bigger, like +32 in dimensions, we have 75% atlas used
+                // but if it is 1024, we have 100+% used
+                // maybe check with face with "-1" texture
                 let allocation = atlas
                     .allocate(guillotiere::size2(alloc_width, alloc_height))
-                    .expect("cannot allocate lightmap atlas");
+                    .unwrap_or_else(|| {
+                        #[cfg(not(target_arch = "wasm32"))]
+                        {
+                            let bytes: Vec<u8> = vec![];
+                            let mut cursor = std::io::Cursor::new(bytes);
+                            guillotiere::dump_svg(&atlas, &mut cursor).unwrap();
+
+                            let out = "/home/khang/kdr/examples/out.svg";
+
+                            let mut file = std::fs::OpenOptions::new()
+                                .create(true)
+                                .write(true)
+                                .truncate(true)
+                                .open(out)
+                                .unwrap();
+
+                            file.write_all(&cursor.into_inner()).unwrap();
+                            file.flush().unwrap();
+                        }
+
+                        panic!(
+                            "cannot allocate lightmap atlas. Happens to maps like kzkl_soraia420"
+                        )
+                    });
 
                 // very easy to get things wrong, dont touch too much
                 let atlas_allocation = LightMapAtlasAllocation {

@@ -1,7 +1,7 @@
 use std::{path::Path, sync::Arc};
 
 use ::tracing::{info, warn};
-use common::UNKNOWN_GAME_MOD;
+use common::{UNKNOWN_GAME_MOD, vec3};
 use constants::{WINDOW_HEIGHT, WINDOW_WIDTH};
 use ghost::GhostInfo;
 use state::{
@@ -496,7 +496,29 @@ impl ApplicationHandler<CustomEvent> for App {
                     self.state.audio_resource.insert(k, v);
                 });
 
+                // restart the camera
                 self.state.render_state.camera = Camera::default();
+
+                // but then set our camera to be in one of the spawn location
+                bsp_resource
+                    .bsp
+                    .entities
+                    .iter()
+                    .find(|entity| {
+                        entity
+                            .get("classname")
+                            .is_some_and(|classname| classname == "info_player_start")
+                    })
+                    .map(|entity| {
+                        entity
+                            .get("origin")
+                            .and_then(|origin_text| vec3(&origin_text))
+                            .map(|origin| {
+                                self.state.render_state.camera.set_position(origin);
+                                self.state.render_state.camera.rebuild_orientation();
+                            });
+                    });
+
                 self.state.render_state.render_options = RenderOptions::default();
 
                 // reset file input tpye

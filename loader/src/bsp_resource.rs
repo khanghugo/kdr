@@ -7,7 +7,7 @@ use std::{collections::HashMap, io::Cursor, path::PathBuf, str::from_utf8};
 use cgmath::{Rad, Rotation, Rotation3, Zero};
 use common::{
     BspAngles, NO_DRAW_FUNC_BRUSHES, build_mvp_from_origin_angles,
-    get_bone_sequence_anim_origin_angles,
+    get_bone_sequence_anim_origin_angles, vec3,
 };
 use image::RgbaImage;
 use kira::sound::static_sound::StaticSoundData;
@@ -489,19 +489,6 @@ fn load_sound(resource: &Resource, sound_lookup: &mut HashMap<String, StaticSoun
 }
 
 const VEC3_ZERO: [f32; 3] = [0f32; 3];
-
-fn vec3(i: &str) -> Option<[f32; 3]> {
-    let res: Vec<f32> = i
-        .split_whitespace()
-        .filter_map(|n| n.parse::<f32>().ok())
-        .collect();
-
-    if res.len() < 3 {
-        return None;
-    }
-
-    Some([res[0], res[1], res[2]])
-}
 
 fn is_nodraw(classname: &str) -> bool {
     let is_trigger = classname.starts_with("trigger_");

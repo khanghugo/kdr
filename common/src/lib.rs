@@ -163,3 +163,16 @@ pub fn get_bone_sequence_anim_origin_angles(
 
     (accum_origin.into(), MdlAngles(accum_angles))
 }
+
+pub fn vec3(i: &str) -> Option<[f32; 3]> {
+    let res: Vec<f32> = i
+        .split_whitespace()
+        .filter_map(|n| n.parse::<f32>().ok())
+        .collect();
+
+    if res.len() < 3 {
+        return None;
+    }
+
+    Some([res[0], res[1], res[2]])
+}
