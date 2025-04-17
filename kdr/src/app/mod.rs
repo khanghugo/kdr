@@ -5,8 +5,9 @@ use common::{UNKNOWN_GAME_MOD, vec3};
 use constants::{WINDOW_HEIGHT, WINDOW_WIDTH};
 use ghost::GhostInfo;
 use state::{
-    AppState, InputFileType,
+    AppState,
     audio::{AudioBackend, AudioStateError},
+    file::SelectedFileType,
     overlay::control_panel::PostProcessingControlState,
     replay::{Replay, ReplayPlaybackMode},
 };
@@ -60,7 +61,7 @@ pub enum AppError {
     },
 }
 
-pub enum CustomEvent {
+pub enum AppEvent {
     CreateRenderContext(Arc<Window>),
     FinishCreateRenderContext(RenderContext),
     CreateEgui,
@@ -95,13 +96,13 @@ struct App {
     web_resource_provider: Option<WebResourceProvider>,
 
     // https://github.com/Jelmerta/Kloenk/blob/main/src/application.rs
-    event_loop_proxy: EventLoopProxy<CustomEvent>,
+    event_loop_proxy: EventLoopProxy<AppEvent>,
 }
 
 impl App {
     pub fn new(
         provider_uri: Option<String>,
-        event_loop: &winit::event_loop::EventLoop<CustomEvent>,
+        event_loop: &winit::event_loop::EventLoop<AppEvent>,
     ) -> Self {
         let provider = provider_uri.and_then(|provider_uri| {
             #[cfg(not(target_arch = "wasm32"))]
@@ -133,7 +134,7 @@ impl App {
     }
 }
 
-impl ApplicationHandler<CustomEvent> for App {
+impl ApplicationHandler<AppEvent> for App {
     // this is better suited for native run, not for web
     fn resumed(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
         #[allow(unused_mut)]
@@ -174,7 +175,7 @@ impl ApplicationHandler<CustomEvent> for App {
 
         self.state.window = Some(window.clone());
         self.event_loop_proxy
-            .send_event(CustomEvent::CreateRenderContext(window))
+            .send_event(AppEvent::CreateRenderContext(window))
             .unwrap_or_else(|_| warn!("Failed to send CreateRenderContext message"));
     }
 
@@ -283,7 +284,7 @@ impl ApplicationHandler<CustomEvent> for App {
                 window.request_redraw();
 
                 // polling the states every redraw request
-                self.state.state_poll();
+                self.state.file_state_poll();
             }
             // window event inputs are focused so we need to be here
             WindowEvent::KeyboardInput {
@@ -325,9 +326,9 @@ impl ApplicationHandler<CustomEvent> for App {
         }
     }
 
-    fn user_event(&mut self, _event_loop: &winit::event_loop::ActiveEventLoop, event: CustomEvent) {
+    fn user_event(&mut self, _event_loop: &winit::event_loop::ActiveEventLoop, event: AppEvent) {
         match event {
-            CustomEvent::CreateRenderContext(window) => {
+            AppEvent::CreateRenderContext(window) => {
                 info!("Creating a render context");
 
                 let render_context_future = RenderContext::new(window.clone());
@@ -335,7 +336,7 @@ impl ApplicationHandler<CustomEvent> for App {
                 let event_loop_proxy = self.event_loop_proxy.clone();
                 let send_message = move |render_context: RenderContext| {
                     event_loop_proxy
-                        .send_event(CustomEvent::FinishCreateRenderContext(render_context))
+                        .send_event(AppEvent::FinishCreateRenderContext(render_context))
                         .unwrap_or_else(|_| warn!("Failed to send FinishCreateRenderContext"));
                 };
 
@@ -355,27 +356,27 @@ impl ApplicationHandler<CustomEvent> for App {
                     send_message(render_context)
                 }
             }
-            CustomEvent::FinishCreateRenderContext(render_context) => {
+            AppEvent::FinishCreateRenderContext(render_context) => {
                 info!("Finished creating a render context");
 
                 self.render_context = render_context.into();
 
                 // create egui after render context is done initializing
                 self.event_loop_proxy
-                    .send_event(CustomEvent::CreateEgui)
+                    .send_event(AppEvent::CreateEgui)
                     .unwrap_or_else(|_| warn!("Failed to send CreateEgui"));
 
                 // request common resource at the same time as well because why not
                 self.event_loop_proxy
-                    .send_event(CustomEvent::RequestCommonResource)
+                    .send_event(AppEvent::RequestCommonResource)
                     .unwrap_or_else(|_| warn!("Failed to send RequestCommonResource"));
 
                 // also requesting map list
                 self.event_loop_proxy
-                    .send_event(CustomEvent::RequestMapList)
+                    .send_event(AppEvent::RequestMapList)
                     .unwrap_or_else(|_| warn!("Failed to send RequestMapList"));
             }
-            CustomEvent::CreateEgui => {
+            AppEvent::CreateEgui => {
                 info!("Creating egui renderer");
 
                 let Some(window) = self.state.window.clone() else {
@@ -400,14 +401,14 @@ impl ApplicationHandler<CustomEvent> for App {
 
                 info!("Finished creating egui renderer");
             }
-            CustomEvent::RequestResource(resource_identifier) => {
+            AppEvent::RequestResource(resource_identifier) => {
                 info!("Requesting resources: {:?}", resource_identifier);
 
                 // Attempting to start audio whenever we request to load a map.
                 // This is to guaranteed that there are some user actions taken
                 // and the browser will kindly let us start audio stream.
                 self.event_loop_proxy
-                    .send_event(CustomEvent::MaybeStartAudioBackEnd)
+                    .send_event(AppEvent::MaybeStartAudioBackEnd)
                     .unwrap_or_else(|_| warn!("Failed to send StartAudio"));
 
                 // when we have a ghost and we wnat to load a map instead, we need to know what is being loaded
@@ -415,7 +416,10 @@ impl ApplicationHandler<CustomEvent> for App {
                 // so, if we want to load map, that means we have to restart ghost if we play ghost previously
                 // however, due to the resource loading order, we cannot just do that
                 // so here, we need to know what kind of resource is being loaded to reset data correctly
-                if matches!(self.state.input_file_type, InputFileType::Bsp) {
+                if matches!(
+                    self.state.file_state.selected_file_type,
+                    SelectedFileType::Bsp
+                ) {
                     self.state.replay = None;
                 }
 
@@ -439,11 +443,11 @@ impl ApplicationHandler<CustomEvent> for App {
                     move |res: Result<Resource, ResourceProviderError>| match res {
                         Ok(resource) => {
                             event_loop_proxy
-                                .send_event(CustomEvent::ReceiveResource(resource))
+                                .send_event(AppEvent::ReceiveResource(resource))
                                 .unwrap_or_else(|_| warn!("cannot send ReceiveResource"));
                         }
                         Err(err) => event_loop_proxy
-                            .send_event(CustomEvent::ErrorEvent(AppError::ProviderError {
+                            .send_event(AppEvent::ErrorEvent(AppError::ProviderError {
                                 source: err,
                             }))
                             .unwrap_or_else(|_| warn!("cannot send AppError::ProviderError")),
@@ -468,7 +472,7 @@ impl ApplicationHandler<CustomEvent> for App {
                     send_receive_message(resource);
                 }
             }
-            CustomEvent::ReceiveResource(resource) => {
+            AppEvent::ReceiveResource(resource) => {
                 info!("Received resources");
 
                 let Some(render_context) = &mut self.render_context else {
@@ -522,17 +526,17 @@ impl ApplicationHandler<CustomEvent> for App {
                 self.state.render_state.render_options = RenderOptions::default();
 
                 // reset file input tpye
-                self.state.input_file_type = InputFileType::None;
+                self.state.file_state.selected_file_type = SelectedFileType::None;
             }
-            CustomEvent::NewFileSelected => {
-                self.state.input_file_type = InputFileType::None;
+            AppEvent::NewFileSelected => {
+                self.state.file_state.selected_file_type = SelectedFileType::None;
 
-                let Some(file_path) = &self.state.selected_file else {
+                let Some(file_path) = &self.state.file_state.selected_file else {
                     warn!("New file is said to be selected but no new file found");
                     return;
                 };
 
-                let Some(file_bytes) = &self.state.selected_file_bytes else {
+                let Some(file_bytes) = &self.state.file_state.selected_file_bytes else {
                     warn!("New file bytes are not loaded");
                     return;
                 };
@@ -563,19 +567,19 @@ impl ApplicationHandler<CustomEvent> for App {
                     };
 
                     self.event_loop_proxy
-                        .send_event(CustomEvent::RequestResource(resource_identifier))
+                        .send_event(AppEvent::RequestResource(resource_identifier))
                         .unwrap_or_else(|_| {
                             warn!("Cannot send resource request message after file dialogue")
                         });
 
-                    self.state.input_file_type = InputFileType::Bsp;
+                    self.state.file_state.selected_file_type = SelectedFileType::Bsp;
                 } else if file_extension == "dem" {
                     info!("Received .dem from file dialogue. Processing .dem");
 
                     let event_loop_proxy = self.event_loop_proxy.clone();
                     let send_message = move |identifier, ghost| {
                         event_loop_proxy
-                            .send_event(CustomEvent::ReceiveGhostRequest(identifier, ghost))
+                            .send_event(AppEvent::ReceiveGhostRequest(identifier, ghost))
                             .unwrap_or_else(|_| warn!("Failed to send ReceivedGhostRequest"));
                     };
 
@@ -584,7 +588,7 @@ impl ApplicationHandler<CustomEvent> for App {
                         warn!("Cannot find native resource provider");
 
                         self.event_loop_proxy
-                            .send_event(CustomEvent::ErrorEvent(AppError::NoProvider))
+                            .send_event(AppEvent::ErrorEvent(AppError::NoProvider))
                             .unwrap_or_else(|_| warn!("Failed to send NoProvider"));
 
                         return;
@@ -629,12 +633,12 @@ impl ApplicationHandler<CustomEvent> for App {
                         });
                     }
 
-                    self.state.input_file_type = InputFileType::Replay;
+                    self.state.file_state.selected_file_type = SelectedFileType::Replay;
                 } else {
                     warn!("Bad resource: {}", file_path.display());
                 }
             }
-            CustomEvent::ReceiveGhostRequest(identifier, ghost) => {
+            AppEvent::ReceiveGhostRequest(identifier, ghost) => {
                 info!("Finished processing .dem. Loading replay");
 
                 ghost
@@ -656,10 +660,10 @@ impl ApplicationHandler<CustomEvent> for App {
                 self.state.input_state.free_cam = false;
 
                 self.event_loop_proxy
-                    .send_event(CustomEvent::RequestResource(identifier))
+                    .send_event(AppEvent::RequestResource(identifier))
                     .unwrap_or_else(|_| warn!("Failed to send RequestResource"));
             }
-            CustomEvent::ReceivePostProcessingUpdate(state) => {
+            AppEvent::ReceivePostProcessingUpdate(state) => {
                 let Some(renderer) = &mut self.render_context else {
                     warn!("Received ReceivePostProcessingUpdate but no render context available");
                     return;
@@ -685,7 +689,7 @@ impl ApplicationHandler<CustomEvent> for App {
                     .get_gray_scale_toggle()
                     .map(|res| *res = state.gray_scale);
             }
-            CustomEvent::MaybeStartAudioBackEnd => {
+            AppEvent::MaybeStartAudioBackEnd => {
                 // We can only start audio manager after the user interacts with the site.
                 if self.state.audio_state.backend.is_some() {
                     return;
@@ -699,14 +703,12 @@ impl ApplicationHandler<CustomEvent> for App {
                     }
                     Err(err) => {
                         self.event_loop_proxy
-                            .send_event(CustomEvent::ErrorEvent(AppError::AudioError {
-                                source: err,
-                            }))
+                            .send_event(AppEvent::ErrorEvent(AppError::AudioError { source: err }))
                             .unwrap_or_else(|_| warn!("Failed to send ErrorEvent"));
                     }
                 }
             }
-            CustomEvent::RequestCommonResource => {
+            AppEvent::RequestCommonResource => {
                 info!("Requesting common resource");
 
                 #[cfg(target_arch = "wasm32")]
@@ -714,7 +716,7 @@ impl ApplicationHandler<CustomEvent> for App {
                     let Some(resource_provider) = &self.web_resource_provider else {
                         warn!("Attempting to request common resource without provider");
                         self.event_loop_proxy
-                            .send_event(CustomEvent::ErrorEvent(AppError::NoProvider))
+                            .send_event(AppEvent::ErrorEvent(AppError::NoProvider))
                             .unwrap_or_else(|_| warn!("Cannot send ErrorEvent"));
 
                         return;
@@ -729,13 +731,13 @@ impl ApplicationHandler<CustomEvent> for App {
                         let common_resource_future = resource_provider.request_common_resource();
                         match common_resource_future.await {
                             Ok(common_res) => event_loop_proxy
-                                .send_event(CustomEvent::ReceivedCommonResource(common_res))
+                                .send_event(AppEvent::ReceivedCommonResource(common_res))
                                 .unwrap_or_else(|_| warn!("Cannot send ReceivedCommonResource")),
                             Err(err) => {
                                 warn!("Failed to get common resource");
 
                                 event_loop_proxy
-                                    .send_event(CustomEvent::ErrorEvent(AppError::ProviderError {
+                                    .send_event(AppEvent::ErrorEvent(AppError::ProviderError {
                                         source: err,
                                     }))
                                     .unwrap_or_else(|_| warn!("Failed to send ErrorEvent"))
@@ -745,7 +747,7 @@ impl ApplicationHandler<CustomEvent> for App {
                 }
             }
             // this event isnt very necessary but whatever
-            CustomEvent::ReceivedCommonResource(common_resource) => {
+            AppEvent::ReceivedCommonResource(common_resource) => {
                 info!("Received common resource");
 
                 if common_resource.is_empty() {
@@ -754,7 +756,7 @@ impl ApplicationHandler<CustomEvent> for App {
 
                 self.state.other_resources.common_resource = common_resource;
             }
-            CustomEvent::RequestMapList => {
+            AppEvent::RequestMapList => {
                 info!("Requesting map list");
 
                 #[cfg(target_arch = "wasm32")]
@@ -779,11 +781,11 @@ impl ApplicationHandler<CustomEvent> for App {
                     move |res: Result<MapList, ResourceProviderError>| match res {
                         Ok(map_list) => {
                             event_loop_proxy
-                                .send_event(CustomEvent::ReceivedMapList(map_list))
+                                .send_event(AppEvent::ReceivedMapList(map_list))
                                 .unwrap_or_else(|_| warn!("cannot send ReceivedMapList"));
                         }
                         Err(err) => event_loop_proxy
-                            .send_event(CustomEvent::ErrorEvent(AppError::ProviderError {
+                            .send_event(AppEvent::ErrorEvent(AppError::ProviderError {
                                 source: err,
                             }))
                             .unwrap_or_else(|_| warn!("cannot send AppError::ProviderError")),
@@ -803,7 +805,7 @@ impl ApplicationHandler<CustomEvent> for App {
                     send_receive_message(map_list);
                 }
             }
-            CustomEvent::ReceivedMapList(map_list) => {
+            AppEvent::ReceivedMapList(map_list) => {
                 let mod_count = map_list.len();
                 let map_count: usize = map_list.values().map(|k| k.len()).sum();
 
@@ -831,7 +833,7 @@ impl ApplicationHandler<CustomEvent> for App {
 
                 self.state.other_resources.map_list = sorted_map_list;
             }
-            CustomEvent::ErrorEvent(app_error) => {
+            AppEvent::ErrorEvent(app_error) => {
                 warn!("Error: {}", app_error.to_string());
             }
         }
@@ -847,7 +849,7 @@ mod tracing;
 pub fn run_kdr(resource_provider_base: Option<String>) {
     tracing::ensure_logging_hooks();
 
-    let Ok(event_loop) = EventLoop::<CustomEvent>::with_user_event().build() else {
+    let Ok(event_loop) = EventLoop::<AppEvent>::with_user_event().build() else {
         warn!("Cannot start event loop");
         warn!("Must restart the app");
         return;

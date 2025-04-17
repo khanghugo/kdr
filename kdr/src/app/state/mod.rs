@@ -1,36 +1,28 @@
-use std::{pin::Pin, sync::Arc};
+use std::sync::Arc;
 
 // need to do like this
 use super::{Duration, Instant};
 
 use audio::AudioState;
 use egui::ahash::{HashMap, HashMapExt};
-use futures::FutureExt;
+use file::FileState;
 use input::InputState;
 use kira::sound::static_sound::StaticSoundData;
 use loader::ResourceMap;
 use overlay::{UIState, text::TextState};
 use replay::Replay;
-use rfd::AsyncFileDialog;
-use tracing::warn;
 use winit::{event_loop::EventLoopProxy, window::Window};
 
 use crate::renderer::RenderState;
 
-use super::CustomEvent;
+use super::AppEvent;
 
 pub mod audio;
+pub mod file;
 pub mod input;
 pub mod movement;
 pub mod overlay;
 pub mod replay;
-
-/// This is just to simply tell the program what kind of thing is being loaded so it can reasonably resetting stuffs
-pub enum InputFileType {
-    Bsp,
-    Replay,
-    None,
-}
 
 pub type SortedMapList = Vec<(String, Vec<String>)>;
 
@@ -54,28 +46,23 @@ pub struct AppState {
 
     // optional ghost because we might just want to render bsp
     pub replay: Option<Replay>,
-    pub selected_file: Option<String>,
-    // need ot be Option just to confirm that there is no file.
-    pub selected_file_bytes: Option<Vec<u8>>,
-    file_dialogue_future: Option<Pin<Box<dyn Future<Output = Option<rfd::FileHandle>> + 'static>>>,
-    file_bytes_future: Option<Pin<Box<dyn Future<Output = Vec<u8>> + 'static>>>,
     pub other_resources: OtherResources,
 
     // other states
     pub input_state: InputState,
-    pub input_file_type: InputFileType,
     text_state: TextState,
     pub audio_state: AudioState,
     pub audio_resource: HashMap<String, StaticSoundData>,
     pub ui_state: UIState,
+    pub file_state: FileState,
 
     // talk with other modules
-    event_loop_proxy: EventLoopProxy<CustomEvent>,
+    event_loop_proxy: EventLoopProxy<AppEvent>,
     pub window: Option<Arc<Window>>,
 }
 
 impl AppState {
-    pub fn new(event_loop_proxy: EventLoopProxy<CustomEvent>) -> Self {
+    pub fn new(event_loop_proxy: EventLoopProxy<AppEvent>) -> Self {
         Self {
             time: 0.0,
             last_time: Instant::now(),
@@ -86,18 +73,14 @@ impl AppState {
             render_state: Default::default(),
             replay: None,
 
-            selected_file: None,
-            selected_file_bytes: None,
-            file_dialogue_future: None,
-            file_bytes_future: None,
             other_resources: OtherResources::default(),
 
             input_state: InputState::default(),
             ui_state: UIState::default(),
-            input_file_type: InputFileType::None,
             text_state: TextState::default(),
             audio_state: AudioState::default(),
             audio_resource: HashMap::new(),
+            file_state: FileState::default(),
 
             event_loop_proxy,
             window: None,
@@ -124,51 +107,6 @@ impl AppState {
 
         if !(self.paused || self.replay.is_none()) {
             self.time += diff.as_secs_f32() * self.playback_speed;
-        }
-    }
-
-    pub fn trigger_file_dialogue(&mut self) {
-        let future = AsyncFileDialog::new()
-            .add_filter("BSP/DEM", &["bsp", "dem"])
-            .pick_file();
-
-        self.file_dialogue_future = Some(Box::pin(future))
-    }
-
-    pub fn state_poll(&mut self) {
-        // only read the file name, yet to have the bytes
-        if let Some(future) = &mut self.file_dialogue_future {
-            if let Some(file_handle) = future.now_or_never() {
-                self.selected_file = file_handle.map(|f| {
-                    #[cfg(not(target_arch = "wasm32"))]
-                    let result = f.path().display().to_string();
-
-                    #[cfg(target_arch = "wasm32")]
-                    let result = f.file_name();
-
-                    self.file_bytes_future = Some(Box::pin(async move {
-                        let bytes = f.read().await;
-                        bytes
-                    }));
-
-                    return result;
-                });
-
-                self.file_dialogue_future = None;
-            }
-        }
-
-        // now have the bytes
-        if let Some(future) = &mut self.file_bytes_future {
-            if let Some(file_bytes) = future.now_or_never() {
-                self.selected_file_bytes = file_bytes.into();
-                self.file_bytes_future = None;
-
-                // only new file when we have the bytes
-                self.event_loop_proxy
-                    .send_event(CustomEvent::NewFileSelected)
-                    .unwrap_or_else(|_| warn!("Cannot send NewFileSelected"));
-            }
         }
     }
 

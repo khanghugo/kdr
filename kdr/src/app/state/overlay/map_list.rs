@@ -4,8 +4,8 @@ use loader::ResourceIdentifier;
 use tracing::warn;
 
 use crate::app::{
-    CustomEvent,
-    state::{AppState, InputFileType},
+    AppEvent,
+    state::{AppState, file::SelectedFileType},
 };
 
 #[derive(Default)]
@@ -111,12 +111,12 @@ impl AppState {
                                 };
 
                                 self.event_loop_proxy
-                                    .send_event(CustomEvent::RequestResource(identifier))
+                                    .send_event(AppEvent::RequestResource(identifier))
                                     .unwrap_or_else(|_| warn!("Cannot send RequestResource"));
 
                                 // auxillary stuffs
-                                self.input_file_type = InputFileType::Bsp;
-                                self.selected_file = map_name.clone().into();
+                                self.file_state.selected_file_type = SelectedFileType::Bsp;
+                                self.file_state.selected_file = map_name.clone().into();
                             }
                         }
                     });

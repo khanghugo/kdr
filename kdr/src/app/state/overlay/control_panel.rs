@@ -1,7 +1,7 @@
 use tracing::warn;
 
 use crate::app::{
-    CustomEvent,
+    AppEvent,
     constants::{DEFAULT_FRAMETIME, DEFAULT_NOCLIP_SPEED, DEFAULT_SENSITIVITY},
     state::{AppState, replay},
 };
@@ -31,7 +31,11 @@ impl Default for ControlPanelUIState {
 impl AppState {
     pub fn control_panel(&mut self, ctx: &egui::Context) {
         const MAX_TITLE_LENGTH: usize = 44;
-        let title_name = self.selected_file.clone().unwrap_or("kdr".to_string());
+        let title_name = self
+            .file_state
+            .selected_file
+            .clone()
+            .unwrap_or("kdr".to_string());
         let title_name = if title_name.len() > MAX_TITLE_LENGTH {
             format!(
                 "...{}",
@@ -51,7 +55,11 @@ impl AppState {
                 ui.horizontal(|ui| {
                     ui.label("File: ");
 
-                    let mut read_only = self.selected_file.clone().unwrap_or("".to_string());
+                    let mut read_only = self
+                        .file_state
+                        .selected_file
+                        .clone()
+                        .unwrap_or("".to_string());
 
                     // need to do like this so it cant be editted and it looks cool
                     ui.add_enabled_ui(false, |ui| {
@@ -62,7 +70,7 @@ impl AppState {
                     });
 
                     if ui.button("Select File").clicked() {
-                        self.trigger_file_dialogue();
+                        self.file_state.trigger_file_dialogue();
                     }
 
                     if ui.button("buss").clicked() {
@@ -164,7 +172,7 @@ impl AppState {
                         || gs_response.clicked()
                     {
                         self.event_loop_proxy
-                            .send_event(CustomEvent::ReceivePostProcessingUpdate(
+                            .send_event(AppEvent::ReceivePostProcessingUpdate(
                                 self.ui_state.pp_control,
                             ))
                             .unwrap_or_else(|_| {
