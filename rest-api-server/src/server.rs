@@ -87,6 +87,9 @@ async fn request_map(
             info!("Successful request");
 
             return HttpResponse::Ok()
+                .content_type("application/zip")
+                .append_header(("Content-Transfer-Encoding", "binary"))
+                .append_header(("Content-Length", bytes.len()))
                 .append_header((
                     "Content-Disposition",
                     format!("attachment; filename=\"{file_name}\""),
