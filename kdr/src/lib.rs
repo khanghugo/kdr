@@ -7,7 +7,7 @@ mod utils;
 use wasm_bindgen::prelude::*;
 
 #[cfg(target_arch = "wasm32")]
-#[wasm_bindgen(start)]
-pub fn start() {
-    app::run_kdr("http://localhost:3001".to_string().into());
+#[wasm_bindgen]
+pub fn start(api: String) {
+    app::run_kdr(api.into());
 }

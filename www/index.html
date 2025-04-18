@@ -24,9 +24,10 @@
     <script type="module">
         import init, { start } from "./pkg/kdr.js";
 
+        const API_SERVER = "http://localhost:3001";
+
         function run() {
-            // use the function ex_function1 here
-            start();
+            start(API_SERVER);
         }
 
         init().then(run);
