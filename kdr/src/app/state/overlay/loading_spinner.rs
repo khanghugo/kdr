@@ -4,18 +4,26 @@ impl AppState {
     // returns a boolean just to see if something is loading
     pub fn loading_spinner(&mut self, ctx: &egui::Context) -> bool {
         match &self.file_state.loading_state {
-            LoadingState::Fetching { file_name } | LoadingState::Loading { file_name } => {
+            LoadingState::Fetching { .. } | LoadingState::Loading { .. } => {
                 egui::Area::new("loading spinner".into())
                     .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
                     .show(ctx, |ui| {
                         ui.vertical_centered(|ui| {
-                            let action_name = match &self.file_state.loading_state {
-                                LoadingState::Fetching { .. } => "Fetching",
-                                LoadingState::Loading { .. } => "Loading",
+                            let text = match &self.file_state.loading_state {
+                                LoadingState::Fetching {
+                                    file_name,
+                                    progress,
+                                } => format!(
+                                    "Fetching {} \n{}%",
+                                    file_name,
+                                    (progress * 100.).round() as i32
+                                ),
+                                LoadingState::Loading { file_name } => {
+                                    format!("Loading {}", file_name)
+                                }
                                 LoadingState::Idle => unreachable!(),
                             };
 
-                            let text = format!("{} {}", action_name, file_name);
                             let rich_text = egui::RichText::new(text)
                             .strong()
                             .code()

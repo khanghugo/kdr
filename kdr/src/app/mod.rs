@@ -42,7 +42,7 @@ use crate::{
     utils::spawn_async,
 };
 use loader::{
-    MapList, Resource, ResourceIdentifier, ResourceMap, ResourceProvider,
+    MapList, ProgressResourceProvider, Resource, ResourceIdentifier, ResourceMap, ResourceProvider,
     bsp_resource::BspResource, error::ResourceProviderError,
 };
 
@@ -81,6 +81,7 @@ pub enum AppEvent {
     RequestMapList,
     ReceivedMapList(MapList),
     FinishCreateWorld(BspResource, WorldBuffer, Option<SkyboxBuffer>),
+    UpdateFetchProgress(f32),
     ErrorEvent(AppError),
 }
 
@@ -430,6 +431,8 @@ impl ApplicationHandler<AppEvent> for App {
                 let resource_provider = resource_provider.to_owned();
 
                 let event_loop_proxy = self.event_loop_proxy.clone();
+                let event_loop_proxy2 = self.event_loop_proxy.clone();
+
                 let send_receive_message =
                     move |res: Result<Resource, ResourceProviderError>| match res {
                         Ok(resource) => {
@@ -443,15 +446,33 @@ impl ApplicationHandler<AppEvent> for App {
                             }))
                             .unwrap_or_else(|_| warn!("cannot send AppError::ProviderError")),
                     };
+                let send_update_fetch_progress = move |v: f32| {
+                    event_loop_proxy2
+                        .send_event(AppEvent::UpdateFetchProgress(v))
+                        .unwrap_or_else(|_| warn!("Cannot send UpdateFetchProgress"));
+                };
 
                 self.state
                     .file_state
                     .start_spinner(&resource_identifier.map_name);
 
                 spawn_async(async move {
-                    let resource_res = resource_provider.get_resource(&resource_identifier).await;
+                    let resource_res = resource_provider
+                        .get_resource_with_progress(&resource_identifier, move |progress| {
+                            send_update_fetch_progress(progress);
+                        })
+                        .await;
+
                     send_receive_message(resource_res);
                 });
+            }
+            AppEvent::UpdateFetchProgress(progress_x) => {
+                match &mut self.state.file_state.loading_state {
+                    LoadingState::Fetching { progress, .. } => {
+                        *progress = progress_x;
+                    }
+                    _ => (),
+                }
             }
             AppEvent::ReceiveResource(resource) => {
                 info!("Received resources");

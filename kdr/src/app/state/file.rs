@@ -16,8 +16,14 @@ pub enum SelectedFileType {
 }
 
 pub enum LoadingState {
-    Fetching { file_name: String },
-    Loading { file_name: String },
+    Fetching {
+        file_name: String,
+        // progress is normalized [0, 1]
+        progress: f32,
+    },
+    Loading {
+        file_name: String,
+    },
     Idle,
 }
 
@@ -58,6 +64,7 @@ impl FileState {
     pub fn start_spinner(&mut self, file_name: impl Into<String>) {
         self.loading_state = LoadingState::Fetching {
             file_name: file_name.into(),
+            progress: 0.0,
         };
     }
 
@@ -67,7 +74,7 @@ impl FileState {
     // so, resource loading is on main thread, and we will never see this loading text
     pub fn advance_spinner_state(&mut self) {
         match &self.loading_state {
-            LoadingState::Fetching { file_name } => {
+            LoadingState::Fetching { file_name, .. } => {
                 self.loading_state = LoadingState::Loading {
                     file_name: file_name.clone(),
                 };

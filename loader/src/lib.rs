@@ -125,6 +125,15 @@ pub trait ResourceProvider {
     async fn get_replay_list(&self) -> Result<ReplayList, ResourceProviderError>;
 }
 
+/// A different trait that most likely only the web will use. Whatever
+pub trait ProgressResourceProvider: ResourceProvider {
+    async fn get_resource_with_progress(
+        &self,
+        identifier: &ResourceIdentifier,
+        progress_callback: impl Fn(f32) + Send + 'static,
+    ) -> Result<Resource, ResourceProviderError>;
+}
+
 // this makes sure that we have ".bsp in the map name"
 fn fix_bsp_file_name(s: &str) -> String {
     if s.ends_with(".bsp") {

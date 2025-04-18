@@ -9,7 +9,7 @@ use tracing::{info, warn};
 use bsp::Bsp;
 use wad::types::Wad;
 
-use crate::{MODEL_ENTITIES, MapList, ResourceMap, SOUND_ENTITIES};
+use crate::{MODEL_ENTITIES, MapList, ProgressResourceProvider, ResourceMap, SOUND_ENTITIES};
 
 use super::{ResourceProvider, SKYBOX_SUFFIXES, error::ResourceProviderError, fix_bsp_file_name};
 
@@ -27,6 +27,17 @@ impl NativeResourceProvider {
         Self {
             game_dir: game_dir.as_ref().to_path_buf(),
         }
+    }
+}
+
+// Need to impl it here as well so in our main code, we call the same function
+impl ProgressResourceProvider for NativeResourceProvider {
+    async fn get_resource_with_progress(
+        &self,
+        identifier: &crate::ResourceIdentifier,
+        _progress_callback: impl Fn(f32) + Send + 'static,
+    ) -> Result<crate::Resource, ResourceProviderError> {
+        self.get_resource(identifier).await
     }
 }
 

@@ -5,9 +5,12 @@ use std::{
 
 use bsp::Bsp;
 use common::{REQUEST_COMMON_RESOURCE_ENDPOINT, REQUEST_MAP_ENDPOINT, REQUEST_MAP_LIST_ENDPOINT};
+use futures_util::StreamExt;
 use zip::ZipArchive;
 
-use crate::{MapList, ResourceMap, error::ResourceProviderError, fix_bsp_file_name};
+use crate::{
+    MapList, ProgressResourceProvider, ResourceMap, error::ResourceProviderError, fix_bsp_file_name,
+};
 
 use super::ResourceProvider;
 
@@ -27,11 +30,12 @@ impl WebResourceProvider {
     }
 }
 
-impl ResourceProvider for WebResourceProvider {
-    async fn get_resource(
+impl ProgressResourceProvider for WebResourceProvider {
+    async fn get_resource_with_progress(
         &self,
-        identifier: &super::ResourceIdentifier,
-    ) -> Result<super::Resource, super::error::ResourceProviderError> {
+        identifier: &crate::ResourceIdentifier,
+        progress_callback: impl Fn(f32) + Send + 'static,
+    ) -> Result<crate::Resource, ResourceProviderError> {
         let map_name = fix_bsp_file_name(identifier.map_name.as_str());
 
         let url = format!("{}/{}", self.base_url, REQUEST_MAP_ENDPOINT);
@@ -72,15 +76,29 @@ impl ResourceProvider for WebResourceProvider {
         let response =
             response
                 .error_for_status()
-                .map_err(|op| ResourceProviderError::ResponseError {
+                .map_err(|_op| ResourceProviderError::ResponseError {
                     status_code,
                     message: "No message".to_string(),
                 })?;
 
-        let zip_bytes = response
-            .bytes()
-            .await
-            .map_err(|op| ResourceProviderError::ResponsePayloadError { source: op })?;
+        // progress reporting
+        let total_size = response.content_length().unwrap_or(0);
+        let mut downloaded = 0u64;
+        let mut byte_stream = response.bytes_stream();
+        let mut all_bytes = Vec::new();
+
+        while let Some(chunk) = byte_stream.next().await {
+            let chunk =
+                chunk.map_err(|op| ResourceProviderError::ResponsePayloadError { source: op })?;
+            downloaded += chunk.len() as u64;
+            all_bytes.extend_from_slice(&chunk);
+
+            if total_size > 0 {
+                progress_callback(downloaded as f32 / total_size as f32);
+            }
+        }
+
+        let zip_bytes = all_bytes;
 
         let extracted_files = extract_zip_to_hashmap(&zip_bytes)
             .map_err(|op| ResourceProviderError::ZipDecompress { source: op })?;
@@ -99,6 +117,18 @@ impl ResourceProvider for WebResourceProvider {
             bsp,
             resources: extracted_files,
         })
+    }
+}
+
+impl ResourceProvider for WebResourceProvider {
+    async fn get_resource(
+        &self,
+        identifier: &super::ResourceIdentifier,
+    ) -> Result<super::Resource, super::error::ResourceProviderError> {
+        let dummy_callback = |_: f32| {};
+
+        self.get_resource_with_progress(identifier, dummy_callback)
+            .await
     }
 
     async fn get_map_list(&self) -> Result<crate::MapList, ResourceProviderError> {
@@ -141,7 +171,7 @@ impl WebResourceProvider {
         let response =
             response
                 .error_for_status()
-                .map_err(|op| ResourceProviderError::ResponseError {
+                .map_err(|_op| ResourceProviderError::ResponseError {
                     status_code,
                     message: "No message".to_string(),
                 })?;
