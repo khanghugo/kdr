@@ -344,13 +344,9 @@ fn load_world_entities(
                     .bones
                     .iter()
                     .enumerate()
-                    .map(|(bone_idx, bone)| {
-                        println!("bone name {}", from_utf8(&bone.name).unwrap());
-
+                    .map(|(bone_idx, _bone)| {
                         let (idle_origin, idle_angles) =
                             get_bone_sequence_anim_origin_angles(&mdl, bone_idx, 0, 0);
-
-                        println!("origin {:?}", idle_origin);
 
                         let idle_angles = idle_angles.get_world_angles();
 

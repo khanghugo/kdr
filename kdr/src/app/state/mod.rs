@@ -10,10 +10,9 @@ use input::InputState;
 use kira::sound::static_sound::StaticSoundData;
 use loader::ResourceMap;
 use overlay::{UIState, text::TextState};
+use render::RenderState;
 use replay::Replay;
 use winit::{event_loop::EventLoopProxy, window::Window};
-
-use crate::renderer::RenderState;
 
 use super::AppEvent;
 
@@ -22,6 +21,7 @@ pub mod file;
 pub mod input;
 pub mod movement;
 pub mod overlay;
+pub mod render;
 pub mod replay;
 
 pub type SortedMapList = Vec<(String, Vec<String>)>;

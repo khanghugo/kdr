@@ -5,6 +5,7 @@ use super::AppState;
 
 pub mod control_panel;
 mod crosshair;
+mod loading_spinner;
 mod map_list;
 mod seekbar;
 pub mod text;
@@ -15,6 +16,7 @@ pub struct UIState {
     pub control_panel: ControlPanelUIState,
     pub pp_control: PostProcessingControlState,
     pub map_list: MapListUIState,
+    pub toaster: egui_notify::Toasts,
 }
 
 impl Default for UIState {
@@ -24,6 +26,7 @@ impl Default for UIState {
             control_panel: ControlPanelUIState::default(),
             pp_control: PostProcessingControlState::default(),
             map_list: MapListUIState::default(),
+            toaster: egui_notify::Toasts::default(),
         }
     }
 }
@@ -31,8 +34,11 @@ impl Default for UIState {
 impl AppState {
     pub fn draw_egui(&mut self) -> impl FnMut(&egui::Context) -> () {
         |ctx| {
-            if self.ui_state.control_panel.crosshair {
-                self.crosshair(ctx);
+            if !self.loading_spinner(ctx) {
+                // only draws crosshair when there is no spinner
+                if self.ui_state.control_panel.crosshair {
+                    self.crosshair(ctx);
+                }
             }
 
             self.draw_entity_text(ctx);
@@ -49,6 +55,8 @@ impl AppState {
             }
 
             self.map_list(ctx);
+
+            self.ui_state.toaster.show(ctx);
         }
     }
 }

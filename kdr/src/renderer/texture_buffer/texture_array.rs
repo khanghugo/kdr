@@ -49,7 +49,6 @@ use std::sync::{Arc, LazyLock, Mutex};
 
 use eyre::eyre;
 use image::RgbaImage;
-use tracing::warn;
 
 use super::mipmap::{MipMapGenerator, calculate_mipmap_count};
 

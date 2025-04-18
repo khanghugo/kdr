@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use ghost::GhostFrameText;
 
 use crate::app::state::AppState;

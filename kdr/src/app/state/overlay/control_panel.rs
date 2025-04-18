@@ -72,14 +72,6 @@ impl AppState {
                     if ui.button("Select File").clicked() {
                         self.file_state.trigger_file_dialogue();
                     }
-
-                    if ui.button("buss").clicked() {
-                        self.play_audio_test();
-                    }
-
-                    if ui.button("buss2").clicked() {
-                        self.play_audio_test2();
-                    }
                 });
 
                 // replay info

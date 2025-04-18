@@ -101,7 +101,6 @@ impl SkyboxBuffer {
 
 pub struct SkyboxLoader {
     pub pipeline: wgpu::RenderPipeline,
-    pub bind_group_layout: wgpu::BindGroupLayout,
 }
 
 impl SkyboxLoader {
@@ -181,14 +180,10 @@ impl SkyboxLoader {
             cache: None,
         });
 
-        Self {
-            pipeline,
-            bind_group_layout: skybox_bind_group_layout,
-        }
+        Self { pipeline }
     }
 
     pub fn load_skybox(
-        &self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         images: &Vec<RgbaImage>,
@@ -281,9 +276,12 @@ impl SkyboxLoader {
 
         let index_count = indices.len() as u32;
 
+        let skybox_bind_group_layout =
+            device.create_bind_group_layout(&SkyboxBuffer::bind_group_layout_descriptor());
+
         let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("skybox bind group"),
-            layout: &self.bind_group_layout,
+            layout: &skybox_bind_group_layout,
             entries: &[
                 wgpu::BindGroupEntry {
                     binding: 0,

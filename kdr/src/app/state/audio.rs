@@ -252,34 +252,6 @@ impl AudioBackend {
 }
 
 impl AppState {
-    pub fn play_audio_test(&mut self) {
-        const sound_bytes: &[u8] = include_bytes!("/home/khang/Music/random/A Real Hero.mp3");
-        let cursor = Cursor::new(sound_bytes);
-
-        let sound_file = StaticSoundData::from_cursor(cursor).unwrap();
-
-        self.audio_state
-            .backend
-            .as_mut()
-            .unwrap()
-            .play_audio_on_track(sound_file, 0, None, false, 0.5);
-    }
-
-    pub fn play_audio_test2(&mut self) {
-        const sound_bytes: &[u8] = include_bytes!(
-            "/home/khang/bxt/game_isolated/cstrike_downloads/sound/player/pl_metal2.wav"
-        );
-        let cursor = Cursor::new(sound_bytes);
-
-        let sound_file = StaticSoundData::from_cursor(cursor).unwrap();
-
-        self.audio_state
-            .backend
-            .as_mut()
-            .unwrap()
-            .play_audio_on_track(sound_file, 0, None, true, 0.5);
-    }
-
     pub fn audio_state_tick(&mut self) {
         let Some(backend) = &mut self.audio_state.backend else {
             return;

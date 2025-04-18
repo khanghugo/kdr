@@ -15,6 +15,12 @@ pub enum SelectedFileType {
     None,
 }
 
+pub enum LoadingState {
+    Fetching { file_name: String },
+    Loading { file_name: String },
+    Idle,
+}
+
 pub struct FileState {
     pub selected_file: Option<String>,
     pub selected_file_bytes: Option<Vec<u8>>,
@@ -23,6 +29,8 @@ pub struct FileState {
     pub file_dialogue_future:
         Option<Pin<Box<dyn Future<Output = Option<rfd::FileHandle>> + 'static>>>,
     pub file_bytes_future: Option<Pin<Box<dyn Future<Output = Vec<u8>> + 'static>>>,
+
+    pub loading_state: LoadingState,
 }
 
 impl Default for FileState {
@@ -33,6 +41,7 @@ impl Default for FileState {
             file_dialogue_future: None,
             file_bytes_future: None,
             selected_file_type: SelectedFileType::None,
+            loading_state: LoadingState::Idle,
         }
     }
 }
@@ -44,6 +53,32 @@ impl FileState {
             .pick_file();
 
         self.file_dialogue_future = Some(Box::pin(future))
+    }
+
+    pub fn start_spinner(&mut self, file_name: impl Into<String>) {
+        self.loading_state = LoadingState::Fetching {
+            file_name: file_name.into(),
+        };
+    }
+
+    // TODO, make good, doesnt work very well
+    // becuase originally i wanted to have resource loading/processiing on one thread
+    // but that has some technical difficulties
+    // so, resource loading is on main thread, and we will never see this loading text
+    pub fn advance_spinner_state(&mut self) {
+        match &self.loading_state {
+            LoadingState::Fetching { file_name } => {
+                self.loading_state = LoadingState::Loading {
+                    file_name: file_name.clone(),
+                };
+            }
+            LoadingState::Loading { .. } => {}
+            LoadingState::Idle => {}
+        }
+    }
+
+    pub fn stop_spinner(&mut self) {
+        self.loading_state = LoadingState::Idle;
     }
 }
 

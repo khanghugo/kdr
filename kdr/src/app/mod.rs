@@ -7,8 +7,9 @@ use ghost::GhostInfo;
 use state::{
     AppState,
     audio::{AudioBackend, AudioStateError},
-    file::SelectedFileType,
+    file::{LoadingState, SelectedFileType},
     overlay::control_panel::PostProcessingControlState,
+    render::RenderOptions,
     replay::{Replay, ReplayPlaybackMode},
 };
 
@@ -32,14 +33,17 @@ mod state;
 
 use crate::{
     renderer::{
-        RenderContext, RenderOptions, camera::Camera, egui_renderer::EguiRenderer,
-        world_buffer::WorldLoader,
+        RenderContext,
+        camera::Camera,
+        egui_renderer::EguiRenderer,
+        skybox::{SkyboxBuffer, SkyboxLoader},
+        world_buffer::{WorldBuffer, WorldLoader},
     },
     utils::spawn_async,
 };
 use loader::{
     MapList, Resource, ResourceIdentifier, ResourceMap, ResourceProvider,
-    error::ResourceProviderError,
+    bsp_resource::BspResource, error::ResourceProviderError,
 };
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -76,6 +80,7 @@ pub enum AppEvent {
     ReceivedCommonResource(ResourceMap),
     RequestMapList,
     ReceivedMapList(MapList),
+    FinishCreateWorld(BspResource, WorldBuffer, Option<SkyboxBuffer>),
     ErrorEvent(AppError),
 }
 
@@ -216,7 +221,7 @@ impl ApplicationHandler<AppEvent> for App {
                     return;
                 };
 
-                let Some(ref mut render_context) = self.render_context else {
+                let Some(render_context) = &self.render_context else {
                     warn!("Redraw requested without render context");
 
                     // need to request redraw even if there's nothing to draw until there's something to draw
@@ -244,11 +249,9 @@ impl ApplicationHandler<AppEvent> for App {
                 };
 
                 {
-                    render_context.render(
-                        &mut self.state.render_state,
-                        &mut encoder,
-                        &swapchain_view,
-                    );
+                    self.state
+                        .render_state
+                        .render(&render_context, &mut encoder, &swapchain_view);
 
                     if let Some(ref mut egui_renderer) = self.egui_renderer {
                         let draw_function = self.state.draw_egui();
@@ -320,7 +323,6 @@ impl ApplicationHandler<AppEvent> for App {
         };
 
         if let Some(egui_renderer) = self.egui_renderer.as_mut() {
-            // let a = egui_renderer.;
             egui_renderer.handle_input(&window, &event);
             egui_renderer.context();
         }
@@ -339,22 +341,6 @@ impl ApplicationHandler<AppEvent> for App {
                         .send_event(AppEvent::FinishCreateRenderContext(render_context))
                         .unwrap_or_else(|_| warn!("Failed to send FinishCreateRenderContext"));
                 };
-
-                // #[cfg(target_arch = "wasm32")]
-                // {
-                //     wasm_bindgen_futures::spawn_local(async move {
-                //         let render_context = render_context_future.await;
-                //         send_message(render_context);
-                //     });
-                // }
-
-                // // we can do it like wasm where we send message and what not?
-                // // TOOD maybe follow the same thing in wasm so things look samey everywhere
-                // #[cfg(not(target_arch = "wasm32"))]
-                // {
-                //     let render_context = render_context_future.block_on();
-                //     send_message(render_context)
-                // }
 
                 spawn_async(async move {
                     let render_context = render_context_future.await;
@@ -389,7 +375,7 @@ impl ApplicationHandler<AppEvent> for App {
                     return;
                 };
 
-                let Some(ref render_context) = self.render_context else {
+                let Some(render_context) = &self.render_context else {
                     warn!("Render context is not initialized. Cannot create egui renderer");
                     return;
                 };
@@ -458,24 +444,9 @@ impl ApplicationHandler<AppEvent> for App {
                             .unwrap_or_else(|_| warn!("cannot send AppError::ProviderError")),
                     };
 
-                // #[cfg(target_arch = "wasm32")]
-                // {
-                //     wasm_bindgen_futures::spawn_local(async move {
-                //         // resource identifier stays in here as well so no lifetime shenanigans can happen
-                //         let resource_res =
-                //             resource_provider.get_resource(&resource_identifier).await;
-                //         send_receive_message(resource_res);
-                //     });
-                // }
-
-                // #[cfg(not(target_arch = "wasm32"))]
-                // {
-                //     let resource = resource_provider
-                //         .get_resource(&resource_identifier)
-                //         .block_on();
-
-                //     send_receive_message(resource);
-                // }
+                self.state
+                    .file_state
+                    .start_spinner(&resource_identifier.map_name);
 
                 spawn_async(async move {
                     let resource_res = resource_provider.get_resource(&resource_identifier).await;
@@ -485,26 +456,52 @@ impl ApplicationHandler<AppEvent> for App {
             AppEvent::ReceiveResource(resource) => {
                 info!("Received resources");
 
-                let Some(render_context) = &mut self.render_context else {
+                // from fetching to loading
+                self.state.file_state.advance_spinner_state();
+
+                let Some(render_context) = &self.render_context else {
                     warn!("Received resources but no render context to render");
                     return;
                 };
 
+                let event_loop_proxy = self.event_loop_proxy.clone();
+                let send_message = move |bsp_resource, world_buffer, skybox_buffer| {
+                    event_loop_proxy
+                        .send_event(AppEvent::FinishCreateWorld(
+                            bsp_resource,
+                            world_buffer,
+                            skybox_buffer,
+                        ))
+                        .unwrap_or_else(|_| warn!("Cannot send FinishCreateWorld"));
+                };
+
+                let device = render_context.device().clone();
+                let queue = render_context.queue().clone();
+
+                // TODO: load resources correctly
+                // map assets can be loaded in another thread then we can send an event
+                // however, gpu resources need to be on one thread
+                // again, this spawn_async needs to lock device and queue
+                // which also are needed in the render loop
+                // so, the optimization is inside those functions
+                // spawn_async(async move {
                 let bsp_resource = resource.to_bsp_resource();
 
-                let world_buffer = WorldLoader::load_world(
-                    &render_context.device(),
-                    &render_context.queue(),
-                    &bsp_resource,
-                );
+                let world_buffer = WorldLoader::load_world(&device, &queue, &bsp_resource);
 
+                let skybox_buffer =
+                    SkyboxLoader::load_skybox(&device, &queue, &bsp_resource.skybox);
+
+                send_message(bsp_resource, world_buffer, skybox_buffer);
+                // });
+
+                // reset file input tpye
+                self.state.file_state.selected_file_type = SelectedFileType::None;
+            }
+            AppEvent::FinishCreateWorld(bsp_resource, world_buffer, skybox_buffer) => {
                 self.state.render_state.world_buffer = vec![world_buffer];
 
-                self.state.render_state.skybox = render_context.skybox_loader.load_skybox(
-                    &render_context.device(),
-                    &render_context.queue(),
-                    &bsp_resource.skybox,
-                );
+                self.state.render_state.skybox = skybox_buffer;
 
                 bsp_resource.sound_lookup.into_iter().for_each(|(k, v)| {
                     self.state.audio_resource.insert(k, v);
@@ -535,8 +532,7 @@ impl ApplicationHandler<AppEvent> for App {
 
                 self.state.render_state.render_options = RenderOptions::default();
 
-                // reset file input tpye
-                self.state.file_state.selected_file_type = SelectedFileType::None;
+                self.state.file_state.stop_spinner();
             }
             AppEvent::NewFileSelected => {
                 self.state.file_state.selected_file_type = SelectedFileType::None;
@@ -611,38 +607,6 @@ impl ApplicationHandler<AppEvent> for App {
                         return;
                     };
 
-                    // #[cfg(not(target_arch = "wasm32"))]
-                    // {
-                    //     let Ok((identifier, ghost)) =
-                    //         provider.get_ghost_data(file_path, file_bytes).block_on()
-                    //     else {
-                    //         warn!("Cannot load ghost data");
-                    //         // TODO send error here
-                    //         return;
-                    //     };
-
-                    //     send_message(identifier, ghost);
-                    // }
-
-                    // #[cfg(target_arch = "wasm32")]
-                    // {
-                    //     let provider = provider.clone();
-                    //     let file_path = file_path.to_owned();
-                    //     let file_bytes = file_bytes.to_owned();
-
-                    //     wasm_bindgen_futures::spawn_local(async move {
-                    //         let Ok((identifier, ghost)) =
-                    //             provider.get_ghost_data(file_path, &file_bytes).await
-                    //         else {
-                    //             warn!("Cannot load ghost data");
-                    //             // TODO send error here
-                    //             return;
-                    //         };
-
-                    //         send_message(identifier, ghost);
-                    //     });
-                    // }
-
                     let provider = provider.clone();
                     let file_path = file_path.to_owned();
                     let file_bytes = file_bytes.to_owned();
@@ -690,29 +654,21 @@ impl ApplicationHandler<AppEvent> for App {
                     .unwrap_or_else(|_| warn!("Failed to send RequestResource"));
             }
             AppEvent::ReceivePostProcessingUpdate(state) => {
-                let Some(renderer) = &mut self.render_context else {
+                let Some(render_context) = &self.render_context else {
                     warn!("Received ReceivePostProcessingUpdate but no render context available");
                     return;
                 };
 
-                renderer
-                    .post_processing
-                    .get_kuwahara_toggle()
-                    .map(|res| *res = state.kuwahara);
+                let mut pp = render_context.post_processing.lock().unwrap();
 
-                renderer
-                    .post_processing
-                    .get_bloom_toggle()
-                    .map(|res| *res = state.bloom);
+                pp.get_kuwahara_toggle().map(|res| *res = state.kuwahara);
 
-                renderer
-                    .post_processing
-                    .get_chromatic_aberration_toggle()
+                pp.get_bloom_toggle().map(|res| *res = state.bloom);
+
+                pp.get_chromatic_aberration_toggle()
                     .map(|res| *res = state.chromatic_aberration);
 
-                renderer
-                    .post_processing
-                    .get_gray_scale_toggle()
+                pp.get_gray_scale_toggle()
                     .map(|res| *res = state.gray_scale);
             }
             AppEvent::MaybeStartAudioBackEnd => {
@@ -817,20 +773,6 @@ impl ApplicationHandler<AppEvent> for App {
                             .unwrap_or_else(|_| warn!("cannot send AppError::ProviderError")),
                     };
 
-                // #[cfg(target_arch = "wasm32")]
-                // {
-                //     wasm_bindgen_futures::spawn_local(async move {
-                //         let map_list = resource_provider.get_map_list().await;
-                //         send_receive_message(map_list);
-                //     });
-                // }
-
-                // #[cfg(not(target_arch = "wasm32"))]
-                // {
-                //     let map_list = resource_provider.get_map_list().block_on();
-                //     send_receive_message(map_list);
-                // }
-
                 spawn_async(async move {
                     let map_list = resource_provider.get_map_list().await;
                     send_receive_message(map_list);
@@ -866,6 +808,13 @@ impl ApplicationHandler<AppEvent> for App {
             }
             AppEvent::ErrorEvent(app_error) => {
                 warn!("Error: {}", app_error.to_string());
+
+                // if there is error, just stop with things
+                // stop the loading
+                self.state.file_state.loading_state = LoadingState::Idle;
+
+                // toast the error
+                self.state.ui_state.toaster.warning(app_error.to_string());
             }
         }
     }

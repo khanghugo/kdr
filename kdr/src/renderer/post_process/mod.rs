@@ -111,7 +111,7 @@ impl PostProcessing {
     }
 
     pub fn run_post_processing_effects(
-        &mut self,
+        &self,
         device: &wgpu::Device,
         encoder: &mut wgpu::CommandEncoder,
         // main render

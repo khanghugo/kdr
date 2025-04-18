@@ -57,6 +57,7 @@ kira = "0.10.5"
 mint = "0.5.9"
 # futures is needed in wasm as well because of ".now_or_never()" on async rfd
 futures = "0.3.31"
+egui-notify = "0.19.0"
 
 # native specific dependencies
 # basically the tracing stuffs

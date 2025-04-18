@@ -78,8 +78,6 @@ impl MvpBuffer {
                 }
             });
 
-        println!("skeletal mvp lenght {}", skeletal_mvps.len());
-
         // uniform buffer has fixed and defined size
         entity_mvps.resize(MAX_MVP as usize, EMPTY_MATRIX);
         skeletal_mvps.resize(MAX_MVP as usize, EMPTY_MATRIX);

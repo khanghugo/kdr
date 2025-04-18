@@ -1,31 +1,36 @@
 <!doctype html>
 <html>
-    <head>
-        <meta charset="utf-8" />
-        <title>Your Winit Web App</title>
-        <style>
-            body {
-                margin: 0;
-                overflow: hidden;
-            }
-            canvas {
-                width: 100%;
-                height: 100%;
-                display: block;
-            }
-        </style>
-    </head>
-    <body>
-        <canvas id="canvas" width="1280" height="960"></canvas>
-        <script type="module">
-            import init, { start } from "./pkg/kdr.js";
 
-            function run() {
-                // use the function ex_function1 here
-                start();
-            }
+<head>
+    <meta charset="utf-8" />
+    <title>Your Winit Web App</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: black;
+        }
 
-            init().then(run);
-        </script>
-    </body>
+        canvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="canvas" width="1280" height="960"></canvas>
+    <script type="module">
+        import init, { start } from "./pkg/kdr.js";
+
+        function run() {
+            // use the function ex_function1 here
+            start();
+        }
+
+        init().then(run);
+    </script>
+</body>
+
 </html>
