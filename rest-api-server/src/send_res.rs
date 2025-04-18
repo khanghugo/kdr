@@ -32,11 +32,10 @@
 use std::path::PathBuf;
 
 use loader::{
-    MapList, ResourceIdentifier, ResourceProvider,
+    ResourceIdentifier, ResourceProvider,
     error::ResourceProviderError,
     native::{NativeResourceProvider, search_game_resource},
 };
-use pollster::FutureExt;
 
 use crate::utils::{WasmFile, zip_files};
 
@@ -60,6 +59,7 @@ pub enum ServerError {
 }
 
 /// Sends the map_name.zip next to map_name.bsp and it won't even check for the .bsp
+#[allow(unused)]
 pub async fn gchimp_resmake_way(
     // identifier should already be sanitized at this point
     identifier: &ResourceIdentifier,
@@ -87,6 +87,7 @@ pub async fn gchimp_resmake_way(
 // If you use native_way, you don't need to pack common files because NativeResourceProvider will search for those files.
 // But, it will redistribute those files every time a new map is loaded.
 // So, to save on bandwidth, it is best to just use gchimp way and select common resource.
+#[allow(unused)]
 pub async fn native_way(
     identifier: &ResourceIdentifier,
     resource_provider: &NativeResourceProvider,

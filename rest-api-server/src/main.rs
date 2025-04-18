@@ -43,12 +43,16 @@ pub struct ApiServerArgs {
     /// These type of files include foot step and hud use and whatnot.
     #[arg(short, long)]
     common_resource: Option<PathBuf>,
+
+    #[arg(long)]
+    use_resmake_zip: bool,
 }
 
 pub struct ServerArgs {
     resource_provider: NativeResourceProvider,
     port: u16,
     common_resource: Option<PathBuf>,
+    use_resmake_zip: bool,
 }
 
 fn main() -> std::io::Result<()> {
@@ -71,6 +75,7 @@ fn main() -> std::io::Result<()> {
         resource_provider,
         port,
         common_resource,
+        use_resmake_zip: args.use_resmake_zip,
     };
 
     return start_server(server_args);

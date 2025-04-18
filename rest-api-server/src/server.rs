@@ -21,6 +21,7 @@ struct AppData {
     // optional to make sure that we have a file to distribute
     common_resource: Option<PathBuf>,
     map_list: MapList,
+    use_resmake_zip: bool,
 }
 
 #[get("/request-common")]
@@ -73,7 +74,13 @@ async fn request_map(
         return HttpResponse::BadRequest().body("Invalid resource identifier.");
     };
 
-    match native_way(&sanitized_identifier, &data.resource_provider).await {
+    let bytes = if data.use_resmake_zip {
+        gchimp_resmake_way(&sanitized_identifier, &data.resource_provider).await
+    } else {
+        native_way(&sanitized_identifier, &data.resource_provider).await
+    };
+
+    match bytes {
         Ok(bytes) => {
             let file_name = sanitized_identifier.map_name.replace(".bsp", ".zip");
 
@@ -104,6 +111,7 @@ pub async fn start_server(args: ServerArgs) -> std::io::Result<()> {
         resource_provider,
         port,
         common_resource,
+        use_resmake_zip,
     } = args;
 
     let map_list = resource_provider
@@ -115,6 +123,7 @@ pub async fn start_server(args: ServerArgs) -> std::io::Result<()> {
         resource_provider,
         common_resource,
         map_list,
+        use_resmake_zip,
     };
 
     info!("Staring kdr API server");
@@ -127,6 +136,16 @@ pub async fn start_server(args: ServerArgs) -> std::io::Result<()> {
         info!("Common resourch path: {}", common_resource_path.display());
     } else {
         info!("No common resource provided");
+    }
+
+    if use_resmake_zip {
+        info!(
+            "Using gchimp ResMake option. This will only send zip files of maps in the \"maps\" folder"
+        );
+    } else {
+        info!(
+            "Using native resource fetching. This will search for the entire game directory for every resource request"
+        )
     }
 
     HttpServer::new(move || {
