@@ -94,12 +94,13 @@ impl ResourceProvider for NativeResourceProvider {
             &identifier.game_mod,
         );
 
-        get_skybox(
+        // if we cant find skybox, that is fine, who cares
+        let _ = get_skybox(
             &mut resource_map,
             &bsp,
             &self.game_dir,
             &identifier.game_mod,
-        )?;
+        );
 
         get_external_wads(
             &mut resource_map,
