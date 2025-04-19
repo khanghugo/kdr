@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
-use image::RgbaImage;
+use image::{Rgba, RgbaImage};
+use tracing::warn;
 use wad::types::Wad;
 
 fn most_repeating_number<T>(a: &[T]) -> T
@@ -122,8 +123,11 @@ pub fn get_bsp_textures(bsp: &bsp::Bsp, external_wads: &[Wad]) -> Vec<RgbaImage>
                             None
                         })
                     })
-                    // TODO maybe do magenta black checker pattern
-                    .unwrap_or_else(|| panic!("cannot find texture name `{texture_name}`"))
+                    .unwrap_or_else(|| {
+                        warn!("cannot find texture name `{texture_name}`");
+
+                        create_missing_texture_placeholder(texture.width, texture.height)
+                    })
             } else {
                 eightbpp_to_rgba8(
                     texture.mip_images[0].data.get_bytes(),
@@ -176,4 +180,29 @@ impl FullScrenTriVertexShader {
             buffers: &[],
         }
     }
+}
+
+// vibe code
+// Helper function to create a magenta/black checkerboard image
+fn create_missing_texture_placeholder(width: u32, height: u32) -> RgbaImage {
+    // You can adjust the checker_size for different pattern granularity
+    let checker_size = 16; // 16x16 pixels per checker square
+    let magenta = Rgba([255, 0, 255, 255]); // RGBA for magenta
+    let black = Rgba([0, 0, 0, 255]); // RGBA for black
+
+    let mut img = RgbaImage::new(width, height);
+
+    for y in 0..height {
+        for x in 0..width {
+            // Determine the color based on the checkerboard pattern
+            let color = if (x / checker_size + y / checker_size) % 2 == 0 {
+                magenta
+            } else {
+                black
+            };
+            img.put_pixel(x, y, color);
+        }
+    }
+
+    img
 }
