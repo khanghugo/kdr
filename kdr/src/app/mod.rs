@@ -1,9 +1,10 @@
-use std::{path::Path, sync::Arc};
+use std::{io::Cursor, path::Path, sync::Arc};
 
 use ::tracing::{info, warn};
 use common::{UNKNOWN_GAME_MOD, vec3};
 use constants::{WINDOW_HEIGHT, WINDOW_WIDTH};
 use ghost::GhostInfo;
+use kira::sound::static_sound::StaticSoundData;
 use state::{
     AppState,
     audio::{AudioBackend, AudioStateError},
@@ -515,14 +516,17 @@ impl ApplicationHandler<AppEvent> for App {
 
                 send_message(bsp_resource, world_buffer, skybox_buffer);
                 // });
-
-                // reset file input tpye
-                self.state.file_state.selected_file_type = SelectedFileType::None;
             }
             AppEvent::FinishCreateWorld(bsp_resource, world_buffer, skybox_buffer) => {
                 self.state.render_state.world_buffer = vec![world_buffer];
 
                 self.state.render_state.skybox = skybox_buffer;
+
+                // inserting audio from bsp resourec
+                // but first, need to clear audio that are not part of the common resource
+                self.state
+                    .audio_resource
+                    .retain(|k, _| self.state.other_resources.common_resource.contains_key(k));
 
                 bsp_resource.sound_lookup.into_iter().for_each(|(k, v)| {
                     self.state.audio_resource.insert(k, v);
@@ -551,7 +555,18 @@ impl ApplicationHandler<AppEvent> for App {
                             });
                     });
 
+                // restart render options
                 self.state.render_state.render_options = RenderOptions::default();
+
+                // if loading bsp, just force free cam every time
+                match self.state.file_state.selected_file_type {
+                    SelectedFileType::Bsp => {
+                        self.state.input_state.free_cam = true;
+                    }
+                    _ => (),
+                }
+                // reset file input tpye
+                self.state.file_state.selected_file_type = SelectedFileType::None;
 
                 self.state.file_state.stop_spinner();
             }
@@ -652,16 +667,10 @@ impl ApplicationHandler<AppEvent> for App {
             AppEvent::ReceiveGhostRequest(identifier, ghost) => {
                 info!("Finished processing .dem. Loading replay");
 
-                ghost
-                    .frames
-                    .iter()
-                    .filter_map(|frame| frame.extras.as_ref())
-                    .filter(|extra| !extra.sound.is_empty())
-                    .for_each(|extra| println!("{:?}", extra.sound));
-
                 self.state.replay = Some(Replay {
                     ghost,
                     playback_mode: ReplayPlaybackMode::Interpolated,
+                    last_frame: 0,
                 });
 
                 // resetting the time, obviously
@@ -756,6 +765,25 @@ impl ApplicationHandler<AppEvent> for App {
                 if common_resource.is_empty() {
                     info!("Common resource data is empty");
                 }
+
+                // inserting audio from common resource
+                common_resource.iter().for_each(|(k, v)| {
+                    if !k.ends_with(".wav") {
+                        return;
+                    }
+
+                    let cursor = Cursor::new(
+                        // HOLY
+                        v.to_owned(),
+                    );
+
+                    let Ok(sound_data) = StaticSoundData::from_cursor(cursor) else {
+                        warn!("Failed to parse audio file: `{}`", k);
+                        return;
+                    };
+
+                    self.state.audio_resource.insert(k.to_string(), sound_data);
+                });
 
                 self.state.other_resources.common_resource = common_resource;
             }

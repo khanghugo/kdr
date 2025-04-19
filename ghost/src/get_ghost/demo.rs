@@ -253,7 +253,6 @@ pub fn demo_ghost_parse(filename: &str, demo: &Demo) -> eyre::Result<GhostInfo> 
                 messages.iter().for_each(|message| {
                     if let NetMessage::EngineMessage(engine_message) = message {
                         if let EngineMessage::SvcSound(ref sound) = **engine_message {
-                            println!("svc sound here");
                             let sound_index = sound
                                 .sound_index_short
                                 .as_ref()

@@ -24,6 +24,10 @@ pub enum ReplayPlaybackMode {
 pub struct Replay {
     pub ghost: GhostInfo,
     pub playback_mode: ReplayPlaybackMode,
+    // recorded last frame in the ghost
+    // with this, we can know if we missed anything
+    // and then fire all the events between current frame and last frame + 1
+    pub last_frame: usize,
 }
 
 impl AppState {
@@ -33,7 +37,9 @@ impl AppState {
             return;
         }
 
-        let Some(replay) = &self.replay else { return };
+        let Some(replay) = &mut self.replay else {
+            return;
+        };
 
         match replay.playback_mode {
             ReplayPlaybackMode::Immediate(_) => todo!("not planned for now until the recorder"),
@@ -50,44 +56,54 @@ impl AppState {
                     return;
                 };
 
-                if let Some(extra) = frame.extras {
-                    extra.text.into_iter().for_each(|text| {
-                        // something we do so that the final text of a channel is extended a bit longer
-                        let channel = text.channel;
-                        const EXTRA_TIME: f32 = 1.0;
+                let missing_frame_count = (frame_idx - replay.last_frame).saturating_sub(1);
 
-                        self.text_state
-                            .entity_text
-                            .iter_mut()
-                            .filter(|t| t.1.channel == channel)
-                            .for_each(|t| t.1.life -= EXTRA_TIME);
+                replay.ghost.frames[(replay.last_frame + 1).min(frame_idx)..frame_idx]
+                    .iter()
+                    // chain the current frame last
+                    .chain(std::iter::once(&frame))
+                    .enumerate()
+                    .for_each(|(chain_idx, frame)| {
+                        if let Some(extra) = &frame.extras {
+                            extra.text.iter().for_each(|text| {
+                                // something we do so that the final text of a channel is extended a bit longer
+                                let channel = text.channel;
+                                const EXTRA_TIME: f32 = 1.0;
 
-                        self.text_state.entity_text.push((
-                            frame_idx,
-                            GhostFrameText {
-                                // here we do something a bit hacky by just adding new timer to the text we want
-                                life: text.life + self.time + EXTRA_TIME,
-                                ..text
-                            },
-                        ));
-                    });
+                                self.text_state
+                                    .entity_text
+                                    .iter_mut()
+                                    .filter(|t| t.1.channel == channel)
+                                    .for_each(|t| t.1.life -= EXTRA_TIME);
 
-                    extra.sound.into_iter().for_each(|sound| {
-                        let sound_path = format!("sound/{}", &sound.file_name);
+                                self.text_state.entity_text.push((
+                                    // need to id it correctly
+                                    frame_idx - missing_frame_count + chain_idx,
+                                    GhostFrameText {
+                                        // here we do something a bit hacky by just adding new timer to the text we want
+                                        life: text.life + self.time + EXTRA_TIME,
+                                        ..text.clone()
+                                    },
+                                ));
+                            });
 
-                        if let Some(sound_data) = self.audio_resource.get(&sound_path) {
-                            if let Some(backend) = &mut self.audio_state.backend {
-                                backend.play_audio_on_track(
-                                    sound_data.clone(),
-                                    0,
-                                    None,
-                                    false,
-                                    sound.volume * self.audio_state.volume,
-                                );
-                            }
+                            extra.sound.iter().for_each(|sound| {
+                                let sound_path = format!("sound/{}", &sound.file_name);
+
+                                if let Some(sound_data) = self.audio_resource.get(&sound_path) {
+                                    if let Some(backend) = &mut self.audio_state.backend {
+                                        backend.play_audio_on_track(
+                                            sound_data.clone(),
+                                            0,
+                                            None,
+                                            false,
+                                            sound.volume * self.audio_state.volume,
+                                        );
+                                    }
+                                }
+                            });
                         }
                     });
-                }
 
                 // negative pitch
                 self.render_state
@@ -101,6 +117,8 @@ impl AppState {
 
                 // important
                 self.render_state.camera.rebuild_orientation();
+
+                replay.last_frame = frame_idx;
             }
         }
     }
