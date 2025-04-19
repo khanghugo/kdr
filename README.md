@@ -9,7 +9,7 @@ Currently work in progress, check back later
     - [X] Face
     - [X] Texture
     - [X] Lightmap
-    - [ ] Weird math lightmap in the case of older compiled HL maps
+    - [X] Weird math lightmap in the case of older compiled HL maps. FIXED
     - [ ] Light styles (unplanned)
     - Transparency
       - [X] Alpha test ("rendermode" = 4)
@@ -26,7 +26,10 @@ Currently work in progress, check back later
     - [X] Face
     - [X] Texture
     - [X] Model view projection
-    - [ ] Bone based vertex transformation
+    - Bone based vertex transformation
+      - [X] just simple stuffs
+      - [ ] less simple stuffs like correctly load all of the transformation. At the moment, it seems like RLE decoding is very incorrectly implemented. The result is that the rotation is not that all correct. But for simple models like flags in chk_kobayashi, this seems to work just fine. More complicated models like chick.mdl in cs_italy doesn't seem to work well. 
+    - [ ] Can load any model
     - [X] Shading
   - [X] Skybox
   - [ ] SPRites
@@ -60,7 +63,7 @@ Currently work in progress, check back later
 - Demo Player
   - [X] Demo. Easy to do because this is the same code I have in other two projects
   - [X] Ghost. Same thing. Very easy to implement
-  - [ ] Demo player UI. This needs to be compatible in both native and web. egui is the best bet. This needs some refactor to separate the "app" logic so that it is platform agnostic.
+  - [X] Demo player UI. This needs to be compatible in both native and web. egui is the best bet. This needs some refactor to separate the "app" logic so that it is platform agnostic.
 - Demo Renderer
   - [X] Framebuffer
   - [ ] Remux
@@ -77,7 +80,7 @@ Currently work in progress, check back later
     - [X] Minimal web example. This uses simple HTML script block. Basically no javascript or node project to help people bootstrap this
     - [ ] Less minimal web example. A nodejs module example because most people don't roll pure html.
     - [X] REST API server. There is one now but I guess it is too minimal. It works great though. It uses the game folder so that is very standard
-    - [ ] Final version of gchimp ResMake. To help the server distribute maps faster, gchimp ResMake zip option pre-processess all the files
+    - [X] Final version of gchimp ResMake. To help the server distribute maps faster, gchimp ResMake zip option pre-processess all the files
     so that the server only needs to distribute the archive instead of searchign for files in the game install.
   - BSP Loads:
     - [X] BSP self
@@ -88,8 +91,11 @@ Currently work in progress, check back later
     - [X] usable interface
     - [X] seek bar for demo
     - [ ] demo checker ui?
-- [ ] Sound
+    - [X] Map list
+    - [ ] Demo list
+- [X] Sound
 - On screen text
   - [ ] Chat message
   - [ ] Timer? Health? Armor?
-  - [ ] TeTextMessage?
+  - [X] TeTextMessage?
+- [ ] Instructions on how to use it
