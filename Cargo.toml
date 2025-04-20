@@ -1,5 +1,5 @@
 [workspace]
-members = [ "ghost","kdr", "loader", "rest-api-server"]
+members = [ "config", "ghost","kdr", "loader", "rest-api-server"]
 
 [workspace.package]
 authors = ["Lê Hàn Minh Khang (Khang Le) <mkhangle20@gmail.com>"]

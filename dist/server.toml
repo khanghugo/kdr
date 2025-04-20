@@ -1,0 +1,4 @@
+game_dir = "/path/to/what"
+common_resource = []
+port = 3000
+use_resmake_zip = false
