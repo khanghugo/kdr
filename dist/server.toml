@@ -1,4 +1,13 @@
 game_dir = "/path/to/what"
-common_resource = []
+common_resource = [
+    "sound/player/pl_step1.wav",
+    "sound/player/pl_step2.wav",
+    "sound/player/pl_step3.wav",
+    "sound/player/pl_step4.wav",
+    "sound/common/wpn_select.wav",
+    "sound/weapons/knife_hitwall1.wav",
+    "sound/common/wpn_denyselect.wav",
+    "sound/weapons/knife_slash2.wav",
+]
 port = 3000
 use_resmake_zip = false
