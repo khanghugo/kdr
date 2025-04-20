@@ -60,6 +60,7 @@ impl EguiRenderer {
             verdana_family.push("verdana".into());
             verdana_family.push("jhenghei".into());
 
+            // fallback for general egui texts
             fonts
                 .families
                 .entry(egui::FontFamily::Proportional)
