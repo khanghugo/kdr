@@ -224,7 +224,7 @@ impl ApplicationHandler<AppEvent> for App {
                 };
 
                 let Some(render_context) = &self.render_context else {
-                    warn!("Redraw requested without render context");
+                    // warn!("Redraw requested without render context");
 
                     // need to request redraw even if there's nothing to draw until there's something to draw
                     // definitely not an insanity strat
@@ -567,6 +567,9 @@ impl ApplicationHandler<AppEvent> for App {
                 }
                 // reset file input tpye
                 self.state.file_state.selected_file_type = SelectedFileType::None;
+
+                // reset texts
+                self.state.text_state.clear_text();
 
                 self.state.file_state.stop_spinner();
             }

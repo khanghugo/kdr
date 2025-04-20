@@ -7,7 +7,7 @@
 //! And for that, we must somehow track which track is un/used to correctly play on a track.
 //!
 //! The game does contain channel index so we can mimic that.
-use std::{array::from_fn, io::Cursor};
+use std::array::from_fn;
 
 use cgmath::{Deg, InnerSpace, Rotation3};
 use egui::ahash::{HashMap, HashMapExt};

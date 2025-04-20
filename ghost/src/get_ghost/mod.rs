@@ -45,7 +45,7 @@ pub struct GhostFrameSound {
 }
 
 #[derive(Debug, Clone)]
-pub struct GhostFrameText {
+pub struct GhostFrameEntityText {
     pub text: String,
     // normalized [0, 1]
     // demo default location goes [-8192, 8192]
@@ -60,11 +60,18 @@ pub struct GhostFrameText {
     pub channel: i8,
 }
 
+// need to process text at the get_ghost level, not the top level
+#[derive(Debug, Clone)]
+pub struct GhostFrameSayText {
+    pub text: String,
+}
+
 #[derive(Debug, Clone)]
 pub struct GhostFrameExtra {
     pub sound: Vec<GhostFrameSound>,
-    pub text: Vec<GhostFrameText>,
+    pub entity_text: Vec<GhostFrameEntityText>,
     pub anim: Option<GhostFrameAnim>,
+    pub say_text: Vec<GhostFrameSayText>,
 }
 
 #[derive(Debug, Clone)]

@@ -50,7 +50,7 @@ pub struct AppState {
 
     // other states
     pub input_state: InputState,
-    text_state: TextState,
+    pub text_state: TextState,
     pub audio_state: AudioState,
     pub audio_resource: HashMap<String, StaticSoundData>,
     pub ui_state: UIState,

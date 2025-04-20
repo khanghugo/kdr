@@ -1,7 +1,10 @@
 use cgmath::Deg;
-use ghost::{GhostFrameText, GhostInfo};
+use ghost::{GhostFrameEntityText, GhostInfo};
 
-use super::*;
+use super::{
+    overlay::text::{MAX_SAY_TEXT, SAY_TEXT_LIFE},
+    *,
+};
 
 /// How a replay is played.
 pub enum ReplayPlaybackMode {
@@ -65,7 +68,7 @@ impl AppState {
                     .enumerate()
                     .for_each(|(chain_idx, frame)| {
                         if let Some(extra) = &frame.extras {
-                            extra.text.iter().for_each(|text| {
+                            extra.entity_text.iter().for_each(|text| {
                                 // something we do so that the final text of a channel is extended a bit longer
                                 let channel = text.channel;
                                 const EXTRA_TIME: f32 = 1.0;
@@ -79,7 +82,7 @@ impl AppState {
                                 self.text_state.entity_text.push((
                                     // need to id it correctly
                                     frame_idx - missing_frame_count + chain_idx,
-                                    GhostFrameText {
+                                    GhostFrameEntityText {
                                         // here we do something a bit hacky by just adding new timer to the text we want
                                         life: text.life + self.time + EXTRA_TIME,
                                         ..text.clone()
@@ -100,6 +103,16 @@ impl AppState {
                                             sound.volume * self.audio_state.volume,
                                         );
                                     }
+                                }
+                            });
+
+                            extra.say_text.iter().for_each(|saytext| {
+                                self.text_state
+                                    .say_text
+                                    .push((self.time + SAY_TEXT_LIFE, saytext.clone()));
+
+                                while self.text_state.say_text.len() > MAX_SAY_TEXT {
+                                    self.text_state.say_text.remove(0);
                                 }
                             });
                         }

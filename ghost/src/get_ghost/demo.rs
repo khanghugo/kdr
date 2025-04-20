@@ -27,6 +27,9 @@ pub fn demo_ghost_parse(filename: &str, demo: &Demo) -> eyre::Result<GhostInfo> 
     // sound
     let mut sound_vec = vec![];
 
+    // player names
+    let mut player_names: HashMap<u8, String> = HashMap::new();
+
     // key is the resource index
     let mut resource_lookup: HashMap<u32, String> = HashMap::new();
 
@@ -56,6 +59,31 @@ pub fn demo_ghost_parse(filename: &str, demo: &Demo) -> eyre::Result<GhostInfo> 
                                         resource_lookup.insert(idx, resource.name.get_string());
                                     }
                                 });
+                            }
+                            // build name list
+                            EngineMessage::SvcUpdateUserInfo(user_info) => {
+                                println!("updating info");
+                                // this index is 1 lower than the index in the say text
+                                // this means if user index is 2, the index inside saytext is 3
+                                let user_index = user_info.index;
+
+                                // "\\bottomcolor\\6\\cl_dlmax\\512\\cl_lc\\1\\cl_lw\\1\\cl_updaterate\\102\\topcolor\\30\\rate\\100000\\name\\hono dille\\*sid\\76561198152358431\\model\\sas"
+                                let info_str = user_info.user_info.to_str().unwrap();
+
+                                let key = "\\name\\";
+                                if let Some(name_start) = info_str.find("\\name\\") {
+                                    let name_really_start = name_start + key.len();
+                                    let name_length = info_str[name_really_start..]
+                                        .find("\\")
+                                        .unwrap_or(info_str.len());
+
+                                    player_names.insert(
+                                        user_index,
+                                        info_str
+                                            [name_really_start..(name_really_start + name_length)]
+                                            .to_string(),
+                                    );
+                                }
                             }
                             _ => (),
                         }
@@ -203,105 +231,123 @@ pub fn demo_ghost_parse(filename: &str, demo: &Demo) -> eyre::Result<GhostInfo> 
                     }
                 }
 
-                let mut text = vec![];
+                let mut entity_text = vec![];
+                let mut say_text = vec![];
 
-                // text entity
                 messages.iter().for_each(|message| {
-                    if let NetMessage::EngineMessage(engine_message) = message {
-                        if let EngineMessage::SvcTempEntity(ref temp_entity) = **engine_message {
-                            if let TempEntity::TeTextMessage(ref text_entity) = temp_entity.entity {
-                                let text_color: Vec<f32> = text_entity
-                                    .text_color
-                                    .iter()
-                                    .map(|&c| c as f32 / 255.)
-                                    .collect();
+                    match message {
+                        // get player names
+                        NetMessage::UserMessage(user_message) => {
+                            let message_name = user_message.name.to_str().unwrap();
 
-                                // println!("{:?}", text_entity);
-                                let text_color: [f32; 4] = from_fn(|i| text_color[i]);
+                            if message_name == "SayText" {
+                                // need to sub 1 because this idx is higher than 1 in our name list
+                                let player_idx = user_message.data[0] - 1;
+                                let player_name = player_names.get(&player_idx).unwrap();
 
-                                let normalize_pos = |x: i16| {
-                                    if x == -8192 {
-                                        return 0.5;
-                                    }
+                                let saytext = String::from_utf8_lossy(&user_message.data[1..]);
+                                let saytext = clean_up_say_text_str(&saytext);
 
-                                    x as f32 / 8192.
-                                };
+                                let full_text = format!("{}: {}", player_name, saytext);
 
-                                let frame_text = GhostFrameText {
-                                    text: text_entity.message.to_str().unwrap().to_string(),
-                                    // need to normalize position
-                                    location: [
-                                        normalize_pos(text_entity.x),
-                                        normalize_pos(text_entity.y),
-                                    ],
-                                    color: text_color,
-                                    // life is in msec, not sec
-                                    life: (text_entity.hold_time
-                                        + text_entity.fade_in_time
-                                        + text_entity.fade_out_time)
-                                        as f32
-                                        / 1000.,
-                                    channel: text_entity.channel,
-                                };
-
-                                text.push(frame_text);
+                                say_text.push(GhostFrameSayText { text: full_text });
                             }
                         }
-                    }
-                });
+                        NetMessage::EngineMessage(engine_message) => match &**engine_message {
+                            // entity text on screen
+                            EngineMessage::SvcTempEntity(temp_entity) => {
+                                if let TempEntity::TeTextMessage(ref text_entity) =
+                                    temp_entity.entity
+                                {
+                                    let text_color: Vec<f32> = text_entity
+                                        .text_color
+                                        .iter()
+                                        .map(|&c| c as f32 / 255.)
+                                        .collect();
 
-                messages.iter().for_each(|message| {
-                    if let NetMessage::EngineMessage(engine_message) = message {
-                        if let EngineMessage::SvcSound(ref sound) = **engine_message {
-                            let sound_index = sound
-                                .sound_index_short
-                                .as_ref()
-                                .or(sound.sound_index_long.as_ref())
-                                .map(|i| i.to_u32())
-                                .expect("sound does not have a resource index");
+                                    let text_color: [f32; 4] = from_fn(|i| text_color[i]);
 
-                            let Some(sound_name) = resource_lookup.get(&sound_index) else {
-                                println!("no sound found");
-                                return;
-                            };
+                                    let normalize_pos = |x: i16| {
+                                        if x == -8192 {
+                                            return 0.5;
+                                        }
 
-                            let volume = sound
-                                .volume
-                                .as_ref()
-                                .map(|volume| volume.to_u32() as f32 / 255.)
-                                .unwrap_or(1.0);
+                                        x as f32 / 8192.
+                                    };
 
-                            let mut origin = None;
-                            if let Some(x) = &sound.origin_x {
-                                if let Some(y) = &sound.origin_y {
-                                    if let Some(z) = &sound.origin_z {
-                                        let x = x.to_number();
-                                        let y = y.to_number();
-                                        let z = z.to_number();
+                                    let frame_text = GhostFrameEntityText {
+                                        text: text_entity.message.to_str().unwrap().to_string(),
+                                        // need to normalize position
+                                        location: [
+                                            normalize_pos(text_entity.x),
+                                            normalize_pos(text_entity.y),
+                                        ],
+                                        color: text_color,
+                                        // life is in msec, not sec
+                                        life: (text_entity.hold_time
+                                            + text_entity.fade_in_time
+                                            + text_entity.fade_out_time)
+                                            as f32
+                                            / 1000.,
+                                        channel: text_entity.channel,
+                                    };
 
-                                        origin = [x, y, z].into();
-                                    }
+                                    entity_text.push(frame_text);
                                 }
                             }
+                            // sounds
+                            EngineMessage::SvcSound(sound) => {
+                                let sound_index = sound
+                                    .sound_index_short
+                                    .as_ref()
+                                    .or(sound.sound_index_long.as_ref())
+                                    .map(|i| i.to_u32())
+                                    .expect("sound does not have a resource index");
 
-                            let sound_name_length = sound_name.len();
+                                let Some(sound_name) = resource_lookup.get(&sound_index) else {
+                                    println!("no sound found");
+                                    return;
+                                };
 
-                            let sound_frame = GhostFrameSound {
-                                // excluding null terminator
-                                file_name: sound_name[..sound_name_length - 1].to_owned(),
-                                channel: sound.channel.to_i32(),
-                                volume,
-                                origin,
-                            };
+                                let volume = sound
+                                    .volume
+                                    .as_ref()
+                                    .map(|volume| volume.to_u32() as f32 / 255.)
+                                    .unwrap_or(1.0);
 
-                            sound_vec.push(sound_frame);
-                        }
+                                let mut origin = None;
+                                if let Some(x) = &sound.origin_x {
+                                    if let Some(y) = &sound.origin_y {
+                                        if let Some(z) = &sound.origin_z {
+                                            let x = x.to_number();
+                                            let y = y.to_number();
+                                            let z = z.to_number();
+
+                                            origin = [x, y, z].into();
+                                        }
+                                    }
+                                }
+
+                                let sound_name_length = sound_name.len();
+
+                                let sound_frame = GhostFrameSound {
+                                    // excluding null terminator
+                                    file_name: sound_name[..sound_name_length - 1].to_owned(),
+                                    channel: sound.channel.to_i32(),
+                                    volume,
+                                    origin,
+                                };
+
+                                sound_vec.push(sound_frame);
+                            }
+                            _ => (),
+                        },
                     }
                 });
 
                 let frame_extra = GhostFrameExtra {
                     sound: sound_vec.to_owned(),
-                    text,
+                    entity_text,
                     anim: Some(GhostFrameAnim {
                         sequence,
                         frame: anim_frame,
@@ -309,6 +355,7 @@ pub fn demo_ghost_parse(filename: &str, demo: &Demo) -> eyre::Result<GhostInfo> 
                         gaitsequence,
                         blending,
                     }),
+                    say_text,
                 };
 
                 sound_vec.clear();
@@ -354,4 +401,13 @@ pub fn demo_ghost_parse(filename: &str, demo: &Demo) -> eyre::Result<GhostInfo> 
         game_mod,
         frames: ghost_frames,
     })
+}
+
+// should put in raw utf8 text
+fn clean_up_say_text_str(s: &str) -> String {
+    s.replace("#Cstrike_Chat_All", "")
+        .replace("%s", "")
+        .replace("\n", "")
+        // replace this last
+        .replace(std::char::REPLACEMENT_CHARACTER, "")
 }

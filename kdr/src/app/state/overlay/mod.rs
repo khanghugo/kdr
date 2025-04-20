@@ -42,6 +42,7 @@ impl AppState {
             }
 
             self.draw_entity_text(ctx);
+            self.draw_say_text(ctx);
 
             // anything interactive start from here
             if !self.ui_state.is_main_ui_enabled {
