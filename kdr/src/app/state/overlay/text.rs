@@ -66,8 +66,10 @@ impl AppState {
                                 (text.color[2] * 255.) as u8,
                                 (text.color[3] * 255.) as u8,
                             ))
-                            .strong()
-                            .size(14.0);
+                            .font(egui::FontId::new(
+                                14.,
+                                egui::FontFamily::Name("verdana".into()),
+                            ));
 
                         let main_text = egui::Label::new(styled_text).selectable(false);
 
@@ -97,8 +99,11 @@ impl AppState {
                     self.text_state.say_text.iter().for_each(|(_, say_text)| {
                         let rich_text = egui::RichText::new(&say_text.text)
                             .strong()
-                            .size(18.)
-                            .color(egui::Color32::WHITE);
+                            .color(egui::Color32::WHITE)
+                            .font(egui::FontId::new(
+                                18.,
+                                egui::FontFamily::Name("tahoma".into()),
+                            ));
                         ui.label(rich_text);
                     });
                 });

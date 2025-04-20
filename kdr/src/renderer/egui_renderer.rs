@@ -22,6 +22,53 @@ impl EguiRenderer {
     ) -> Self {
         let egui_ctx = egui::Context::default();
 
+        // add fonts
+        {
+            let verdana_bytes = include_bytes!("../../../fonts/Verdana.ttf");
+            let tahoma_bytes = include_bytes!("../../../fonts/tahoma.ttf");
+            // for chinese glyphs
+            let jhenghei_bytes = include_bytes!("../../../fonts/microsoft-jhenghei.ttf");
+
+            let mut fonts = egui::FontDefinitions::default();
+
+            fonts.font_data.insert(
+                "verdana".to_string(),
+                egui::FontData::from_static(verdana_bytes).into(),
+            );
+            fonts.font_data.insert(
+                "tahoma".to_string(),
+                egui::FontData::from_static(tahoma_bytes).into(),
+            );
+            fonts.font_data.insert(
+                "jhenghei".to_string(),
+                egui::FontData::from_static(jhenghei_bytes).into(),
+            );
+
+            let tahoma_family = fonts
+                .families
+                .entry(egui::FontFamily::Name("tahoma".into()))
+                .or_default();
+
+            tahoma_family.push("tahoma".into());
+            tahoma_family.push("jhenghei".into());
+
+            let verdana_family = fonts
+                .families
+                .entry(egui::FontFamily::Name("verdana".into()))
+                .or_default();
+
+            verdana_family.push("verdana".into());
+            verdana_family.push("jhenghei".into());
+
+            fonts
+                .families
+                .entry(egui::FontFamily::Proportional)
+                .or_default()
+                .push("jhenghei".into());
+
+            egui_ctx.set_fonts(fonts);
+        }
+
         let state = egui_winit::State::new(
             egui_ctx,
             egui::viewport::ViewportId::ROOT,

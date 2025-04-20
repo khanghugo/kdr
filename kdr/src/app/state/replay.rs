@@ -77,23 +77,39 @@ impl AppState {
                             extra.entity_text.iter().for_each(|text| {
                                 // something we do so that the final text of a channel is extended a bit longer
                                 let channel = text.channel;
-                                const EXTRA_TIME: f32 = 1.0;
+                                const EXTRA_TIME: f32 = 1.5;
 
+                                // decrease life of all previous texts in the channel
                                 self.text_state
                                     .entity_text
                                     .iter_mut()
                                     .filter(|t| t.1.channel == channel)
                                     .for_each(|t| t.1.life -= EXTRA_TIME);
 
-                                self.text_state.entity_text.push((
-                                    // need to id it correctly
-                                    frame_idx - missing_frame_count + chain_idx,
-                                    GhostFrameEntityText {
-                                        // here we do something a bit hacky by just adding new timer to the text we want
-                                        life: text.life + self.time + EXTRA_TIME,
-                                        ..text.clone()
-                                    },
-                                ));
+                                if let Some((_, prev_text)) = self
+                                    .text_state
+                                    .entity_text
+                                    .iter_mut()
+                                    .find(|(_, prev_text)| {
+                                        prev_text.location == text.location
+                                            && prev_text.text == text.text
+                                    })
+                                {
+                                    // if text is the same, extend life instead of pushing new text
+                                    // need to add extra time from the time we deducted
+                                    prev_text.life += text.life + EXTRA_TIME;
+                                } else {
+                                    // if there is no previous similar text, add new text
+                                    self.text_state.entity_text.push((
+                                        // need to id it correctly
+                                        frame_idx - missing_frame_count + chain_idx,
+                                        GhostFrameEntityText {
+                                            // here we do something a bit hacky by just adding new timer to the text we want
+                                            life: text.life + self.time + EXTRA_TIME,
+                                            ..text.clone()
+                                        },
+                                    ));
+                                }
                             });
 
                             extra.sound.iter().for_each(|sound| {

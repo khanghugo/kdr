@@ -354,7 +354,8 @@ fn processing_saytext(s: &str, player_name: &str) -> String {
         .replace(std::char::REPLACEMENT_CHARACTER, "");
 
     // cleaning up unprintable characters, which are colors
-    res.retain(|s| s >= 0x20.into() && s <= 0x7e.into());
+    // take characters above 0x7E becuase we might have some chinse characters
+    res.retain(|s| s >= 0x20.into());
 
     res
 }
