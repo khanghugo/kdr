@@ -41,7 +41,7 @@ impl AppState {
                                 // usually this will just work. But if it is scrubbed back, then we need
                                 // to change something else
                                 // i dont want to make this too complicated
-                                self.text_state.entity_text.clear();
+                                self.text_state.clear_text();
                             }
 
                             // current_time

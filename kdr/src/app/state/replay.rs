@@ -61,6 +61,7 @@ impl AppState {
 
                 let missing_frame_count = (frame_idx - replay.last_frame).saturating_sub(1);
 
+                // discrete data
                 replay.ghost.frames[(replay.last_frame + 1).min(frame_idx)..frame_idx]
                     .iter()
                     // chain the current frame last
@@ -68,6 +69,11 @@ impl AppState {
                     .enumerate()
                     .for_each(|(chain_idx, frame)| {
                         if let Some(extra) = &frame.extras {
+                            // discrete data, we don't need to add them again
+                            if replay.last_frame == frame_idx {
+                                return;
+                            }
+
                             extra.entity_text.iter().for_each(|text| {
                                 // something we do so that the final text of a channel is extended a bit longer
                                 let channel = text.channel;
