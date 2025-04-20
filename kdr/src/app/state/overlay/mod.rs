@@ -44,20 +44,17 @@ impl AppState {
             self.draw_entity_text(ctx);
             self.draw_say_text(ctx);
 
-            // anything interactive start from here
-            if !self.ui_state.is_main_ui_enabled {
-                return;
+            // anything not related to the game is drawn last so that they cover the game elements
+            if self.ui_state.is_main_ui_enabled {
+                if self.replay.is_some() {
+                    self.seek_bar(ctx);
+                }
+
+                self.ui_state.toaster.show(ctx);
+
+                self.map_list(ctx);
+                self.control_panel(ctx);
             }
-
-            self.control_panel(ctx);
-
-            if self.replay.is_some() {
-                self.seek_bar(ctx);
-            }
-
-            self.map_list(ctx);
-
-            self.ui_state.toaster.show(ctx);
         }
     }
 }

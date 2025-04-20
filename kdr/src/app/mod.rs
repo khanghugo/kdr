@@ -571,6 +571,9 @@ impl ApplicationHandler<AppEvent> for App {
                 // reset texts
                 self.state.text_state.clear_text();
 
+                // resetting time when we are ready
+                self.state.time = 0.;
+
                 self.state.file_state.stop_spinner();
             }
             AppEvent::NewFileSelected => {
@@ -675,9 +678,6 @@ impl ApplicationHandler<AppEvent> for App {
                     playback_mode: ReplayPlaybackMode::Interpolated,
                     last_frame: 0,
                 });
-
-                // resetting the time, obviously
-                self.state.time = 0.;
 
                 // make sure the user cannot move camera because it is true by default
                 self.state.input_state.free_cam = false;

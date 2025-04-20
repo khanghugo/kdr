@@ -9,5 +9,5 @@ common_resource = [
     "sound/common/wpn_denyselect.wav",
     "sound/weapons/knife_slash2.wav",
 ]
-port = 3000
-use_resmake_zip = false
+port = 3001
+use_resmake_zip = true

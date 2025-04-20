@@ -15,3 +15,26 @@ pub const NO_DRAW_FUNC_BRUSHES: &[&str] = &[
 ];
 
 pub const CONFIG_FILE_NAME: &str = "config.toml";
+
+// must include the downloads variance because that is easier for me
+// TODO: make this inside a config file, maybe a do a lazy cell to parse the config
+// the worst to come is that we have to read a config file once multiple times wherever applicable :()
+pub const COMMON_GAME_MODS: &[&str] = &[
+    "valve",
+    "valve_downloads",
+    "ag",
+    "ag_downloads",
+    "cstrike",
+    "cstrike_downloads",
+];
+
+pub const COMMON_RESOURCE_SOUND: &[&str] = &[
+    "sound/player/pl_step1.wav",
+    "sound/player/pl_step2.wav",
+    "sound/player/pl_step3.wav",
+    "sound/player/pl_step4.wav",
+    "sound/common/wpn_select.wav",
+    "sound/weapons/knife_hitwall1.wav",
+    "sound/common/wpn_denyselect.wav",
+    "sound/weapons/knife_slash2.wav",
+];

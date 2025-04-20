@@ -123,7 +123,9 @@ pub fn demo_ghost_parse(filename: &str, demo: &Demo) -> eyre::Result<GhostInfo> 
                 };
 
                 let sim_org = &netmessage.info.refparams.sim_org;
-                origin = [sim_org[0], sim_org[1], sim_org[2]];
+                let view_height = &netmessage.info.refparams.view_height;
+                // origin = [sim_org[0] + vie, sim_org[1], sim_org[2]];
+                origin = from_fn(|i| sim_org[i] + view_height[i]);
 
                 let mut entity_text = vec![];
                 let mut say_text = vec![];

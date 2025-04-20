@@ -3,7 +3,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use common::UNKNOWN_GAME_MOD;
+use common::{COMMON_GAME_MODS, COMMON_RESOURCE_SOUND, UNKNOWN_GAME_MOD};
 use tracing::{info, warn};
 
 use bsp::Bsp;
@@ -517,19 +517,8 @@ fn get_sound(resource_map: &mut ResourceMap, bsp: &Bsp, game_dir: &Path, game_mo
     });
 }
 
-const OTHER_SOUND: &[&str] = &[
-    "sound/player/pl_step1.wav",
-    "sound/player/pl_step2.wav",
-    "sound/player/pl_step3.wav",
-    "sound/player/pl_step4.wav",
-    "sound/common/wpn_select.wav",
-    "sound/weapons/knife_hitwall1.wav",
-    "sound/common/wpn_denyselect.wav",
-    "sound/weapons/knife_slash2.wav",
-];
-
 fn get_other_sound(resource_map: &mut ResourceMap, game_dir: &Path, game_mod: &str) {
-    OTHER_SOUND.iter().for_each(|&sound_path| {
+    COMMON_RESOURCE_SOUND.iter().for_each(|&sound_path| {
         let Some(sound_absolute_path) =
             search_game_resource(game_dir, game_mod, Path::new(&sound_path), true)
         else {
@@ -586,18 +575,6 @@ pub fn search_game_resource(
     None
 }
 
-// must include the downloads variance because that is easier for me
-// TODO: make this inside a config file, maybe a do a lazy cell to parse the config
-// the worst to come is that we have to read a config file once multiple times wherever applicable :()
-const COMMON_GAME_MODS: &[&str] = &[
-    // "valve", // no need for valve because it is guaranteed to be inside "get_game_mods_to_check"
-    // "valve_downloads", // likewise
-    "ag",
-    "ag_downloads",
-    "cstrike",
-    "cstrike_downloads",
-];
-
 // includes the original game_mod
 // if game mod is unknown, we will check all of the game mods inside a provided list
 fn get_game_mods_to_check(game_mod: &str) -> Vec<String> {
@@ -609,6 +586,9 @@ fn get_game_mods_to_check(game_mod: &str) -> Vec<String> {
     // otherwise, add valve to our list
     if is_valve {
         gamemods_to_check.push("valve_downloads".to_string());
+
+        // if is valve, be done
+        return gamemods_to_check;
     } else {
         // check main mod and then check valve
         // it is usually guaranteed that downloads folder is very big and longer to check. Whatever.
@@ -619,11 +599,6 @@ fn get_game_mods_to_check(game_mod: &str) -> Vec<String> {
         } else {
             gamemods_to_check.push(format!("{game_mod}_downloads"));
         }
-
-        // every else needs to check in with "valve"
-        // but we add it last because we have to prioritize our game mod
-        gamemods_to_check.push("valve".to_string());
-        gamemods_to_check.push("valve_downloads".to_string());
     }
 
     // if gmae mod is unknown then just check all of the other gmae mods just to be safe

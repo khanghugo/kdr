@@ -7,12 +7,11 @@ edition.workspace = true
 [dependencies]
 loader = { path = "../loader" }
 common = { path = "../common" }
+config = { path = "../config" }
 
 actix-cors = "0.7.1"
 actix-web = "4.10.2"
-clap = { version = "4.5.32", features = ["derive"] }
 serde = { version = "1.0.219", features = ["derive"] }
-serde_json = "1.0.140"
 thiserror = "2.0.12"
 tracing = "0.1.41"
 tracing-subscriber = { version = "0.3.19", features = ["local-time"] }

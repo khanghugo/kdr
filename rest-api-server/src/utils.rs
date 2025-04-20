@@ -1,7 +1,10 @@
-use std::{io::Write, path::Path};
+use std::{
+    io::Write,
+    path::{Path, PathBuf},
+};
 
-use loader::ResourceIdentifier;
-use tracing::{Level, info};
+use loader::{ResourceIdentifier, native::search_game_resource};
+use tracing::{Level, info, warn};
 use tracing_subscriber::{FmtSubscriber, fmt::time::LocalTime};
 use zip::{ZipWriter, write::SimpleFileOptions};
 
@@ -54,4 +57,31 @@ pub fn start_tracing() {
     tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
 
     info!("tracing started");
+}
+
+// writes a zip file and returns its bytes
+// so, common resource is stored on memory in server, seems fine?
+pub fn create_common_resource(game_dir: &Path, res: &[PathBuf]) -> Vec<u8> {
+    // we dont know what game mod and we dont care
+    const GAME_MOD: &str = "unknown";
+
+    let mut wasm_files: Vec<WasmFile> = vec![];
+
+    res.iter().for_each(|relative_path| {
+        let Some(path) = search_game_resource(game_dir, GAME_MOD, relative_path, false) else {
+            warn!("Cannot find common resource: `{}`", relative_path.display());
+            return;
+        };
+
+        let bytes = std::fs::read(path).unwrap();
+
+        let file = WasmFile {
+            name: relative_path.display().to_string(),
+            bytes,
+        };
+
+        wasm_files.push(file);
+    });
+
+    return zip_files(wasm_files);
 }

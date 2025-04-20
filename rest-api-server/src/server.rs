@@ -1,5 +1,3 @@
-use std::path::PathBuf;
-
 use actix_web::{App, HttpResponse, HttpServer, Responder, get, post, web};
 use common::CANNOT_FIND_REQUESTED_MAP_ERROR;
 use loader::{MapList, ResourceIdentifier, ResourceProvider, native::NativeResourceProvider};
@@ -17,9 +15,8 @@ use crate::{
 // The state doesn't change after starting the server so this works nicely.
 struct AppData {
     resource_provider: NativeResourceProvider,
-    // .zip file already loaded into memory
-    // optional to make sure that we have a file to distribute
-    common_resource: Option<PathBuf>,
+    // .zip file already loaded onto memory
+    common_resource: Option<Vec<u8>>,
     map_list: MapList,
     use_resmake_zip: bool,
 }
@@ -28,20 +25,16 @@ struct AppData {
 async fn request_common_resource(data: web::Data<AppData>) -> impl Responder {
     info!("Request common resource");
 
-    if let Some(path) = data.common_resource.clone() {
-        match std::fs::read(path.as_path()) {
-            Ok(bytes) => HttpResponse::Ok()
-                .append_header((
-                    "Content-Disposition",
-                    format!("attachment; filename=\"common.zip\""),
-                ))
-                .body(bytes),
-            Err(err) => {
-                warn!("Cannot read common resource `{}`: {}", path.display(), err);
-
-                HttpResponse::InternalServerError().finish()
-            }
-        }
+    if let Some(bytes) = &data.common_resource {
+        HttpResponse::Ok()
+            .content_type("application/zip")
+            .append_header(("Content-Transfer-Encoding", "binary"))
+            .append_header(("Content-Length", bytes.len()))
+            .append_header((
+                "Content-Disposition",
+                format!("attachment; filename=\"common.zip\""),
+            ))
+            .body(bytes.clone())
     } else {
         HttpResponse::NoContent().finish()
     }
@@ -134,12 +127,6 @@ pub async fn start_server(args: ServerArgs) -> std::io::Result<()> {
         "Resource provider game directory: {}",
         data.resource_provider.game_dir.display()
     );
-
-    if let Some(common_resource_path) = &data.common_resource {
-        info!("Common resourch path: {}", common_resource_path.display());
-    } else {
-        info!("No common resource provided");
-    }
 
     if use_resmake_zip {
         info!(
