@@ -60,31 +60,6 @@ pub fn demo_ghost_parse(filename: &str, demo: &Demo) -> eyre::Result<GhostInfo> 
                                     }
                                 });
                             }
-                            // build name list
-                            EngineMessage::SvcUpdateUserInfo(user_info) => {
-                                println!("updating info");
-                                // this index is 1 lower than the index in the say text
-                                // this means if user index is 2, the index inside saytext is 3
-                                let user_index = user_info.index;
-
-                                // "\\bottomcolor\\6\\cl_dlmax\\512\\cl_lc\\1\\cl_lw\\1\\cl_updaterate\\102\\topcolor\\30\\rate\\100000\\name\\hono dille\\*sid\\76561198152358431\\model\\sas"
-                                let info_str = user_info.user_info.to_str().unwrap();
-
-                                let key = "\\name\\";
-                                if let Some(name_start) = info_str.find("\\name\\") {
-                                    let name_really_start = name_start + key.len();
-                                    let name_length = info_str[name_really_start..]
-                                        .find("\\")
-                                        .unwrap_or(info_str.len());
-
-                                    player_names.insert(
-                                        user_index,
-                                        info_str
-                                            [name_really_start..(name_really_start + name_length)]
-                                            .to_string(),
-                                    );
-                                }
-                            }
                             _ => (),
                         }
                     }
@@ -98,7 +73,8 @@ pub fn demo_ghost_parse(filename: &str, demo: &Demo) -> eyre::Result<GhostInfo> 
     let ghost_frames = demo.directory.entries[1]
         .frames
         .iter()
-        .filter_map(|frame| match &frame.frame_data {
+        .enumerate()
+        .filter_map(|(_frame_idx, frame)| match &frame.frame_data {
             // FrameData::ClientData(client) => {
             //     Some(GhostFrame {
             //         origin: client.origin.into(),
@@ -149,88 +125,6 @@ pub fn demo_ghost_parse(filename: &str, demo: &Demo) -> eyre::Result<GhostInfo> 
                 let sim_org = &netmessage.info.refparams.sim_org;
                 origin = [sim_org[0], sim_org[1], sim_org[2]];
 
-                // Every time there is svc_clientdata, there is svc_deltapacketentities
-                // Even if there isn't, this is more safe to make sure that we have the client data.
-                let client_data = messages.iter().find_map(|message| {
-                    if let NetMessage::EngineMessage(engine_message) = message {
-                        if let EngineMessage::SvcClientData(ref client_data) = **engine_message {
-                            Some(client_data)
-                        } else {
-                            None
-                        }
-                    } else {
-                        None
-                    }
-                });
-
-                // If no client_dat then we that means there won't be packet entity. Typically.
-                client_data?;
-
-                // Cannot use client_data here because it only reports delta.
-                // Even though it is something that can be worked with. Ehh.
-                // let client_data = client_data.unwrap();
-
-                // let (origin, viewangles) = if let Some(client_data) = client_data {
-                //     (client_data.client_data.get(""))
-                // } else {
-                //     (None, None)
-                // };
-
-                let delta_packet_entities = messages.iter().find_map(|message| {
-                    if let NetMessage::EngineMessage(engine_message) = message {
-                        if let EngineMessage::SvcDeltaPacketEntities(ref delta_packet_entities) =
-                            **engine_message
-                        {
-                            Some(delta_packet_entities)
-                        } else {
-                            None
-                        }
-                    } else {
-                        None
-                    }
-                });
-
-                if let Some(delta_packet_entities) = delta_packet_entities {
-                    if !delta_packet_entities.entity_states.is_empty()
-                        && delta_packet_entities.entity_states[0].delta.is_some()
-                    {
-                        let delta = &delta_packet_entities.entity_states[0]
-                            .delta
-                            .as_ref()
-                            .unwrap();
-
-                        if let Some(sequence_bytes) = delta.get("sequence\0") {
-                            let sequence_bytes: [u8; 4] = from_fn(|i| sequence_bytes[i]);
-                            sequence = Some(i32::from_le_bytes(sequence_bytes));
-                        }
-
-                        if let Some(anim_frame_bytes) = delta.get("frame\0") {
-                            let anim_frame_bytes: [u8; 4] = from_fn(|i: usize| anim_frame_bytes[i]);
-                            anim_frame = Some(f32::from_le_bytes(anim_frame_bytes));
-                        }
-
-                        if let Some(animtime_bytes) = delta.get("animtime\0") {
-                            let animtime_bytes: [u8; 4] = from_fn(|i| animtime_bytes[i]);
-                            animtime = Some(f32::from_le_bytes(animtime_bytes));
-                        }
-
-                        if let Some(gaitsequence_bytes) = delta.get("gaitsequence\0") {
-                            let gaitsequence_bytes: [u8; 4] = from_fn(|i| gaitsequence_bytes[i]);
-                            gaitsequence = Some(i32::from_le_bytes(gaitsequence_bytes));
-                        }
-
-                        if let Some(blending0) = delta.get("blending[0]\0") {
-                            // blending is just [u8; 1]
-                            blending[0] = blending0[0];
-                        }
-
-                        if let Some(blending1) = delta.get("blending[1]\0") {
-                            // blending is just [u8; 1]
-                            blending[1] = blending1[0];
-                        }
-                    }
-                }
-
                 let mut entity_text = vec![];
                 let mut say_text = vec![];
 
@@ -246,11 +140,9 @@ pub fn demo_ghost_parse(filename: &str, demo: &Demo) -> eyre::Result<GhostInfo> 
                                 let player_name = player_names.get(&player_idx).unwrap();
 
                                 let saytext = String::from_utf8_lossy(&user_message.data[1..]);
-                                let saytext = clean_up_say_text_str(&saytext);
+                                let saytext = processing_saytext(&saytext, player_name);
 
-                                let full_text = format!("{}: {}", player_name, saytext);
-
-                                say_text.push(GhostFrameSayText { text: full_text });
+                                say_text.push(GhostFrameSayText { text: saytext });
                             }
                         }
                         NetMessage::EngineMessage(engine_message) => match &**engine_message {
@@ -340,6 +232,30 @@ pub fn demo_ghost_parse(filename: &str, demo: &Demo) -> eyre::Result<GhostInfo> 
 
                                 sound_vec.push(sound_frame);
                             }
+                            // build name list
+                            EngineMessage::SvcUpdateUserInfo(user_info) => {
+                                // this index is 1 lower than the index in the say text
+                                // this means if user index is 2, the index inside saytext is 3
+                                let user_index = user_info.index;
+
+                                // "\\bottomcolor\\6\\cl_dlmax\\512\\cl_lc\\1\\cl_lw\\1\\cl_updaterate\\102\\topcolor\\30\\rate\\100000\\name\\hono dille\\*sid\\76561198152358431\\model\\sas"
+                                let info_str = user_info.user_info.to_str().unwrap();
+
+                                let key = "\\name\\";
+                                if let Some(name_start) = info_str.find("\\name\\") {
+                                    let name_really_start = name_start + key.len();
+                                    let name_length = info_str[name_really_start..]
+                                        .find("\\")
+                                        .unwrap_or(info_str.len());
+
+                                    player_names.insert(
+                                        user_index,
+                                        info_str
+                                            [name_really_start..(name_really_start + name_length)]
+                                            .to_string(),
+                                    );
+                                }
+                            }
                             _ => (),
                         },
                     }
@@ -404,10 +320,41 @@ pub fn demo_ghost_parse(filename: &str, demo: &Demo) -> eyre::Result<GhostInfo> 
 }
 
 // should put in raw utf8 text
-fn clean_up_say_text_str(s: &str) -> String {
-    s.replace("#Cstrike_Chat_All", "")
+fn processing_saytext(s: &str, player_name: &str) -> String {
+    let mut res = s.to_string();
+
+    const ALL_CHAT_PTRN: &str = "#Cstrike_Chat_All";
+    const SPEC_CHAT_PTRN: &str = "#Cstrike_Chat_AllSpec";
+    const SPEC_TEAM_CHAT_PTRN: &str = "#Cstrike_Chat_Spec";
+
+    let is_all_chat = s.contains(ALL_CHAT_PTRN);
+    let is_spec_chat = s.contains(SPEC_CHAT_PTRN);
+    let is_spec_team_chat = s.contains(SPEC_TEAM_CHAT_PTRN);
+
+    // so, it can be all chat and spec chat at the same time becuase of common prefix
+    if is_spec_chat {
+        res = res.replace(SPEC_CHAT_PTRN, "");
+
+        res = format!("*SPEC* {player_name}: {res}");
+    } else if is_all_chat {
+        res = res.replace(ALL_CHAT_PTRN, "");
+
+        res = format!("{player_name}: {res}");
+    } else if is_spec_team_chat {
+        res = res.replace(SPEC_TEAM_CHAT_PTRN, "");
+
+        res = format!("(Spectator) {player_name}: {res}");
+    }
+
+    // fast cleaning up some stuffs in the text
+    res = res
         .replace("%s", "")
         .replace("\n", "")
         // replace this last
-        .replace(std::char::REPLACEMENT_CHARACTER, "")
+        .replace(std::char::REPLACEMENT_CHARACTER, "");
+
+    // cleaning up unprintable characters, which are colors
+    res.retain(|s| s >= 0x20.into() && s <= 0x7e.into());
+
+    res
 }
