@@ -84,6 +84,7 @@ Currently work in progress, check back later
     - [X] REST API server. There is one now but I guess it is too minimal. It works great though. It uses the game folder so that is very standard
     - [X] Final version of gchimp ResMake. To help the server distribute maps faster, gchimp ResMake zip option pre-processess all the files
     so that the server only needs to distribute the archive instead of searchign for files in the game install.
+    - [ ] URL Query as config. "localhost/?mapname=de_dust2&location=1,3,4" or "localhost/?replayname=abcde.dem"
   - BSP Loads:
     - [X] BSP self
     - [ ] BSP another
