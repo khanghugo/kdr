@@ -1,66 +1,130 @@
-use std::{ffi::OsStr, path::Path, str::from_utf8};
+use std::path::Path;
 
-use dem::{open_demo_from_bytes, types::Demo};
 pub use error::GhostError;
 
 mod error;
 mod get_ghost;
 
 pub use get_ghost::*;
+use get_ghost::{
+    demo::demo_ghost_parse, romanian_jumpers::romanian_jumpers_ghost_parse,
+    simen::simen_ghost_parse, surf_gateway::surf_gateway_ghost_parse,
+};
+use serde::{Deserialize, Serialize};
 
-pub enum GhostBlob<'a> {
-    Demo(Demo),
-    Simen(&'a str),
-    SurfGateway(&'a str),
-    RomanianJumper(&'a str),
+// when data sent over the net, we just need to know the variant and then parse it from the client side
+#[derive(Debug, Serialize, Deserialize)]
+pub enum GhostBlob {
+    Demo(Vec<u8>),
+    Simen(String),
+    SurfGateway(String),
+    RomanianJumpers(String),
     Unknown,
 }
 
-/// In web browser term, the path is a fake path.
-///
-/// The client needs to run this command at most 2 times just to verify that we have a correct ghost blob.
-fn categorise_ghost_blob<'a>(
-    path: impl AsRef<Path> + AsRef<OsStr>,
-    ghost_blob: &'a [u8],
-) -> Result<GhostBlob<'a>, GhostError> {
-    let filename: &Path = path.as_ref();
-    let filename = filename.file_name().unwrap().to_str().unwrap();
+// for forcing ghost type regardless of the file format
+pub enum GhostBlobType {
+    Demo,
+    Simen,
+    SurfGateway,
+    RomanianJumpers,
+}
 
-    let path: &Path = path.as_ref();
+impl TryFrom<&str> for GhostBlobType {
+    type Error = &'static str;
 
-    if filename.ends_with(".dem") {
-        return open_demo_from_bytes(ghost_blob)
-            .map(GhostBlob::Demo)
-            .map_err(|err| GhostError::DemoParse { source: err });
-    } else {
-        let file = from_utf8(ghost_blob).map_err(|err| GhostError::Utf8Error {
-            source: err,
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        if value == "simen" {
+            return Ok(GhostBlobType::Simen);
+        } else if value == "surf_gateway" {
+            return Ok(GhostBlobType::SurfGateway);
+        } else if value == "romanian_jumpers" {
+            return Ok(GhostBlobType::RomanianJumpers);
+        } else if value == "demo" {
+            return Ok(GhostBlobType::Demo);
+        } else {
+            return Err(format!("unknown blob type `{}`", value).leak());
+        }
+    }
+}
+
+pub fn get_ghost_blob(
+    path: &Path,
+    overridden_option: Option<GhostBlobType>,
+) -> Result<GhostBlob, GhostError> {
+    if path.extension().is_none() {
+        return Err(GhostError::UnknownFormat {
             path: path.to_path_buf(),
-        })?;
+        });
+    }
 
-        if filename.ends_with(".simen.txt") {
-            return Ok(GhostBlob::Simen(file));
-        } else if filename.ends_with(".sg.json") {
-            return Ok(GhostBlob::SurfGateway(file));
-        } else if path.ends_with(".rj.json") {
-            return Ok(GhostBlob::Simen(file));
+    let file_name = path.file_name().unwrap().display().to_string();
+
+    // overridden options
+    // good for people who don't even bother to standardize their own format
+    if let Some(overridden_option) = overridden_option {
+        match overridden_option {
+            GhostBlobType::Demo => {
+                let bytes = std::fs::read(path).map_err(|op| GhostError::IOError { source: op })?;
+                return Ok(GhostBlob::Demo(bytes));
+            }
+            GhostBlobType::Simen | GhostBlobType::SurfGateway | GhostBlobType::RomanianJumpers => {
+                let string_data = std::fs::read_to_string(path)
+                    .map_err(|op| GhostError::IOError { source: op })?;
+
+                match overridden_option {
+                    GhostBlobType::Demo => unreachable!(),
+                    GhostBlobType::Simen => return Ok(GhostBlob::Simen(string_data)),
+                    GhostBlobType::SurfGateway => return Ok(GhostBlob::SurfGateway(string_data)),
+                    GhostBlobType::RomanianJumpers => {
+                        return Ok(GhostBlob::RomanianJumpers(string_data));
+                    }
+                }
+            }
         }
     }
 
-    Err(GhostError::UnknownFormat {
-        path: path.to_path_buf(),
-    })
+    // now proceed to check the file name instead
+    if file_name.ends_with(".dem") {
+        let bytes = std::fs::read(path).map_err(|op| GhostError::IOError { source: op })?;
+
+        return Ok(GhostBlob::Demo(bytes));
+    } else {
+        let string_data =
+            std::fs::read_to_string(path).map_err(|op| GhostError::IOError { source: op })?;
+
+        if file_name.ends_with(".simen.txt") {
+            return Ok(GhostBlob::Simen(string_data));
+        } else if file_name.ends_with(".sg.json") {
+            return Ok(GhostBlob::SurfGateway(string_data));
+        } else if file_name.ends_with(".rj.json") {
+            return Ok(GhostBlob::RomanianJumpers(string_data));
+        } else {
+            return Err(GhostError::UnknownFormat {
+                path: path.to_path_buf(),
+            });
+        }
+    };
 }
 
-pub fn get_ghost<'a>(
-    path: impl AsRef<Path> + AsRef<OsStr>,
-    ghost_blob: &'a [u8],
-) -> Result<GhostInfo, GhostError> {
-    let path: &Path = path.as_ref();
-    let ghost_blob = categorise_ghost_blob(path, ghost_blob)?;
+pub fn get_ghost_from_blob(file_name: &str, blob: GhostBlob) -> Result<GhostInfo, GhostError> {
+    match blob {
+        GhostBlob::Demo(demo_bytes) => {
+            let demo = dem::open_demo_from_bytes(&demo_bytes)
+                .map_err(|op| GhostError::DemoParse { source: op })?;
 
-    // get ghost galore
-    get_ghost::get_ghost(path, ghost_blob).map_err(|err| GhostError::GhostParse { source: err })
+            demo_ghost_parse(file_name, &demo)
+        }
+        GhostBlob::Simen(s) => simen_ghost_parse(file_name, &s),
+        GhostBlob::SurfGateway(s) => surf_gateway_ghost_parse(file_name, &s),
+        GhostBlob::RomanianJumpers(s) => romanian_jumpers_ghost_parse(file_name, &s),
+        GhostBlob::Unknown => {
+            return Err(GhostError::UnknownFormat {
+                path: file_name.into(),
+            });
+        }
+    }
+    .map_err(|op| GhostError::GhostParse { source: op })
 }
 
 #[macro_export]

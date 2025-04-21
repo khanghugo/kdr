@@ -14,6 +14,7 @@ pub struct MapListUIState {
     pub search_text: String,
     // contains items that are allowed to display
     // the vector length matches self.other_resource.map_list.len()
+    // [[map list]; mod count]
     pub filtered_items: Option<Vec<Vec<usize>>>,
     should_focus: bool,
 }

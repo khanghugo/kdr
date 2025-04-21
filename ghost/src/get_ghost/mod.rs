@@ -1,41 +1,13 @@
 use std::array::from_fn;
-use std::ffi::OsStr;
-use std::path::Path;
 
 use dem::types::Demo;
 use glam::{FloatExt, Vec3};
 
-use crate::err;
+pub(crate) mod demo;
+pub(crate) mod romanian_jumpers;
+pub(crate) mod simen;
+pub(crate) mod surf_gateway;
 
-use self::demo::demo_ghost_parse;
-// use rayon::prelude::*;
-use self::romanian_jumpers::romanian_jumpers_ghost_parse;
-use self::simen::simen_ghost_parse;
-use self::surf_gateway::surf_gateway_ghost_parse;
-
-use super::GhostBlob;
-
-mod demo;
-mod romanian_jumpers;
-mod simen;
-mod surf_gateway;
-
-// done like this so that it is client wasm friendly
-pub fn get_ghost<'a>(
-    path: impl AsRef<Path> + AsRef<OsStr>,
-    ghost_blob: GhostBlob,
-) -> eyre::Result<GhostInfo> {
-    let path: &Path = path.as_ref();
-    let filename = path.file_name().unwrap().to_str().unwrap();
-
-    match ghost_blob {
-        GhostBlob::Demo(demo) => demo_ghost_parse(filename, &demo),
-        GhostBlob::Simen(s) => simen_ghost_parse(filename, s),
-        GhostBlob::SurfGateway(s) => surf_gateway_ghost_parse(filename, s),
-        GhostBlob::RomanianJumper(s) => romanian_jumpers_ghost_parse(filename, s),
-        GhostBlob::Unknown => err!("unknown ghost file"),
-    }
-}
 #[derive(Debug, Clone)]
 pub struct GhostFrameSound {
     pub file_name: String,

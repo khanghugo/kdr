@@ -1,9 +1,13 @@
-use std::{io::Cursor, path::Path, sync::Arc};
+use std::{
+    io::Cursor,
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 
 use ::tracing::{info, warn};
 use common::{UNKNOWN_GAME_MOD, vec3};
 use constants::{WINDOW_HEIGHT, WINDOW_WIDTH};
-use ghost::GhostInfo;
+use ghost::{GhostBlob, GhostInfo};
 use kira::sound::static_sound::StaticSoundData;
 use state::{
     AppState,
@@ -43,8 +47,8 @@ use crate::{
     utils::spawn_async,
 };
 use loader::{
-    MapList, ProgressResourceProvider, Resource, ResourceIdentifier, ResourceMap, ResourceProvider,
-    bsp_resource::BspResource, error::ResourceProviderError,
+    MapList, ProgressResourceProvider, ReplayList, Resource, ResourceIdentifier, ResourceMap,
+    ResourceProvider, bsp_resource::BspResource, error::ResourceProviderError,
 };
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -73,14 +77,21 @@ pub enum AppEvent {
     RequestResource(ResourceIdentifier),
     ReceiveResource(Resource),
     NewFileSelected,
-    ReceiveGhostRequest(ResourceIdentifier, GhostInfo),
+    RequestReplay(String),
+    ReceiveReplayBlob {
+        replay_name: PathBuf,
+        replay_blob: GhostBlob,
+    },
+    ReceiveReplay(ResourceIdentifier, GhostInfo),
     ReceivePostProcessingUpdate(PostProcessingControlState),
     MaybeStartAudioBackEnd,
     RequestCommonResource,
     #[allow(dead_code)]
-    ReceivedCommonResource(ResourceMap),
+    ReceiveCommonResource(ResourceMap),
     RequestMapList,
     ReceivedMapList(MapList),
+    RequestReplayList,
+    ReceiveReplayList(ReplayList),
     FinishCreateWorld(BspResource, WorldBuffer, Option<SkyboxBuffer>),
     UpdateFetchProgress(f32),
     ErrorEvent(AppError),
@@ -368,6 +379,11 @@ impl ApplicationHandler<AppEvent> for App {
                 self.event_loop_proxy
                     .send_event(AppEvent::RequestMapList)
                     .unwrap_or_else(|_| warn!("Failed to send RequestMapList"));
+
+                // also replay list
+                self.event_loop_proxy
+                    .send_event(AppEvent::RequestReplayList)
+                    .unwrap_or_else(|_| warn!("Failed to send RequestReplayList"));
             }
             AppEvent::CreateEgui => {
                 info!("Creating egui renderer");
@@ -622,55 +638,118 @@ impl ApplicationHandler<AppEvent> for App {
 
                     self.state.file_state.selected_file_type = SelectedFileType::Bsp;
                 } else if file_extension == "dem" {
-                    info!("Received .dem from file dialogue. Processing .dem");
+                    info!("Received .dem from file dialogue");
 
-                    let event_loop_proxy = self.event_loop_proxy.clone();
-                    let send_message = move |identifier, ghost| {
-                        event_loop_proxy
-                            .send_event(AppEvent::ReceiveGhostRequest(identifier, ghost))
-                            .unwrap_or_else(|_| warn!("Failed to send ReceivedGhostRequest"));
-                    };
-
-                    #[cfg(not(target_arch = "wasm32"))]
-                    let Some(provider) = &self.native_resource_provider else {
-                        warn!("Cannot find native resource provider");
-
-                        self.event_loop_proxy
-                            .send_event(AppEvent::ErrorEvent(AppError::NoProvider))
-                            .unwrap_or_else(|_| warn!("Failed to send NoProvider"));
-
-                        return;
-                    };
-
-                    #[cfg(target_arch = "wasm32")]
-                    let Some(provider) = &self.web_resource_provider else {
-                        warn!("Cannot find web resource provider");
-                        // TODO send to error
-                        return;
-                    };
-
-                    let provider = provider.clone();
-                    let file_path = file_path.to_owned();
-                    let file_bytes = file_bytes.to_owned();
-
-                    spawn_async(async move {
-                        let Ok((identifier, ghost)) =
-                            provider.get_ghost_data(file_path, &file_bytes).await
-                        else {
-                            warn!("Cannot load ghost data");
-                            // TODO send error here
-                            return;
-                        };
-
-                        send_message(identifier, ghost);
-                    });
-
-                    self.state.file_state.selected_file_type = SelectedFileType::Replay;
+                    self.event_loop_proxy
+                        .send_event(AppEvent::ReceiveReplayBlob {
+                            replay_name: file_path.to_path_buf(),
+                            replay_blob: GhostBlob::Demo(file_bytes.clone()),
+                        })
+                        .unwrap_or_else(|_| warn!("Cannot send ReceiveReplayBlob"));
                 } else {
                     warn!("Bad resource: {}", file_path.display());
                 }
             }
-            AppEvent::ReceiveGhostRequest(identifier, ghost) => {
+            AppEvent::RequestReplay(replay_name) => {
+                info!("Requesting replay `{}`", replay_name);
+
+                #[cfg(not(target_arch = "wasm32"))]
+                let Some(provider) = &self.native_resource_provider else {
+                    warn!("Cannot find native resource provider");
+
+                    self.event_loop_proxy
+                        .send_event(AppEvent::ErrorEvent(AppError::NoProvider))
+                        .unwrap_or_else(|_| warn!("Failed to send NoProvider"));
+
+                    return;
+                };
+
+                #[cfg(target_arch = "wasm32")]
+                let Some(provider) = &self.web_resource_provider else {
+                    warn!("Cannot find web resource provider");
+                    // TODO send to error
+                    return;
+                };
+
+                let provider = provider.clone();
+                let replay_name2 = replay_name.clone();
+
+                let event_loop_proxy = self.event_loop_proxy.clone();
+                let send_message = move |replay_request_result: Result<
+                    GhostBlob,
+                    ResourceProviderError,
+                >| {
+                    match replay_request_result {
+                        Ok(ghost_blob) => {
+                            event_loop_proxy
+                                .send_event(AppEvent::ReceiveReplayBlob {
+                                    replay_name: replay_name.clone().into(),
+                                    replay_blob: ghost_blob,
+                                })
+                                .unwrap_or_else(|_| warn!("Failed to send ReceivedGhostRequest"));
+                        }
+                        Err(op) => event_loop_proxy
+                            .send_event(AppEvent::ErrorEvent(AppError::ProviderError {
+                                source: op,
+                            }))
+                            .unwrap_or_else(|_| warn!("Failed to send ErrorEvent")),
+                    }
+                };
+
+                spawn_async(async move {
+                    let what = provider.request_replay(&replay_name2).await;
+
+                    send_message(what);
+                });
+            }
+            AppEvent::ReceiveReplayBlob {
+                replay_name,
+                replay_blob,
+            } => {
+                info!("Received replay blob");
+
+                let event_loop_proxy = self.event_loop_proxy.clone();
+                let send_message = move |identifier, ghost| {
+                    event_loop_proxy
+                        .send_event(AppEvent::ReceiveReplay(identifier, ghost))
+                        .unwrap_or_else(|_| warn!("Failed to send ReceivedGhostRequest"));
+                };
+
+                #[cfg(not(target_arch = "wasm32"))]
+                let Some(provider) = &self.native_resource_provider else {
+                    warn!("Cannot find native resource provider");
+
+                    self.event_loop_proxy
+                        .send_event(AppEvent::ErrorEvent(AppError::NoProvider))
+                        .unwrap_or_else(|_| warn!("Failed to send NoProvider"));
+
+                    return;
+                };
+
+                #[cfg(target_arch = "wasm32")]
+                let Some(provider) = &self.web_resource_provider else {
+                    warn!("Cannot find web resource provider");
+                    // TODO send to error
+                    return;
+                };
+
+                let provider = provider.clone();
+
+                spawn_async(async move {
+                    let Ok((identifier, ghost)) =
+                        provider.get_ghost_data(replay_name, replay_blob).await
+                    else {
+                        warn!("Cannot load ghost data");
+                        // TODO send error here
+                        return;
+                    };
+
+                    send_message(identifier, ghost);
+                });
+
+                self.state.file_state.selected_file_type = SelectedFileType::Replay;
+            }
+            AppEvent::ReceiveReplay(identifier, ghost) => {
                 info!("Finished processing .dem. Loading replay");
 
                 self.state.replay = Some(Replay {
@@ -746,7 +825,7 @@ impl ApplicationHandler<AppEvent> for App {
                         let common_resource_future = resource_provider.request_common_resource();
                         match common_resource_future.await {
                             Ok(common_res) => event_loop_proxy
-                                .send_event(AppEvent::ReceivedCommonResource(common_res))
+                                .send_event(AppEvent::ReceiveCommonResource(common_res))
                                 .unwrap_or_else(|_| warn!("Cannot send ReceivedCommonResource")),
                             Err(err) => {
                                 warn!("Failed to get common resource");
@@ -762,7 +841,7 @@ impl ApplicationHandler<AppEvent> for App {
                 }
             }
             // this event isnt very necessary but whatever
-            AppEvent::ReceivedCommonResource(common_resource) => {
+            AppEvent::ReceiveCommonResource(common_resource) => {
                 info!("Received common resource");
 
                 if common_resource.is_empty() {
@@ -826,7 +905,7 @@ impl ApplicationHandler<AppEvent> for App {
                     };
 
                 spawn_async(async move {
-                    let map_list = resource_provider.get_map_list().await;
+                    let map_list = resource_provider.request_map_list().await;
                     send_receive_message(map_list);
                 });
             }
@@ -857,6 +936,50 @@ impl ApplicationHandler<AppEvent> for App {
                     .collect();
 
                 self.state.other_resources.map_list = sorted_map_list;
+            }
+            AppEvent::RequestReplayList => {
+                info!("Requesting replay list");
+
+                #[cfg(target_arch = "wasm32")]
+                let Some(resource_provider) = &self.web_resource_provider else {
+                    warn!("Requesting replay list without resource provider");
+                    return;
+                };
+
+                #[cfg(not(target_arch = "wasm32"))]
+                let Some(resource_provider) = &self.native_resource_provider else {
+                    warn!("Requesting replay list without resource provider");
+                    return;
+                };
+
+                let resource_provider = resource_provider.to_owned();
+
+                let event_loop_proxy = self.event_loop_proxy.clone();
+                let send_receive_message =
+                    move |res: Result<ReplayList, ResourceProviderError>| match res {
+                        Ok(replay_list) => {
+                            event_loop_proxy
+                                .send_event(AppEvent::ReceiveReplayList(replay_list))
+                                .unwrap_or_else(|_| warn!("cannot send ReceiveReplayList"));
+                        }
+                        Err(err) => event_loop_proxy
+                            .send_event(AppEvent::ErrorEvent(AppError::ProviderError {
+                                source: err,
+                            }))
+                            .unwrap_or_else(|_| warn!("cannot send AppError::ProviderError")),
+                    };
+
+                spawn_async(async move {
+                    let replay_list = resource_provider.request_replay_list().await;
+                    send_receive_message(replay_list);
+                });
+            }
+            AppEvent::ReceiveReplayList(replay_list) => {
+                let replay_count = replay_list.len();
+
+                info!("Received a replay list of {} replays", replay_count);
+
+                self.state.other_resources.replay_list = replay_list;
             }
             AppEvent::ErrorEvent(app_error) => {
                 warn!("Error: {}", app_error.to_string());

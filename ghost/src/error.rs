@@ -26,4 +26,10 @@ pub enum GhostError {
         #[source]
         source: eyre::Report,
     },
+
+    #[error("IO error: {source}")]
+    IOError {
+        #[source]
+        source: std::io::Error,
+    },
 }

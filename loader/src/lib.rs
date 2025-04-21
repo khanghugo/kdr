@@ -25,7 +25,7 @@ use std::{
 
 use bsp_resource::BspResource;
 use error::ResourceProviderError;
-use ghost::{GhostError, GhostInfo, get_ghost};
+use ghost::{GhostBlob, GhostError, GhostInfo, get_ghost_from_blob};
 use serde::Deserialize;
 
 pub mod bsp_resource;
@@ -92,10 +92,16 @@ impl Resource {
 /// Trait to fetch resources. This is here so that we can have both native and web implementations.
 pub trait ResourceProvider {
     /// Gets map resource from given map identifier.
-    async fn get_resource(
+    async fn request_map(
         &self,
         identifier: &ResourceIdentifier,
     ) -> Result<Resource, ResourceProviderError>;
+
+    /// Gets replay blob and its type. The client then need to parse the data by itself based on type and data
+    ///
+    /// `replay_name` is more like "replay path". Web server needs to canonicalize the path and compare prefix
+    /// to make sure that the path is not outside given directory.
+    async fn request_replay(&self, replay_name: &str) -> Result<GhostBlob, ResourceProviderError>;
 
     /// The client should also be able to parse a replay and get the map name out of it.
     ///
@@ -106,12 +112,14 @@ pub trait ResourceProvider {
     /// The output should be a map identifier and then ghost data.
     ///
     /// The client should handle the error properly.
-    async fn get_ghost_data<'a>(
+    async fn get_ghost_data(
         &self,
         path: impl AsRef<Path> + AsRef<OsStr>,
-        ghost_blob: &'a [u8],
+        ghost_blob: GhostBlob,
     ) -> Result<(ResourceIdentifier, GhostInfo), GhostError> {
-        let ghost = get_ghost(path, ghost_blob)?;
+        let path: &Path = path.as_ref();
+
+        let ghost = get_ghost_from_blob(&path.display().to_string(), ghost_blob)?;
 
         let map_identifier = ResourceIdentifier {
             map_name: ghost.map_name.to_owned(),
@@ -121,8 +129,16 @@ pub trait ResourceProvider {
         Ok((map_identifier, ghost))
     }
 
-    async fn get_map_list(&self) -> Result<MapList, ResourceProviderError>;
-    async fn get_replay_list(&self) -> Result<ReplayList, ResourceProviderError>;
+    /// Gets map list from the game directory
+    async fn request_map_list(&self) -> Result<MapList, ResourceProviderError>;
+    /// Gets replay list
+    ///
+    /// On native, replay list is retrieved from game directory and strictly concerned about demo .dem format.
+    /// For other ghost formats, they might need to adhere to "get_ghost" formats
+    ///
+    /// On web, replay list is retrieved from an API from the server.
+    /// The server implementation is to scan specified folders for ghosts.
+    async fn request_replay_list(&self) -> Result<ReplayList, ResourceProviderError>;
 }
 
 /// A different trait that most likely only the web will use. Whatever

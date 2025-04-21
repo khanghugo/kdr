@@ -1,5 +1,6 @@
 use control_panel::{ControlPanelUIState, PostProcessingControlState};
 use map_list::MapListUIState;
+use replay_list::ReplayListUIState;
 
 use super::AppState;
 
@@ -7,6 +8,7 @@ pub mod control_panel;
 mod crosshair;
 mod loading_spinner;
 mod map_list;
+mod replay_list;
 mod seekbar;
 pub mod text;
 
@@ -16,6 +18,7 @@ pub struct UIState {
     pub control_panel: ControlPanelUIState,
     pub pp_control: PostProcessingControlState,
     pub map_list: MapListUIState,
+    pub replay_list: ReplayListUIState,
     pub toaster: egui_notify::Toasts,
 }
 
@@ -26,6 +29,7 @@ impl Default for UIState {
             control_panel: ControlPanelUIState::default(),
             pp_control: PostProcessingControlState::default(),
             map_list: MapListUIState::default(),
+            replay_list: ReplayListUIState::default(),
             toaster: egui_notify::Toasts::default(),
         }
     }
@@ -53,6 +57,7 @@ impl AppState {
                 self.ui_state.toaster.show(ctx);
 
                 self.map_list(ctx);
+                self.replay_list(ctx);
                 self.control_panel(ctx);
             }
         }

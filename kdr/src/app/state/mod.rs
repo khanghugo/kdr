@@ -8,7 +8,7 @@ use egui::ahash::{HashMap, HashMapExt};
 use file::FileState;
 use input::InputState;
 use kira::sound::static_sound::StaticSoundData;
-use loader::ResourceMap;
+use loader::{ReplayList, ResourceMap};
 use overlay::{UIState, text::TextState};
 use render::RenderState;
 use replay::Replay;
@@ -31,6 +31,7 @@ pub struct OtherResources {
     // from MapList type, we sort it so it becomes a vector
     pub common_resource: ResourceMap,
     pub map_list: SortedMapList,
+    pub replay_list: ReplayList,
 }
 
 // Decouples states from App so that we can impl specific stuffs that affect states without affecting App.

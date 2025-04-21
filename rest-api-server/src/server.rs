@@ -111,7 +111,7 @@ pub async fn start_server(args: ServerArgs) -> std::io::Result<()> {
     } = args;
 
     let map_list = resource_provider
-        .get_map_list()
+        .request_map_list()
         .block_on()
         .expect("cannot get map list");
 

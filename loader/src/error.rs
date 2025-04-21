@@ -1,5 +1,4 @@
 use std::path::PathBuf;
-
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -68,4 +67,13 @@ pub enum ResourceProviderError {
     #[cfg(target_arch = "wasm32")]
     #[error("The server does not contain this map")]
     NoMapFound {},
+
+    #[error("Cannot make demo list")]
+    DemoList,
+
+    #[error("Cannot get ghost: {source}")]
+    Ghost {
+        #[source]
+        source: ghost::GhostError,
+    },
 }

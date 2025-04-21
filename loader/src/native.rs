@@ -4,12 +4,15 @@ use std::{
 };
 
 use common::{COMMON_GAME_MODS, COMMON_RESOURCE_SOUND, UNKNOWN_GAME_MOD};
+use ghost::get_ghost_blob;
 use tracing::{info, warn};
 
 use bsp::Bsp;
 use wad::types::Wad;
 
-use crate::{MODEL_ENTITIES, MapList, ProgressResourceProvider, ResourceMap, SOUND_ENTITIES};
+use crate::{
+    MODEL_ENTITIES, MapList, ProgressResourceProvider, ReplayList, ResourceMap, SOUND_ENTITIES,
+};
 
 use super::{ResourceProvider, SKYBOX_SUFFIXES, error::ResourceProviderError, fix_bsp_file_name};
 
@@ -37,7 +40,7 @@ impl ProgressResourceProvider for NativeResourceProvider {
         identifier: &crate::ResourceIdentifier,
         _progress_callback: impl Fn(f32) + Send + 'static,
     ) -> Result<crate::Resource, ResourceProviderError> {
-        self.get_resource(identifier).await
+        self.request_map(identifier).await
     }
 }
 
@@ -51,7 +54,7 @@ impl ResourceProvider for NativeResourceProvider {
     /// Funny enough, the server processing side in the future would use this portion of code to fetch data.
     ///
     /// So this function will be refactored or maybe just straight up used in the wrong context.
-    async fn get_resource(
+    async fn request_map(
         &self,
         identifier: &super::ResourceIdentifier,
     ) -> Result<super::Resource, ResourceProviderError> {
@@ -126,7 +129,7 @@ impl ResourceProvider for NativeResourceProvider {
     }
 
     // TODO: maybe write this into a file
-    async fn get_map_list(&self) -> Result<crate::MapList, ResourceProviderError> {
+    async fn request_map_list(&self) -> Result<crate::MapList, ResourceProviderError> {
         let mut map_list = MapList::new();
 
         // TODO: maybe par_iter?
@@ -165,9 +168,59 @@ impl ResourceProvider for NativeResourceProvider {
         Ok(map_list)
     }
 
-    async fn get_replay_list(&self) -> Result<crate::ReplayList, ResourceProviderError> {
-        todo!()
+    async fn request_replay_list(&self) -> Result<crate::ReplayList, ResourceProviderError> {
+        match recursive_read_dem_folder(&self.game_dir, &self.game_dir) {
+            Some(yse) => Ok(yse),
+            None => Err(ResourceProviderError::DemoList),
+        }
     }
+
+    async fn request_replay(
+        &self,
+        replay_name: &str,
+    ) -> Result<ghost::GhostBlob, ResourceProviderError> {
+        let replay_path = self.game_dir.join(replay_name);
+
+        get_ghost_blob(&replay_path, None).map_err(|op| ResourceProviderError::Ghost { source: op })
+    }
+}
+
+// base so that we can only extract the relative path starting from game_dir
+fn recursive_read_dem_folder(base: &Path, curr: &Path) -> Option<ReplayList> {
+    let mut replay_list = ReplayList::new();
+
+    let entries = std::fs::read_dir(curr).expect("cannot read folder");
+
+    // i like bfs
+    let mut entries_to_visit = vec![];
+
+    entries
+        .filter_map(|entry| entry.ok())
+        .map(|entry| entry.path())
+        .for_each(|entry| {
+            if entry.is_dir() {
+                entries_to_visit.push(entry);
+                return;
+            }
+
+            if entry.is_file() && entry.extension().is_some() {
+                let ext = entry.extension().unwrap();
+
+                if ext == "dem" {
+                    let replay_path = entry.strip_prefix(base).unwrap().display().to_string();
+
+                    replay_list.push(replay_path);
+                }
+            }
+        });
+
+    entries_to_visit.into_iter().for_each(|entry| {
+        if let Some(extras) = recursive_read_dem_folder(base, entry.as_path()) {
+            replay_list.extend(extras);
+        }
+    });
+
+    Some(replay_list)
 }
 
 fn get_models(resource_map: &mut ResourceMap, bsp: &Bsp, game_dir: &Path, game_mod: &str) {
@@ -367,7 +420,7 @@ fn get_external_wads(
                     resource_map.insert(path.to_owned(), bytes);
                 });
 
-            info!("Can find all .wad files needed for external textures.");
+            info!("Found all .wad files needed for external textures.");
         } else {
             info!(
                 "Cannot find all .wad files needed for external textures. Falling back to read all .wad files."
@@ -589,9 +642,15 @@ fn get_game_mods_to_check(game_mod: &str) -> Vec<String> {
 
         // if is valve, be done
         return gamemods_to_check;
+    } else if game_mod == UNKNOWN_GAME_MOD {
+        // if gmae mod is unknown then just check all of the other gmae mods just to be safe
+
+        COMMON_GAME_MODS.iter().for_each(|&game_mod| {
+            gamemods_to_check.push(game_mod.to_string());
+        });
     } else {
-        // check main mod and then check valve
-        // it is usually guaranteed that downloads folder is very big and longer to check. Whatever.
+        // we are not in "valve", we are not in "unknown"
+        // so, we can just check our game mod, "_downloads", and then "valve"
         if is_download {
             let without_download = game_mod.replace("_downloads", "");
 
@@ -599,13 +658,10 @@ fn get_game_mods_to_check(game_mod: &str) -> Vec<String> {
         } else {
             gamemods_to_check.push(format!("{game_mod}_downloads"));
         }
-    }
 
-    // if gmae mod is unknown then just check all of the other gmae mods just to be safe
-    if game_mod == UNKNOWN_GAME_MOD {
-        COMMON_GAME_MODS.iter().for_each(|&game_mod| {
-            gamemods_to_check.push(game_mod.to_string());
-        });
+        // then add valve
+        gamemods_to_check.push("valve".to_string());
+        gamemods_to_check.push("valve_downloads".to_string());
     }
 
     gamemods_to_check

@@ -307,12 +307,6 @@ pub fn demo_ghost_parse(filename: &str, demo: &Demo) -> eyre::Result<GhostInfo> 
     let map_name = demo.header.map_name.to_str()?.to_string();
     let game_mod = demo.header.game_directory.to_str()?.to_string();
 
-    ghost_frames
-        .iter()
-        .filter_map(|f| f.extras.as_ref())
-        .filter(|f| !f.sound.is_empty())
-        .for_each(|f| println!("{:?}", f.sound));
-
     Ok(GhostInfo {
         ghost_name: filename.to_owned(),
         map_name,

@@ -12,6 +12,7 @@ pub const NO_DRAW_FUNC_BRUSHES: &[&str] = &[
     "func_ladder",
     "func_buyzone",
     "func_bomb_target",
+    "func_monster_clip",
 ];
 
 pub const CONFIG_FILE_NAME: &str = "config.toml";
