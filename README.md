@@ -54,6 +54,7 @@ Currently work in progress, check back later
     - [ ] HDR
     - [X] ~~Anisotropic~~ Kuwahara Filtering
     - [X] Some random other shader effects just to prove that it is easy to add.
+    - [ ] Posterize 
   - [ ] MSAA. Doesn't seem like a lot of work but not the priority.
 - Navigation
   - [X] Noclip movement
@@ -62,6 +63,7 @@ Currently work in progress, check back later
   - [X] Mouse view. Similar to bspguy
 - Demo Player
   - [X] Demo. Easy to do because this is the same code I have in other two projects
+  - [ ] Viewmodel. That needs good MDL rendering first
   - [X] Ghost. Same thing. Very easy to implement
   - [X] Demo player UI. This needs to be compatible in both native and web. egui is the best bet. This needs some refactor to separate the "app" logic so that it is platform agnostic.
 - Demo Renderer
@@ -92,10 +94,10 @@ Currently work in progress, check back later
     - [X] seek bar for demo
     - [ ] demo checker ui?
     - [X] Map list
-    - [ ] Demo list
+    - [X] Demo list
 - [X] Sound
 - On screen text
-  - [ ] Chat message
-  - [ ] Timer? Health? Armor?
+  - [X] Chat message
+  - [ ] Timer? Health? Armor? maybe not needed
   - [X] TeTextMessage?
 - [ ] Instructions on how to use it
