@@ -143,11 +143,17 @@ pub trait ResourceProvider {
 
 /// A different trait that most likely only the web will use. Whatever
 pub trait ProgressResourceProvider: ResourceProvider {
-    async fn get_resource_with_progress(
+    async fn request_map_with_progress(
         &self,
         identifier: &ResourceIdentifier,
         progress_callback: impl Fn(f32) + Send + 'static,
     ) -> Result<Resource, ResourceProviderError>;
+
+    async fn request_replay_with_progress(
+        &self,
+        replay_name: &str,
+        progress_callback: impl Fn(f32) + Send + 'static,
+    ) -> Result<GhostBlob, ResourceProviderError>;
 }
 
 // this makes sure that we have ".bsp in the map name"

@@ -4,6 +4,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use ghost::GhostBlobType;
 use serde::{Deserialize, Serialize};
 
 /// For native
@@ -12,12 +13,21 @@ pub struct KDRConfig {
 }
 
 /// For API server
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct KDRApiServerConfig {
     pub game_dir: PathBuf,
+
     pub common_resource: Vec<PathBuf>,
+
+    pub replay_folders: Vec<PathBuf>,
+    pub replay_formats: Vec<String>,
+    pub replay_folders_search_recursively: bool,
+    pub replay_unknown_format_override: Option<GhostBlobType>,
+
     pub port: u16,
     pub use_resmake_zip: bool,
+
+    pub secret: String,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -69,8 +79,13 @@ mod test {
         let config = KDRApiServerConfig {
             game_dir: PathBuf::from("/path/to/what"),
             common_resource: vec![],
+            replay_folders: vec![],
+            replay_formats: vec![],
+            replay_folders_search_recursively: false,
+            replay_unknown_format_override: None,
             port: 3001,
             use_resmake_zip: false,
+            secret: "abcd".into(),
         };
 
         let _s = toml::to_string(&config).unwrap();

@@ -90,7 +90,8 @@ impl LightMapAtlasBuffer {
         // let's do 4K
         // ~~todo: multiple atlases~~
         // no need, this dimension 1024 is enough to fit 64 allocblock
-        const DIMENSION: u32 = 1024;
+        // FIXME: 1096 here just to make sure that all allocations work, not sure why
+        const DIMENSION: u32 = 1096;
         const PADDING: i32 = 0;
 
         let atlas_options = guillotiere::AllocatorOptions {

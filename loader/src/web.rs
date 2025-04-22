@@ -4,8 +4,13 @@ use std::{
 };
 
 use bsp::Bsp;
-use common::{REQUEST_COMMON_RESOURCE_ENDPOINT, REQUEST_MAP_ENDPOINT, REQUEST_MAP_LIST_ENDPOINT};
+use common::{
+    REQUEST_COMMON_RESOURCE_ENDPOINT, REQUEST_MAP_ENDPOINT, REQUEST_MAP_LIST_ENDPOINT,
+    REQUEST_REPLAY_ENDPOINT, REQUEST_REPLAY_LIST,
+};
 use futures_util::StreamExt;
+use ghost::GhostBlob;
+use serde::{Deserialize, Serialize};
 use zip::ZipArchive;
 
 use crate::{
@@ -16,6 +21,7 @@ use super::ResourceProvider;
 
 const MAP_NAME_KEY: &str = "map_name";
 const GAME_MOD_KEY: &str = "game_mod";
+const REPLAY_NAME_KEY: &str = "replay_name";
 
 #[derive(Debug, Clone)]
 pub struct WebResourceProvider {
@@ -31,7 +37,7 @@ impl WebResourceProvider {
 }
 
 impl ProgressResourceProvider for WebResourceProvider {
-    async fn get_resource_with_progress(
+    async fn request_map_with_progress(
         &self,
         identifier: &crate::ResourceIdentifier,
         progress_callback: impl Fn(f32) + Send + 'static,
@@ -118,20 +124,85 @@ impl ProgressResourceProvider for WebResourceProvider {
             resources: extracted_files,
         })
     }
+
+    async fn request_replay_with_progress(
+        &self,
+        replay_name: &str,
+        progress_callback: impl Fn(f32) + Send + 'static,
+    ) -> Result<ghost::GhostBlob, ResourceProviderError> {
+        // mimicking request_map_with_progress
+        let url = format!("{}/{}", self.base_url, REQUEST_REPLAY_ENDPOINT);
+        let client = reqwest::Client::new();
+
+        let mut map = HashMap::new();
+        map.insert(REPLAY_NAME_KEY, &replay_name);
+
+        let response = client
+            .post(url)
+            .json(&map)
+            .send()
+            .await
+            .map_err(|op| ResourceProviderError::RequestError { source: op })?;
+
+        const NOT_FOUND_CODE: u16 = 404;
+        let status_code = response.status().as_u16();
+
+        if status_code == NOT_FOUND_CODE {
+            if let Ok(body) = response.text().await {
+                return Err(ResourceProviderError::ResponseError {
+                    status_code,
+                    message: body,
+                });
+            }
+
+            return Err(ResourceProviderError::ResponseError {
+                status_code,
+                message: "No message".to_string(),
+            });
+        };
+
+        let response =
+            response
+                .error_for_status()
+                .map_err(|_op| ResourceProviderError::ResponseError {
+                    status_code,
+                    message: "No message".to_string(),
+                })?;
+
+        let total_size = response.content_length().unwrap_or(0);
+        let mut downloaded = 0u64;
+        let mut byte_stream = response.bytes_stream();
+        let mut all_bytes = Vec::new();
+
+        while let Some(chunk) = byte_stream.next().await {
+            let chunk =
+                chunk.map_err(|op| ResourceProviderError::ResponsePayloadError { source: op })?;
+            downloaded += chunk.len() as u64;
+            all_bytes.extend_from_slice(&chunk);
+
+            if total_size > 0 {
+                progress_callback(downloaded as f32 / total_size as f32);
+            }
+        }
+
+        let ghost_blob: GhostBlob = serde_json::from_slice(&all_bytes).unwrap();
+
+        Ok(ghost_blob)
+    }
 }
 
 impl ResourceProvider for WebResourceProvider {
-    async fn get_resource(
+    async fn request_map(
         &self,
         identifier: &super::ResourceIdentifier,
     ) -> Result<super::Resource, super::error::ResourceProviderError> {
         let dummy_callback = |_: f32| {};
 
-        self.get_resource_with_progress(identifier, dummy_callback)
+        self.request_map_with_progress(identifier, dummy_callback)
             .await
     }
 
-    async fn get_map_list(&self) -> Result<crate::MapList, ResourceProviderError> {
+    async fn request_map_list(&self) -> Result<crate::MapList, ResourceProviderError> {
         let url = format!("{}/{}", self.base_url, REQUEST_MAP_LIST_ENDPOINT);
 
         let response = reqwest::get(url)
@@ -145,8 +216,28 @@ impl ResourceProvider for WebResourceProvider {
             .map_err(|op| ResourceProviderError::ResponsePayloadError { source: op })
     }
 
-    async fn get_replay_list(&self) -> Result<crate::ReplayList, ResourceProviderError> {
-        todo!()
+    async fn request_replay_list(&self) -> Result<crate::ReplayList, ResourceProviderError> {
+        let url = format!("{}/{}", self.base_url, REQUEST_REPLAY_LIST);
+
+        let response = reqwest::get(url)
+            .await
+            .and_then(|response| response.error_for_status())
+            .map_err(|op| ResourceProviderError::RequestError { source: op })?;
+
+        response
+            .json()
+            .await
+            .map_err(|op| ResourceProviderError::ResponsePayloadError { source: op })
+    }
+
+    async fn request_replay(
+        &self,
+        replay_name: &str,
+    ) -> Result<ghost::GhostBlob, ResourceProviderError> {
+        let dummy_callback = |_: f32| {};
+
+        self.request_replay_with_progress(replay_name, dummy_callback)
+            .await
     }
 }
 

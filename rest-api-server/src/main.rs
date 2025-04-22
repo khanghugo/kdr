@@ -5,10 +5,8 @@ use std::path::PathBuf;
 
 use common::CONFIG_FILE_NAME;
 use config::KDRApiServerConfig;
-use loader::native::NativeResourceProvider;
 use server::start_server;
-use tracing::info;
-use utils::{create_common_resource, start_tracing};
+use utils::start_tracing;
 
 mod send_res;
 mod server;
@@ -17,10 +15,7 @@ pub(crate) mod utils;
 const KDR_API_CONFIG_PATH_ENV: &str = "KDR_API_CONFIG_PATH";
 
 pub struct ServerArgs {
-    resource_provider: NativeResourceProvider,
-    port: u16,
-    common_resource: Option<Vec<u8>>,
-    use_resmake_zip: bool,
+    config: KDRApiServerConfig,
 }
 
 fn main() -> std::io::Result<()> {
@@ -38,27 +33,7 @@ fn main() -> std::io::Result<()> {
         Err(err) => panic!("Cannot read config file `{}`: {}", config.display(), err),
     };
 
-    let game_dir = config.game_dir;
-    let port = config.port;
-    let resource_provider = NativeResourceProvider::new(game_dir.as_path());
-
-    let common_resource = if config.common_resource.is_empty() {
-        info!("No common resource given");
-        None
-    } else {
-        info!(
-            "Found ({}) common resources given. Creating .zip for common resources",
-            config.common_resource.len()
-        );
-        create_common_resource(game_dir.as_path(), &config.common_resource).into()
-    };
-
-    let server_args = ServerArgs {
-        resource_provider,
-        port,
-        common_resource,
-        use_resmake_zip: config.use_resmake_zip,
-    };
+    let server_args = ServerArgs { config };
 
     return start_server(server_args);
 }

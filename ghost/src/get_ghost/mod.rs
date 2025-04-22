@@ -1,4 +1,4 @@
-use std::array::from_fn;
+use std::{array::from_fn, path::Path};
 
 use dem::types::Demo;
 use glam::{FloatExt, Vec3};
@@ -6,6 +6,7 @@ use glam::{FloatExt, Vec3};
 pub(crate) mod demo;
 pub(crate) mod romanian_jumpers;
 pub(crate) mod simen;
+pub(crate) mod sourceruns_hlkz;
 pub(crate) mod surf_gateway;
 
 #[derive(Debug, Clone)]
@@ -202,16 +203,16 @@ impl GhostInfo {
     // Returns a closure that we can re-use
     // This closure can also take in an argument in case the ghost doesn't have frame time.
     pub fn get_ghost_length(&self) -> Box<dyn Fn(f32) -> f32 + '_> {
-        let has_frametime = self.frames[0].frametime.is_none();
+        let has_frametime = self.frames[0].frametime.is_some();
         let maybe_total_length: f32 = self.frames.iter().filter_map(|frame| frame.frametime).sum();
 
-        let no_frametime = move |frametime: f32| frametime * self.frames.len() as f32;
-        let yes_frametime = move |_: f32| maybe_total_length;
+        let use_custom_frametime = move |frametime: f32| frametime * self.frames.len() as f32;
+        let ignore_custom_frametime = move |_: f32| maybe_total_length;
 
         if has_frametime {
-            return Box::new(yes_frametime);
+            return Box::new(ignore_custom_frametime);
         } else {
-            return Box::new(no_frametime);
+            return Box::new(use_custom_frametime);
         }
     }
 
@@ -232,4 +233,10 @@ pub fn angle_diff(curr: f32, next: f32) -> f32 {
     let next = next.to_radians();
 
     (-(curr - next).sin()).asin().to_degrees()
+}
+
+pub fn file_name_get_stem(file_name: &str) -> Option<String> {
+    let p = Path::new(file_name);
+
+    p.file_name()?.to_str()?.to_string().into()
 }

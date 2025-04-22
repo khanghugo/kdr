@@ -8,7 +8,8 @@ mod get_ghost;
 pub use get_ghost::*;
 use get_ghost::{
     demo::demo_ghost_parse, romanian_jumpers::romanian_jumpers_ghost_parse,
-    simen::simen_ghost_parse, surf_gateway::surf_gateway_ghost_parse,
+    simen::simen_ghost_parse, sourceruns_hlkz::srhlkz_ghost_parse,
+    surf_gateway::surf_gateway_ghost_parse,
 };
 use serde::{Deserialize, Serialize};
 
@@ -19,15 +20,18 @@ pub enum GhostBlob {
     Simen(String),
     SurfGateway(String),
     RomanianJumpers(String),
+    SRHLKZ(Vec<u8>),
     Unknown,
 }
 
 // for forcing ghost type regardless of the file format
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum GhostBlobType {
     Demo,
     Simen,
     SurfGateway,
     RomanianJumpers,
+    SRHLKZ,
 }
 
 impl TryFrom<&str> for GhostBlobType {
@@ -42,13 +46,35 @@ impl TryFrom<&str> for GhostBlobType {
             return Ok(GhostBlobType::RomanianJumpers);
         } else if value == "demo" {
             return Ok(GhostBlobType::Demo);
+        } else if value == "hlkz" {
+            return Ok(GhostBlobType::SRHLKZ);
         } else {
             return Err(format!("unknown blob type `{}`", value).leak());
         }
     }
 }
 
-pub fn get_ghost_blob(
+impl GhostBlobType {
+    pub fn try_from_file_name(s: &str) -> Option<Self> {
+        if s.ends_with(".dem") {
+            Self::Demo.into()
+        } else if s.ends_with(".simen.txt") {
+            Self::Simen.into()
+        } else if s.ends_with(".sg.json") {
+            Self::SurfGateway.into()
+        } else if s.ends_with(".rj.json") {
+            Self::RomanianJumpers.into()
+        } else if s.ends_with(".dat") {
+            Self::SRHLKZ.into()
+        } else {
+            None
+        }
+    }
+}
+
+// for native to fetch data and send to some kind of processor
+// also used by server to fetch blob and send through the net
+pub fn get_ghost_blob_from_path(
     path: &Path,
     overridden_option: Option<GhostBlobType>,
 ) -> Result<GhostBlob, GhostError> {
@@ -64,47 +90,86 @@ pub fn get_ghost_blob(
     // good for people who don't even bother to standardize their own format
     if let Some(overridden_option) = overridden_option {
         match overridden_option {
-            GhostBlobType::Demo => {
+            GhostBlobType::Demo | GhostBlobType::SRHLKZ => {
                 let bytes = std::fs::read(path).map_err(|op| GhostError::IOError { source: op })?;
-                return Ok(GhostBlob::Demo(bytes));
+
+                return match overridden_option {
+                    GhostBlobType::Demo => Ok(GhostBlob::Demo(bytes)),
+                    GhostBlobType::SRHLKZ => Ok(GhostBlob::SRHLKZ(bytes)),
+                    GhostBlobType::RomanianJumpers
+                    | GhostBlobType::Simen
+                    | GhostBlobType::SurfGateway => unreachable!(),
+                };
             }
             GhostBlobType::Simen | GhostBlobType::SurfGateway | GhostBlobType::RomanianJumpers => {
                 let string_data = std::fs::read_to_string(path)
                     .map_err(|op| GhostError::IOError { source: op })?;
 
-                match overridden_option {
-                    GhostBlobType::Demo => unreachable!(),
-                    GhostBlobType::Simen => return Ok(GhostBlob::Simen(string_data)),
-                    GhostBlobType::SurfGateway => return Ok(GhostBlob::SurfGateway(string_data)),
-                    GhostBlobType::RomanianJumpers => {
-                        return Ok(GhostBlob::RomanianJumpers(string_data));
-                    }
-                }
+                return match overridden_option {
+                    GhostBlobType::Demo | GhostBlobType::SRHLKZ => unreachable!(),
+                    GhostBlobType::Simen => Ok(GhostBlob::Simen(string_data)),
+                    GhostBlobType::SurfGateway => Ok(GhostBlob::SurfGateway(string_data)),
+                    GhostBlobType::RomanianJumpers => Ok(GhostBlob::RomanianJumpers(string_data)),
+                };
             }
         }
     }
 
-    // now proceed to check the file name instead
-    if file_name.ends_with(".dem") {
-        let bytes = std::fs::read(path).map_err(|op| GhostError::IOError { source: op })?;
-
-        return Ok(GhostBlob::Demo(bytes));
-    } else {
-        let string_data =
-            std::fs::read_to_string(path).map_err(|op| GhostError::IOError { source: op })?;
-
-        if file_name.ends_with(".simen.txt") {
-            return Ok(GhostBlob::Simen(string_data));
-        } else if file_name.ends_with(".sg.json") {
-            return Ok(GhostBlob::SurfGateway(string_data));
-        } else if file_name.ends_with(".rj.json") {
-            return Ok(GhostBlob::RomanianJumpers(string_data));
-        } else {
-            return Err(GhostError::UnknownFormat {
-                path: path.to_path_buf(),
-            });
-        }
+    let Some(blob_type) = GhostBlobType::try_from_file_name(&file_name) else {
+        return Err(GhostError::UnknownFormat {
+            path: file_name.into(),
+        });
     };
+
+    match blob_type {
+        GhostBlobType::Demo | GhostBlobType::SRHLKZ => {
+            let bytes = std::fs::read(path).map_err(|op| GhostError::IOError { source: op })?;
+
+            match blob_type {
+                GhostBlobType::Demo => Ok(GhostBlob::Demo(bytes)),
+                GhostBlobType::Simen
+                | GhostBlobType::SurfGateway
+                | GhostBlobType::RomanianJumpers => unreachable!(),
+                GhostBlobType::SRHLKZ => Ok(GhostBlob::SRHLKZ(bytes)),
+            }
+        }
+        GhostBlobType::Simen | GhostBlobType::SurfGateway | GhostBlobType::RomanianJumpers => {
+            let s_data =
+                std::fs::read_to_string(path).map_err(|op| GhostError::IOError { source: op })?;
+
+            match blob_type {
+                GhostBlobType::Demo | GhostBlobType::SRHLKZ => unreachable!(),
+                GhostBlobType::Simen => Ok(GhostBlob::Simen(s_data)),
+                GhostBlobType::SurfGateway => Ok(GhostBlob::SurfGateway(s_data)),
+                GhostBlobType::RomanianJumpers => Ok(GhostBlob::RomanianJumpers(s_data)),
+            }
+        }
+    }
+}
+
+// for file dialogue where it tries to categorize the bytes
+// file dialogue knows the bytes, but not whether it is ghost blob or map blob, it only knows the map name
+pub fn get_ghost_blob_from_bytes(file_name: &str, data: Vec<u8>) -> Result<GhostBlob, GhostError> {
+    let Some(blob_type) = GhostBlobType::try_from_file_name(file_name) else {
+        return Err(GhostError::UnknownFormat {
+            path: file_name.into(),
+        });
+    };
+
+    match blob_type {
+        GhostBlobType::Demo => Ok(GhostBlob::Demo(data)),
+        GhostBlobType::Simen | GhostBlobType::SurfGateway | GhostBlobType::RomanianJumpers => {
+            let s_data = String::from_utf8(data).unwrap();
+
+            match blob_type {
+                GhostBlobType::Demo | GhostBlobType::SRHLKZ => unreachable!(),
+                GhostBlobType::Simen => Ok(GhostBlob::Simen(s_data)),
+                GhostBlobType::SurfGateway => Ok(GhostBlob::SurfGateway(s_data)),
+                GhostBlobType::RomanianJumpers => Ok(GhostBlob::RomanianJumpers(s_data)),
+            }
+        }
+        GhostBlobType::SRHLKZ => Ok(GhostBlob::SRHLKZ(data)),
+    }
 }
 
 pub fn get_ghost_from_blob(file_name: &str, blob: GhostBlob) -> Result<GhostInfo, GhostError> {
@@ -118,6 +183,7 @@ pub fn get_ghost_from_blob(file_name: &str, blob: GhostBlob) -> Result<GhostInfo
         GhostBlob::Simen(s) => simen_ghost_parse(file_name, &s),
         GhostBlob::SurfGateway(s) => surf_gateway_ghost_parse(file_name, &s),
         GhostBlob::RomanianJumpers(s) => romanian_jumpers_ghost_parse(file_name, &s),
+        GhostBlob::SRHLKZ(items) => srhlkz_ghost_parse(file_name, &items),
         GhostBlob::Unknown => {
             return Err(GhostError::UnknownFormat {
                 path: file_name.into(),

@@ -3,7 +3,12 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use loader::{ResourceIdentifier, native::search_game_resource};
+use config::KDRApiServerConfig;
+use ghost::{GhostBlob, get_ghost_blob_from_path};
+use loader::{
+    MapList, ReplayList, ResourceIdentifier, ResourceProvider,
+    native::{NativeResourceProvider, scan_folder_for_files, search_game_resource},
+};
 use tracing::{Level, info, warn};
 use tracing_subscriber::{FmtSubscriber, fmt::time::LocalTime};
 use zip::{ZipWriter, write::SimpleFileOptions};
@@ -84,4 +89,54 @@ pub fn create_common_resource(game_dir: &Path, res: &[PathBuf]) -> Vec<u8> {
     });
 
     return zip_files(wasm_files);
+}
+
+pub async fn get_map_list(resource_provider: &NativeResourceProvider) -> MapList {
+    let map_list = resource_provider.request_map_list().await.unwrap();
+
+    info!(
+        "Found ({}) maps for map list",
+        map_list.iter().map(|e| e.1.len()).sum::<usize>()
+    );
+
+    map_list
+}
+
+pub async fn get_replay_list(config: &KDRApiServerConfig) -> ReplayList {
+    let formats: Vec<&str> = config.replay_formats.iter().map(|s| s.as_str()).collect();
+    let replay_list: ReplayList = config
+        .replay_folders
+        .iter()
+        .filter_map(|folder| {
+            scan_folder_for_files(
+                folder,
+                folder,
+                &formats,
+                config.replay_folders_search_recursively,
+            )
+        })
+        .flatten()
+        .collect();
+
+    info!("Found ({}) demos for demo list", replay_list.len());
+
+    replay_list
+}
+
+pub fn get_replay(config: &KDRApiServerConfig, replay_name: &str) -> Option<GhostBlob> {
+    config.replay_folders.iter().find_map(|folder| {
+        let path = folder.join(replay_name);
+        let canonicalized = path.canonicalize().ok()?;
+
+        // sanitizing the path
+        if !canonicalized.starts_with(folder) {
+            return None;
+        }
+
+        get_ghost_blob_from_path(
+            &canonicalized,
+            config.replay_unknown_format_override.clone(),
+        )
+        .ok()
+    })
 }

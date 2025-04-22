@@ -8,6 +8,7 @@ edition.workspace = true
 loader = { path = "../loader" }
 common = { path = "../common" }
 config = { path = "../config" }
+ghost = { path = "../ghost" }
 
 actix-cors = "0.7.1"
 actix-web = "4.10.2"
@@ -17,7 +18,6 @@ tracing = "0.1.41"
 tracing-subscriber = { version = "0.3.19", features = ["local-time"] }
 uuid = { version = "1.16.0", features = ["v4"] }
 zip = { version = "2.6.1", features = ["deflate"], default-features = false }
-pollster = "0.4.0"
 
 [features]
 default = []

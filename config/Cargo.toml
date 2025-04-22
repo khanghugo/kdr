@@ -5,6 +5,8 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
+ghost = { path = "../ghost" }
+
 serde = { version = "1.0.219", features = ["derive"] }
 thiserror = "2.0.12"
 toml = "0.8.20"

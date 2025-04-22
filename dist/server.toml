@@ -1,4 +1,8 @@
-game_dir = "/path/to/what"
+# Directory to the game
+# If `use_resmake_zip` is not in use, server will fallback to searching game files manually and zip it
+game_dir = "/WD1/half-life"
+
+# Resource files that are distributed to clients upon connecting
 common_resource = [
     "sound/player/pl_step1.wav",
     "sound/player/pl_step2.wav",
@@ -9,5 +13,26 @@ common_resource = [
     "sound/common/wpn_denyselect.wav",
     "sound/weapons/knife_slash2.wav",
 ]
+
+# List of folders containing replays
+replay_folders = [
+    "/home/khang/bxt/game_isolated/cstrike/cc1036/"
+]
+
+# List of replay formats
+replay_formats = ["dem"]
+
+# Whether to search for replays in sub folders inside selected folders
+replay_folders_search_recursively = true
+
+# Listening port
 port = 3001
+
+# Instead of searching for game files manually and zip them, this option will distribute an already processed zip archive.
+# This zip archive is in the same folder as the .bsp file and contains all the resource related to the map.
+# This zip archive should be made with gchimp ResMake by running this command
+# resmake -f /pat/to/hl.exe/<game mod>/maps --wad-check --include-default --skip-created-res
 use_resmake_zip = true
+
+# Secret key to do update with API calls
+secret = "secret"

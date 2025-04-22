@@ -7,7 +7,7 @@ use std::{
 use ::tracing::{info, warn};
 use common::{UNKNOWN_GAME_MOD, vec3};
 use constants::{WINDOW_HEIGHT, WINDOW_WIDTH};
-use ghost::{GhostBlob, GhostInfo};
+use ghost::{GhostBlob, GhostBlobType, GhostInfo, get_ghost_blob_from_bytes, get_ghost_from_blob};
 use kira::sound::static_sound::StaticSoundData;
 use state::{
     AppState,
@@ -61,13 +61,18 @@ use loader::web::WebResourceProvider;
 pub enum AppError {
     #[error("Problems with resource provider: {source}")]
     ProviderError { source: ResourceProviderError },
+
     #[error("No resource provider found")]
     NoProvider,
+
     #[error("Audio error: {source}")]
     AudioError {
         #[source]
         source: AudioStateError,
     },
+
+    #[error("Unknown file format: {file_name}")]
+    UnknownFile { file_name: String },
 }
 
 pub enum AppEvent {
@@ -475,7 +480,7 @@ impl ApplicationHandler<AppEvent> for App {
 
                 spawn_async(async move {
                     let resource_res = resource_provider
-                        .get_resource_with_progress(&resource_identifier, move |progress| {
+                        .request_map_with_progress(&resource_identifier, move |progress| {
                             send_update_fetch_progress(progress);
                         })
                         .await;
@@ -637,17 +642,28 @@ impl ApplicationHandler<AppEvent> for App {
                         });
 
                     self.state.file_state.selected_file_type = SelectedFileType::Bsp;
-                } else if file_extension == "dem" {
-                    info!("Received .dem from file dialogue");
+                } else {
+                    let Ok(ghost_blob) = get_ghost_blob_from_bytes(
+                        file_path.display().to_string().as_str(),
+                        file_bytes.to_vec(),
+                    ) else {
+                        self.event_loop_proxy
+                            .send_event(AppEvent::ErrorEvent(AppError::UnknownFile {
+                                file_name: file_path.display().to_string(),
+                            }))
+                            .unwrap_or_else(|_| warn!("Failed to send ErrorEvent"));
+
+                        return;
+                    };
+
+                    info!("Received a replay from file dialogue");
 
                     self.event_loop_proxy
                         .send_event(AppEvent::ReceiveReplayBlob {
                             replay_name: file_path.to_path_buf(),
-                            replay_blob: GhostBlob::Demo(file_bytes.clone()),
+                            replay_blob: ghost_blob,
                         })
                         .unwrap_or_else(|_| warn!("Cannot send ReceiveReplayBlob"));
-                } else {
-                    warn!("Bad resource: {}", file_path.display());
                 }
             }
             AppEvent::RequestReplay(replay_name) => {
@@ -987,6 +1003,9 @@ impl ApplicationHandler<AppEvent> for App {
                 // if there is error, just stop with things
                 // stop the loading
                 self.state.file_state.loading_state = LoadingState::Idle;
+
+                // stop with ghost
+                self.state.replay = None;
 
                 // toast the error
                 self.state.ui_state.toaster.warning(app_error.to_string());

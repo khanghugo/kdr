@@ -33,7 +33,7 @@ impl AppState {
 
         let replay_list_id = egui::Id::new("replay list ui");
 
-        egui::Window::new("replay list ui")
+        egui::Window::new("Replay list")
             .id(replay_list_id)
             .resizable(false)
             .default_open(false)

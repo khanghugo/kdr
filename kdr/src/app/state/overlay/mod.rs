@@ -45,10 +45,7 @@ impl AppState {
                 }
             }
 
-            self.draw_entity_text(ctx);
-            self.draw_say_text(ctx);
-
-            // anything not related to the game is drawn last so that they cover the game elements
+            // need to draw these guys early so they don't stack on top of each other because of area from the saytext
             if self.ui_state.is_main_ui_enabled {
                 if self.replay.is_some() {
                     self.seek_bar(ctx);
@@ -56,10 +53,13 @@ impl AppState {
 
                 self.ui_state.toaster.show(ctx);
 
-                self.map_list(ctx);
-                self.replay_list(ctx);
                 self.control_panel(ctx);
+                self.replay_list(ctx);
+                self.map_list(ctx);
             }
+
+            self.draw_entity_text(ctx);
+            self.draw_say_text(ctx);
         }
     }
 }

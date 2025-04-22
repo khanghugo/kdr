@@ -4,7 +4,7 @@ use std::{
 };
 
 use common::{COMMON_GAME_MODS, COMMON_RESOURCE_SOUND, UNKNOWN_GAME_MOD};
-use ghost::get_ghost_blob;
+use ghost::get_ghost_blob_from_path;
 use tracing::{info, warn};
 
 use bsp::Bsp;
@@ -35,12 +35,20 @@ impl NativeResourceProvider {
 
 // Need to impl it here as well so in our main code, we call the same function
 impl ProgressResourceProvider for NativeResourceProvider {
-    async fn get_resource_with_progress(
+    async fn request_map_with_progress(
         &self,
         identifier: &crate::ResourceIdentifier,
         _progress_callback: impl Fn(f32) + Send + 'static,
     ) -> Result<crate::Resource, ResourceProviderError> {
         self.request_map(identifier).await
+    }
+
+    async fn request_replay_with_progress(
+        &self,
+        replay_name: &str,
+        _progress_callback: impl Fn(f32) + Send + 'static,
+    ) -> Result<ghost::GhostBlob, ResourceProviderError> {
+        self.request_replay(replay_name).await
     }
 }
 
@@ -169,7 +177,7 @@ impl ResourceProvider for NativeResourceProvider {
     }
 
     async fn request_replay_list(&self) -> Result<crate::ReplayList, ResourceProviderError> {
-        match recursive_read_dem_folder(&self.game_dir, &self.game_dir) {
+        match scan_folder_for_files(&self.game_dir, &self.game_dir, &["dem"], true) {
             Some(yse) => Ok(yse),
             None => Err(ResourceProviderError::DemoList),
         }
@@ -181,12 +189,18 @@ impl ResourceProvider for NativeResourceProvider {
     ) -> Result<ghost::GhostBlob, ResourceProviderError> {
         let replay_path = self.game_dir.join(replay_name);
 
-        get_ghost_blob(&replay_path, None).map_err(|op| ResourceProviderError::Ghost { source: op })
+        get_ghost_blob_from_path(&replay_path, None)
+            .map_err(|op| ResourceProviderError::Ghost { source: op })
     }
 }
 
 // base so that we can only extract the relative path starting from game_dir
-fn recursive_read_dem_folder(base: &Path, curr: &Path) -> Option<ReplayList> {
+pub fn scan_folder_for_files(
+    base: &Path,
+    curr: &Path,
+    formats: &[&str],
+    recursive: bool,
+) -> Option<ReplayList> {
     let mut replay_list = ReplayList::new();
 
     let entries = std::fs::read_dir(curr).expect("cannot read folder");
@@ -206,7 +220,7 @@ fn recursive_read_dem_folder(base: &Path, curr: &Path) -> Option<ReplayList> {
             if entry.is_file() && entry.extension().is_some() {
                 let ext = entry.extension().unwrap();
 
-                if ext == "dem" {
+                if formats.contains(&ext.to_str().unwrap()) {
                     let replay_path = entry.strip_prefix(base).unwrap().display().to_string();
 
                     replay_list.push(replay_path);
@@ -214,11 +228,13 @@ fn recursive_read_dem_folder(base: &Path, curr: &Path) -> Option<ReplayList> {
             }
         });
 
-    entries_to_visit.into_iter().for_each(|entry| {
-        if let Some(extras) = recursive_read_dem_folder(base, entry.as_path()) {
-            replay_list.extend(extras);
-        }
-    });
+    if recursive {
+        entries_to_visit.into_iter().for_each(|entry| {
+            if let Some(extras) = scan_folder_for_files(base, entry.as_path(), formats, recursive) {
+                replay_list.extend(extras);
+            }
+        });
+    }
 
     Some(replay_list)
 }

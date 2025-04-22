@@ -981,6 +981,7 @@ dependencies = [
 name = "config"
 version = "0.1.0"
 dependencies = [
+ "ghost",
  "serde",
  "thiserror 2.0.12",
  "toml",
@@ -3897,8 +3898,8 @@ dependencies = [
  "actix-web",
  "common",
  "config",
+ "ghost",
  "loader",
- "pollster",
  "serde",
  "thiserror 2.0.12",
  "tracing",
