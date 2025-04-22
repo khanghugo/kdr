@@ -25,6 +25,16 @@ replay_formats = ["dem"]
 # Whether to search for replays in sub folders inside selected folders
 replay_folders_search_recursively = true
 
+# When ghost format is unknown, uses this format instead.
+# You should enable this if you are running your own ghost format for the server.
+# Here are the formats that kdr categorizes:
+# "Demo": ".dem"
+# "Simen": ".simen.txt"
+# "SurfGateway": ".sg.json"
+# "RomanianJumpers": ".rj.json"
+# "SRHLKZ": ".dat"
+replay_unknown_format_override = "Demo"
+
 # Listening port
 port = 3001
 

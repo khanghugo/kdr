@@ -248,7 +248,7 @@ pub fn demo_ghost_parse(filename: &str, demo: &Demo) -> eyre::Result<GhostInfo> 
                                     let name_really_start = name_start + key.len();
                                     let name_length = info_str[name_really_start..]
                                         .find("\\")
-                                        .unwrap_or(info_str.len());
+                                        .unwrap_or(info_str.len() - name_really_start);
 
                                     player_names.insert(
                                         user_index,

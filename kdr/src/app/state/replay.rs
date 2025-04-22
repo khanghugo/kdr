@@ -48,10 +48,12 @@ impl AppState {
             ReplayPlaybackMode::Immediate(_) => todo!("not planned for now until the recorder"),
             ReplayPlaybackMode::FrameAccurate => todo!("will be eventually, an easy task"),
             ReplayPlaybackMode::Interpolated => {
-                // dont update anyting ghost related if paused
+                // dont update anyting ghost related if "paused"
                 // texts and such will be wastefully added
                 // sound is the worst because it will spam if we pause on the right frame
-                if self.paused {
+                // TODO maybe make this scope also explicitly pauses the replay?
+                // when the replay reaches the end, it somehow has to pause
+                if self.last_time == self.time {
                     return;
                 }
 

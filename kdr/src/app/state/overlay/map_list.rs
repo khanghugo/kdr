@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use loader::ResourceIdentifier;
+use loader::MapIdentifier;
 use tracing::warn;
 
 use crate::app::{
@@ -106,13 +106,13 @@ impl AppState {
                             let selectable_label = egui::SelectableLabel::new(false, map_name);
 
                             if ui.add(selectable_label).clicked() {
-                                let identifier = ResourceIdentifier {
+                                let identifier = MapIdentifier {
                                     map_name: map_name.to_string(),
                                     game_mod: game_mod.to_string(),
                                 };
 
                                 self.event_loop_proxy
-                                    .send_event(AppEvent::RequestResource(identifier))
+                                    .send_event(AppEvent::RequestMap(identifier))
                                     .unwrap_or_else(|_| warn!("Cannot send RequestResource"));
 
                                 // auxillary stuffs

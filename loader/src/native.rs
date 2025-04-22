@@ -11,7 +11,8 @@ use bsp::Bsp;
 use wad::types::Wad;
 
 use crate::{
-    MODEL_ENTITIES, MapList, ProgressResourceProvider, ReplayList, ResourceMap, SOUND_ENTITIES,
+    MODEL_ENTITIES, MapIdentifier, MapList, ProgressResourceProvider, ReplayList, ResourceMap,
+    SOUND_ENTITIES,
 };
 
 use super::{ResourceProvider, SKYBOX_SUFFIXES, error::ResourceProviderError, fix_bsp_file_name};
@@ -37,7 +38,7 @@ impl NativeResourceProvider {
 impl ProgressResourceProvider for NativeResourceProvider {
     async fn request_map_with_progress(
         &self,
-        identifier: &crate::ResourceIdentifier,
+        identifier: &MapIdentifier,
         _progress_callback: impl Fn(f32) + Send + 'static,
     ) -> Result<crate::Resource, ResourceProviderError> {
         self.request_map(identifier).await
@@ -64,7 +65,7 @@ impl ResourceProvider for NativeResourceProvider {
     /// So this function will be refactored or maybe just straight up used in the wrong context.
     async fn request_map(
         &self,
-        identifier: &super::ResourceIdentifier,
+        identifier: &MapIdentifier,
     ) -> Result<super::Resource, ResourceProviderError> {
         let map_name = fix_bsp_file_name(identifier.map_name.as_str());
         let map_relative_path = PathBuf::from("maps").join(map_name.as_str());

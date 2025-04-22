@@ -17,7 +17,9 @@ use kira::{
     sound::static_sound::{StaticSoundData, StaticSoundHandle},
     track::{SpatialTrackBuilder, SpatialTrackHandle, TrackBuilder, TrackHandle},
 };
-use tracing::warn;
+use tracing::{info, warn};
+
+use crate::app::AppEvent;
 
 use super::{AppState, Duration};
 
@@ -79,6 +81,8 @@ pub struct AmbientTrack {
 
 pub struct AudioState {
     pub backend: Option<AudioBackend>,
+    /// This happens on the web where user interaction is needed for audio context to start
+    pub able_to_start_backend: bool,
     pub volume: f32,
 }
 
@@ -86,6 +90,8 @@ impl Default for AudioState {
     fn default() -> Self {
         Self {
             backend: None,
+            // default to not being able to start audio, even on native, :()
+            able_to_start_backend: false,
             volume: 0.5,
         }
     }
@@ -296,5 +302,15 @@ impl AppState {
                 }
             }
         });
+    }
+
+    pub fn maybe_start_audio_based_on_user_interaction(&mut self) {
+        if !self.audio_state.able_to_start_backend {
+            info!("allowed to start audio");
+            self.audio_state.able_to_start_backend = true;
+            self.event_loop_proxy
+                .send_event(AppEvent::MaybeStartAudioBackEnd)
+                .unwrap_or_else(|_| warn!("Failed to send MaybeStartAudioBackEnd"));
+        }
     }
 }

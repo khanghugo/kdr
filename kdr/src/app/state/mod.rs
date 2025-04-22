@@ -38,7 +38,8 @@ pub struct OtherResources {
 pub struct AppState {
     // time
     pub time: f32,
-    pub last_time: Instant,
+    pub last_time: f32,
+    pub last_instant: Instant,
     pub frame_time: f32,
     pub paused: bool,
     pub playback_speed: f32,
@@ -65,10 +66,11 @@ pub struct AppState {
 impl AppState {
     pub fn new(event_loop_proxy: EventLoopProxy<AppEvent>) -> Self {
         Self {
-            time: 0.0,
-            last_time: Instant::now(),
+            time: 0.,
+            last_time: 0.,
+            last_instant: Instant::now(),
             frame_time: 1.,
-            playback_speed: 1.0,
+            playback_speed: 1.,
             paused: false,
 
             render_state: Default::default(),
@@ -102,11 +104,12 @@ impl AppState {
 
     fn delta_update(&mut self) {
         let now = Instant::now();
-        let diff = now.duration_since(self.last_time);
+        let diff = now.duration_since(self.last_instant);
         self.frame_time = diff.as_secs_f32();
-        self.last_time = now;
+        self.last_instant = now;
 
         if !(self.paused || self.replay.is_none()) {
+            self.last_time = self.time;
             self.time += diff.as_secs_f32() * self.playback_speed;
         }
     }

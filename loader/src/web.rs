@@ -39,7 +39,7 @@ impl WebResourceProvider {
 impl ProgressResourceProvider for WebResourceProvider {
     async fn request_map_with_progress(
         &self,
-        identifier: &crate::ResourceIdentifier,
+        identifier: &crate::MapIdentifier,
         progress_callback: impl Fn(f32) + Send + 'static,
     ) -> Result<crate::Resource, ResourceProviderError> {
         let map_name = fix_bsp_file_name(identifier.map_name.as_str());
@@ -194,7 +194,7 @@ impl ProgressResourceProvider for WebResourceProvider {
 impl ResourceProvider for WebResourceProvider {
     async fn request_map(
         &self,
-        identifier: &super::ResourceIdentifier,
+        identifier: &super::MapIdentifier,
     ) -> Result<super::Resource, super::error::ResourceProviderError> {
         let dummy_callback = |_: f32| {};
 
@@ -302,4 +302,19 @@ fn sanitize_base_url(s: &str) -> &str {
     } else {
         return s;
     }
+}
+
+pub fn parse_location_search(s: &str) -> HashMap<String, String> {
+    s.trim_start_matches("?")
+        .split_terminator("&")
+        .filter_map(|pairs| {
+            let what: Vec<&str> = pairs.split_terminator("=").collect();
+
+            let [key, value] = what.as_slice() else {
+                return None;
+            };
+
+            Some((key.to_string(), value.to_string()))
+        })
+        .collect()
 }

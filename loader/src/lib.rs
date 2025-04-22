@@ -47,7 +47,7 @@ const SKYBOX_SUFFIXES: &[&str] = &["ft", "bk", "up", "dn", "rt", "lf"];
 
 #[derive(Debug, Clone, Deserialize)]
 /// Map Identifier is sent from client to server to request files related to the map.
-pub struct ResourceIdentifier {
+pub struct MapIdentifier {
     /// Name of the map. It should not have the ".bsp" extension
     ///
     /// Eg: "/path/to/hl.exe/cstrike/maps/de_dust2.bsp" should have the name "de_dust2".
@@ -94,7 +94,7 @@ pub trait ResourceProvider {
     /// Gets map resource from given map identifier.
     async fn request_map(
         &self,
-        identifier: &ResourceIdentifier,
+        identifier: &MapIdentifier,
     ) -> Result<Resource, ResourceProviderError>;
 
     /// Gets replay blob and its type. The client then need to parse the data by itself based on type and data
@@ -116,12 +116,12 @@ pub trait ResourceProvider {
         &self,
         path: impl AsRef<Path> + AsRef<OsStr>,
         ghost_blob: GhostBlob,
-    ) -> Result<(ResourceIdentifier, GhostInfo), GhostError> {
+    ) -> Result<(MapIdentifier, GhostInfo), GhostError> {
         let path: &Path = path.as_ref();
 
         let ghost = get_ghost_from_blob(&path.display().to_string(), ghost_blob)?;
 
-        let map_identifier = ResourceIdentifier {
+        let map_identifier = MapIdentifier {
             map_name: ghost.map_name.to_owned(),
             game_mod: ghost.game_mod.to_owned(),
         };
@@ -145,7 +145,7 @@ pub trait ResourceProvider {
 pub trait ProgressResourceProvider: ResourceProvider {
     async fn request_map_with_progress(
         &self,
-        identifier: &ResourceIdentifier,
+        identifier: &MapIdentifier,
         progress_callback: impl Fn(f32) + Send + 'static,
     ) -> Result<Resource, ResourceProviderError>;
 

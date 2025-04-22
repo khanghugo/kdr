@@ -6,8 +6,12 @@ use std::{
 
 use ::tracing::{info, warn};
 use common::{UNKNOWN_GAME_MOD, vec3};
+
+#[cfg(target_arch = "wasm32")]
+use common::{REQUEST_MAP_ENDPOINT, REQUEST_MAP_GAME_MOD_QUERY, REQUEST_REPLAY_ENDPOINT};
+
 use constants::{WINDOW_HEIGHT, WINDOW_WIDTH};
-use ghost::{GhostBlob, GhostBlobType, GhostInfo, get_ghost_blob_from_bytes, get_ghost_from_blob};
+use ghost::{GhostBlob, GhostInfo, get_ghost_blob_from_bytes};
 use kira::sound::static_sound::StaticSoundData;
 use state::{
     AppState,
@@ -33,6 +37,7 @@ use winit::{
 use wasm_bindgen::JsCast;
 #[cfg(target_arch = "wasm32")]
 use winit::platform::web::{EventLoopExtWebSys, WindowAttributesExtWebSys};
+
 pub mod constants;
 mod state;
 
@@ -47,7 +52,7 @@ use crate::{
     utils::spawn_async,
 };
 use loader::{
-    MapList, ProgressResourceProvider, ReplayList, Resource, ResourceIdentifier, ResourceMap,
+    MapIdentifier, MapList, ProgressResourceProvider, ReplayList, Resource, ResourceMap,
     ResourceProvider, bsp_resource::BspResource, error::ResourceProviderError,
 };
 
@@ -55,7 +60,7 @@ use loader::{
 use loader::native::NativeResourceProvider;
 
 #[cfg(target_arch = "wasm32")]
-use loader::web::WebResourceProvider;
+use loader::web::{WebResourceProvider, parse_location_search};
 
 #[derive(Debug, thiserror::Error)]
 pub enum AppError {
@@ -79,7 +84,7 @@ pub enum AppEvent {
     CreateRenderContext(Arc<Window>),
     FinishCreateRenderContext(RenderContext),
     CreateEgui,
-    RequestResource(ResourceIdentifier),
+    RequestMap(MapIdentifier),
     ReceiveResource(Resource),
     NewFileSelected,
     RequestReplay(String),
@@ -87,7 +92,7 @@ pub enum AppEvent {
         replay_name: PathBuf,
         replay_blob: GhostBlob,
     },
-    ReceiveReplay(ResourceIdentifier, GhostInfo),
+    ReceiveReplay(MapIdentifier, GhostInfo),
     ReceivePostProcessingUpdate(PostProcessingControlState),
     MaybeStartAudioBackEnd,
     RequestCommonResource,
@@ -99,6 +104,9 @@ pub enum AppEvent {
     ReceiveReplayList(ReplayList),
     FinishCreateWorld(BspResource, WorldBuffer, Option<SkyboxBuffer>),
     UpdateFetchProgress(f32),
+    #[cfg(target_arch = "wasm32")]
+    ParseLocationSearch,
+    UnknownFormatModal,
     ErrorEvent(AppError),
 }
 
@@ -315,6 +323,8 @@ impl ApplicationHandler<AppEvent> for App {
             } => {
                 self.state
                     .handle_keyboard_input(event.physical_key, event.state);
+
+                self.state.maybe_start_audio_based_on_user_interaction();
             }
             WindowEvent::MouseInput {
                 device_id: _,
@@ -322,6 +332,8 @@ impl ApplicationHandler<AppEvent> for App {
                 button,
             } => {
                 self.state.handle_mouse_input(button, state);
+
+                self.state.maybe_start_audio_based_on_user_interaction();
             }
             WindowEvent::CursorMoved {
                 device_id: _,
@@ -331,6 +343,10 @@ impl ApplicationHandler<AppEvent> for App {
                 // It is confined but it can hit the border.
                 // Thus, the position is clamped.
                 // Use raw input instead
+
+                // cannot start audio with just cursor move
+                // it doesnt qualify as "a user gesture on the page"
+                // self.state.maybe_start_audio_based_on_user_interaction();
             }
             _ => (),
         }
@@ -369,6 +385,14 @@ impl ApplicationHandler<AppEvent> for App {
                 info!("Finished creating a render context");
 
                 self.render_context = render_context.into();
+
+                // parsing query (first?) if possible
+                #[cfg(target_arch = "wasm32")]
+                {
+                    self.event_loop_proxy
+                        .send_event(AppEvent::ParseLocationSearch)
+                        .unwrap_or_else(|_| warn!("Failed to send ParseLocationSearch"));
+                }
 
                 // create egui after render context is done initializing
                 self.event_loop_proxy
@@ -415,7 +439,7 @@ impl ApplicationHandler<AppEvent> for App {
 
                 info!("Finished creating egui renderer");
             }
-            AppEvent::RequestResource(resource_identifier) => {
+            AppEvent::RequestMap(resource_identifier) => {
                 info!("Requesting resources: {:?}", resource_identifier);
 
                 // Attempting to start audio whenever we request to load a map.
@@ -612,12 +636,7 @@ impl ApplicationHandler<AppEvent> for App {
 
                 let file_path = Path::new(file_path);
 
-                let Some(file_extension) = file_path.extension() else {
-                    warn!("New file does not contain an extension");
-                    return;
-                };
-
-                if file_extension == "bsp" {
+                if file_path.extension().is_some_and(|ext| ext == "bsp") {
                     info!("Received .bsp from file dialogue");
 
                     let possible_game_mod = file_path
@@ -630,13 +649,13 @@ impl ApplicationHandler<AppEvent> for App {
 
                     let bsp_name = file_path.file_name().unwrap().to_str().unwrap();
 
-                    let resource_identifier = ResourceIdentifier {
+                    let resource_identifier = MapIdentifier {
                         map_name: bsp_name.to_string(),
                         game_mod: possible_game_mod.to_string(),
                     };
 
                     self.event_loop_proxy
-                        .send_event(AppEvent::RequestResource(resource_identifier))
+                        .send_event(AppEvent::RequestMap(resource_identifier))
                         .unwrap_or_else(|_| {
                             warn!("Cannot send resource request message after file dialogue")
                         });
@@ -646,12 +665,12 @@ impl ApplicationHandler<AppEvent> for App {
                     let Ok(ghost_blob) = get_ghost_blob_from_bytes(
                         file_path.display().to_string().as_str(),
                         file_bytes.to_vec(),
+                        None,
                     ) else {
+                        // if format is not known, take us to the modal to select the format
                         self.event_loop_proxy
-                            .send_event(AppEvent::ErrorEvent(AppError::UnknownFile {
-                                file_name: file_path.display().to_string(),
-                            }))
-                            .unwrap_or_else(|_| warn!("Failed to send ErrorEvent"));
+                            .send_event(AppEvent::UnknownFormatModal)
+                            .unwrap_or_else(|_| warn!("Failed to send UnknownFormatModal"));
 
                         return;
                     };
@@ -778,7 +797,7 @@ impl ApplicationHandler<AppEvent> for App {
                 self.state.input_state.free_cam = false;
 
                 self.event_loop_proxy
-                    .send_event(AppEvent::RequestResource(identifier))
+                    .send_event(AppEvent::RequestMap(identifier))
                     .unwrap_or_else(|_| warn!("Failed to send RequestResource"));
             }
             AppEvent::ReceivePostProcessingUpdate(state) => {
@@ -802,6 +821,13 @@ impl ApplicationHandler<AppEvent> for App {
             AppEvent::MaybeStartAudioBackEnd => {
                 // We can only start audio manager after the user interacts with the site.
                 if self.state.audio_state.backend.is_some() {
+                    return;
+                }
+
+                // FIXME: for some reasons, on native, audio backend automagically starts even though i explicitly
+                // program that it can only start with user interaction
+                // it is not a bad thing, but this seems inconsistent
+                if !self.state.audio_state.able_to_start_backend {
                     return;
                 }
 
@@ -997,6 +1023,58 @@ impl ApplicationHandler<AppEvent> for App {
 
                 self.state.other_resources.replay_list = replay_list;
             }
+            #[cfg(target_arch = "wasm32")]
+            AppEvent::ParseLocationSearch => {
+                let Some(window) = web_sys::window() else {
+                    warn!("Parsing location search without window");
+                    return;
+                };
+
+                let Ok(search) = window.location().search() else {
+                    warn!("Parsing loation search without search");
+                    return;
+                };
+
+                let queries = parse_location_search(&search);
+
+                // prioritize replay before map
+                if let Some(replay) = queries.get(REQUEST_REPLAY_ENDPOINT) {
+                    info!("Received replay request in query: {}", replay);
+
+                    // audio will only start when user interaction is recorded
+                    self.state.audio_state.able_to_start_backend = false;
+                    self.state.paused = true;
+
+                    self.event_loop_proxy
+                        .send_event(AppEvent::RequestReplay(replay.to_string()))
+                        .unwrap_or_else(|_| warn!("Failed to send RequestReplay"));
+
+                    return;
+                }
+
+                if let Some(map_name) = queries.get(REQUEST_MAP_ENDPOINT) {
+                    if let Some(game_mod) = queries.get(REQUEST_MAP_GAME_MOD_QUERY) {
+                        let identifier = MapIdentifier {
+                            map_name: map_name.to_string(),
+                            game_mod: game_mod.to_string(),
+                        };
+
+                        info!("Received map request in query: {:?}", identifier);
+
+                        self.event_loop_proxy
+                            .send_event(AppEvent::RequestMap(identifier))
+                            .unwrap_or_else(|_| warn!("Failed to send RequestResource"));
+                    } else {
+                        warn!(
+                            "Request map query without game mod query `{}`",
+                            REQUEST_MAP_GAME_MOD_QUERY
+                        );
+                    }
+                }
+            }
+            AppEvent::UnknownFormatModal => {
+                self.state.ui_state.unknown_format_modal.enabled = true;
+            }
             AppEvent::ErrorEvent(app_error) => {
                 warn!("Error: {}", app_error.to_string());
 
@@ -1006,6 +1084,10 @@ impl ApplicationHandler<AppEvent> for App {
 
                 // stop with ghost
                 self.state.replay = None;
+
+                // drop all the files
+                self.state.file_state.selected_file = None;
+                self.state.file_state.selected_file_bytes = None;
 
                 // toast the error
                 self.state.ui_state.toaster.warning(app_error.to_string());

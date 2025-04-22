@@ -1,6 +1,7 @@
 use control_panel::{ControlPanelUIState, PostProcessingControlState};
 use map_list::MapListUIState;
 use replay_list::ReplayListUIState;
+use unknown_format_modal::UnknownFormatModalUIState;
 
 use super::AppState;
 
@@ -11,6 +12,7 @@ mod map_list;
 mod replay_list;
 mod seekbar;
 pub mod text;
+mod unknown_format_modal;
 
 pub struct UIState {
     /// Main UI includes: control panel, seekbar, demo list, map list.
@@ -19,6 +21,7 @@ pub struct UIState {
     pub pp_control: PostProcessingControlState,
     pub map_list: MapListUIState,
     pub replay_list: ReplayListUIState,
+    pub unknown_format_modal: UnknownFormatModalUIState,
     pub toaster: egui_notify::Toasts,
 }
 
@@ -30,6 +33,7 @@ impl Default for UIState {
             pp_control: PostProcessingControlState::default(),
             map_list: MapListUIState::default(),
             replay_list: ReplayListUIState::default(),
+            unknown_format_modal: UnknownFormatModalUIState::default(),
             toaster: egui_notify::Toasts::default(),
         }
     }
@@ -60,6 +64,7 @@ impl AppState {
 
             self.draw_entity_text(ctx);
             self.draw_say_text(ctx);
+            self.draw_unknown_format_modal(ctx);
         }
     }
 }

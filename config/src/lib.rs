@@ -79,16 +79,17 @@ mod test {
         let config = KDRApiServerConfig {
             game_dir: PathBuf::from("/path/to/what"),
             common_resource: vec![],
-            replay_folders: vec![],
-            replay_formats: vec![],
+            replay_folders: vec!["/path/to/foldre1".into(), "/path/to/pardre2".into()],
+            replay_formats: vec!["dem".to_string(), "dat".to_string()],
             replay_folders_search_recursively: false,
-            replay_unknown_format_override: None,
+            replay_unknown_format_override: Some(ghost::GhostBlobType::SRHLKZ),
             port: 3001,
             use_resmake_zip: false,
             secret: "abcd".into(),
         };
 
         let _s = toml::to_string(&config).unwrap();
+        println!("{}", _s);
     }
 
     #[test]
