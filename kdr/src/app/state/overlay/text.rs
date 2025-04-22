@@ -104,7 +104,10 @@ impl AppState {
                                 18.,
                                 egui::FontFamily::Name("tahoma".into()),
                             ));
-                        ui.label(rich_text);
+
+                        let say_text_label = egui::Label::new(rich_text).selectable(false);
+
+                        ui.add(say_text_label);
                     });
                 });
             });
