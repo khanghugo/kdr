@@ -348,6 +348,14 @@ impl ApplicationHandler<AppEvent> for App {
                 // it doesnt qualify as "a user gesture on the page"
                 // self.state.maybe_start_audio_based_on_user_interaction();
             }
+            WindowEvent::Resized(new_size) => {
+                let Some(render_context) = self.render_context.as_mut() else {
+                    warn!("Reszing without render context");
+                    return;
+                };
+
+                render_context.resize(new_size.width, new_size.height);
+            }
             _ => (),
         }
 
@@ -806,7 +814,7 @@ impl ApplicationHandler<AppEvent> for App {
                     return;
                 };
 
-                let mut pp = render_context.post_processing.lock().unwrap();
+                let mut pp = render_context.post_processing.write().unwrap();
 
                 pp.get_kuwahara_toggle().map(|res| *res = state.kuwahara);
 

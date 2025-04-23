@@ -17,6 +17,7 @@ impl RenderTargets {
         // wgpu::TextureFormat::Bgra8Unorm
     }
 
+    #[allow(unused)]
     pub fn composite_texture_format() -> wgpu::TextureFormat {
         Self::main_texture_format()
     }

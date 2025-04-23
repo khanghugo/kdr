@@ -44,6 +44,8 @@ pub type OITRenderTarget = WBOITRenderTarget;
 pub struct OITResolver {
     pub pipeline: wgpu::RenderPipeline,
     pub bind_group: wgpu::BindGroup,
+    bind_group_layout: wgpu::BindGroupLayout,
+    sampler: wgpu::Sampler,
     accum_texture: wgpu::Texture,
     reveal_texture: wgpu::Texture,
     accum_view: wgpu::TextureView,
@@ -117,38 +119,27 @@ impl OITResolver {
         });
 
         // render targets
-        let [accum_texture, reveal_texture] = Self::create_render_targets(&device, width, height);
+        let [accum_texture, reveal_texture] = Self::create_wboit_textures(&device, width, height);
         let accum_view = accum_texture.create_view(&wgpu::TextureViewDescriptor::default());
         let reveal_view = reveal_texture.create_view(&wgpu::TextureViewDescriptor::default());
 
-        // Create bind group
-        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("OIT Resolve Bind Group"),
-            layout: &bind_group_layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(&accum_view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::TextureView(&reveal_view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 2,
-                    resource: wgpu::BindingResource::Sampler(&sampler),
-                },
-            ],
-        });
+        // create
+        let bind_group = Self::create_bind_group(
+            device,
+            &bind_group_layout,
+            &accum_view,
+            &reveal_view,
+            &sampler,
+        );
 
-        // Create pipeline layout
+        // create pipeline layout
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("OIT Resolve Pipeline Layout"),
             bind_group_layouts: &[&bind_group_layout],
             push_constant_ranges: &[],
         });
 
-        // Create render pipeline
+        // create render pipeline
         let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("OIT Resolve Pipeline"),
             layout: Some(&pipeline_layout),
@@ -186,6 +177,8 @@ impl OITResolver {
         Self {
             pipeline,
             bind_group,
+            bind_group_layout,
+            sampler,
             accum_texture,
             reveal_texture,
             accum_view,
@@ -193,7 +186,7 @@ impl OITResolver {
         }
     }
 
-    fn create_render_targets(device: &wgpu::Device, width: u32, height: u32) -> [wgpu::Texture; 2] {
+    fn create_wboit_textures(device: &wgpu::Device, width: u32, height: u32) -> [wgpu::Texture; 2] {
         let accum_texture = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("OIT Accum"),
             size: wgpu::Extent3d {
@@ -223,6 +216,33 @@ impl OITResolver {
         [accum_texture, reveal_texture]
     }
 
+    fn create_bind_group(
+        device: &wgpu::Device,
+        bind_group_layout: &wgpu::BindGroupLayout,
+        accum_view: &wgpu::TextureView,
+        reveal_view: &wgpu::TextureView,
+        sampler: &wgpu::Sampler,
+    ) -> wgpu::BindGroup {
+        device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("OIT Resolve Bind Group"),
+            layout: bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(accum_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::TextureView(reveal_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: wgpu::BindingResource::Sampler(sampler),
+                },
+            ],
+        })
+    }
+
     pub fn composite(&self, rpass: &mut wgpu::RenderPass) {
         rpass.set_pipeline(&self.pipeline);
         rpass.set_bind_group(0, &self.bind_group, &[]);
@@ -250,5 +270,25 @@ impl OITResolver {
                 },
             }),
         ]
+    }
+
+    pub fn resize(&mut self, device: &wgpu::Device, width: u32, height: u32) {
+        let [accum_tex, reveal_tex] = Self::create_wboit_textures(device, width, height);
+        let accum_view = accum_tex.create_view(&wgpu::TextureViewDescriptor::default());
+        let reveal_view = reveal_tex.create_view(&wgpu::TextureViewDescriptor::default());
+
+        let bind_group = Self::create_bind_group(
+            device,
+            &self.bind_group_layout,
+            &accum_view,
+            &reveal_view,
+            &self.sampler,
+        );
+
+        self.accum_texture = accum_tex;
+        self.accum_view = accum_view;
+        self.reveal_texture = reveal_tex;
+        self.reveal_view = reveal_view;
+        self.bind_group = bind_group;
     }
 }

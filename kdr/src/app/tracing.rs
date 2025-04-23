@@ -78,7 +78,9 @@ fn setup_logging_hooks() {
         LevelFilter::DEBUG
     };
 
-    let env_filter = EnvFilter::new("debug,naga=off,wgpu_hal=off,symphonia_core=off");
+    let env_filter = EnvFilter::new(
+        "debug,naga=off,wgpu_hal=off,symphonia_core=off,wgpu_core::device::global=off",
+    );
 
     tracing_subscriber::registry()
         .with(level_filter)

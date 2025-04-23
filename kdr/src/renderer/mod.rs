@@ -1,4 +1,4 @@
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, RwLock};
 
 use camera::CameraBuffer;
 use finalize::FinalizeRenderPipeline;
@@ -44,7 +44,7 @@ pub struct RenderContext {
     pub render_targets: RenderTargets,
     pub finalize_render_pipeline: FinalizeRenderPipeline,
     pub fullscreen_tri_vertex_shader: FullScrenTriVertexShader,
-    pub post_processing: Arc<Mutex<PostProcessing>>,
+    pub post_processing: Arc<RwLock<PostProcessing>>,
     pub skybox_loader: SkyboxLoader,
 }
 
@@ -197,7 +197,7 @@ impl RenderContext {
             &fullscreen_tri_vertex_shader,
         );
 
-        let post_processing = Arc::new(Mutex::new(PostProcessing::create_pipelines(
+        let post_processing = Arc::new(RwLock::new(PostProcessing::create_pipelines(
             &device,
             size.width,
             size.height,
@@ -253,5 +253,30 @@ impl RenderContext {
 
     pub fn swapchain_format(&self) -> &wgpu::TextureFormat {
         &self.swapchain_format
+    }
+
+    pub fn resize(&mut self, width: u32, height: u32) {
+        self.surface_config.width = width;
+        self.surface_config.height = height;
+        self.surface.configure(&self.device, &self.surface_config);
+
+        let new_render_targets = RenderTargets::new(&self.device, width, height);
+
+        // make sure anything using render targets need to update their bind group
+        self.oit_resolver.resize(&self.device, width, height);
+
+        self.finalize_render_pipeline.bind_group = FinalizeRenderPipeline::create_bind_group(
+            &self.device,
+            &self.finalize_render_pipeline.bind_group_layout,
+            &new_render_targets.composite_view,
+            &self.finalize_render_pipeline.sampler,
+        );
+
+        self.post_processing
+            .write()
+            .unwrap()
+            .resize(&self.device, width, height);
+
+        self.render_targets = new_render_targets;
     }
 }

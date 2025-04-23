@@ -23,6 +23,7 @@ pub struct PostProcessing {
     // maybe that is good? i dont know, but i dont like extra work on gpu here
     effects: Vec<(bool, PostEffect)>,
     intermediate_textures: [wgpu::Texture; 2],
+    input_texture_format: wgpu::TextureFormat,
 }
 
 impl Drop for PostProcessing {
@@ -40,15 +41,12 @@ pub enum PostEffect {
 }
 
 impl PostProcessing {
-    pub fn create_pipelines(
+    pub fn create_intermediate_textures(
         device: &wgpu::Device,
         width: u32,
         height: u32,
         input_texture_format: wgpu::TextureFormat,
-        fullscreen_tri_vertex_shader: &FullScrenTriVertexShader,
-        // i dont like reasoning with lifetime
-        _depth_texture: Arc<wgpu::Texture>,
-    ) -> Self {
+    ) -> [wgpu::Texture; 2] {
         let create_texture = || {
             device.create_texture(&wgpu::TextureDescriptor {
                 size: wgpu::Extent3d {
@@ -70,9 +68,25 @@ impl PostProcessing {
         let tex0 = create_texture();
         let tex1 = create_texture();
 
+        [tex0, tex1]
+    }
+
+    pub fn create_pipelines(
+        device: &wgpu::Device,
+        width: u32,
+        height: u32,
+        input_texture_format: wgpu::TextureFormat,
+        fullscreen_tri_vertex_shader: &FullScrenTriVertexShader,
+        // i dont like reasoning with lifetime
+        _depth_texture: Arc<wgpu::Texture>,
+    ) -> Self {
+        let [intermediate_texture0, intermediate_texture1] =
+            Self::create_intermediate_textures(device, width, height, input_texture_format);
+
         let mut res = Self {
             effects: vec![],
-            intermediate_textures: [tex0, tex1],
+            intermediate_textures: [intermediate_texture0, intermediate_texture1],
+            input_texture_format,
         };
 
         // make sure the order is correct
@@ -202,6 +216,20 @@ impl PostProcessing {
                     &self.intermediate_textures[(effect_index + 1) % 2];
             }
         }
+    }
+
+    pub fn resize(&mut self, device: &wgpu::Device, width: u32, height: u32) {
+        let [new0, new1] =
+            Self::create_intermediate_textures(device, width, height, self.input_texture_format);
+
+        self.effects.iter_mut().for_each(|(_, fx)| match fx {
+            PostEffect::Bloom(bloom) => {
+                bloom.resize(device, width, height);
+            }
+            _ => {}
+        });
+
+        self.intermediate_textures = [new0, new1];
     }
 }
 

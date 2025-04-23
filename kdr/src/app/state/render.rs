@@ -386,7 +386,7 @@ impl RenderState {
         {
             render_context
                 .post_processing
-                .lock()
+                .read()
                 .unwrap()
                 .run_post_processing_effects(
                     &render_context.device,

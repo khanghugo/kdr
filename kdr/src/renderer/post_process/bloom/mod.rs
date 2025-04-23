@@ -81,6 +81,7 @@ pub struct Bloom {
     kawase_blur_pipeline: KawaseBlur,
     composite_pipeline: PostProcessingPipeline,
     bloom_texture: wgpu::Texture,
+    input_texture_format: wgpu::TextureFormat,
 }
 
 impl Drop for Bloom {
@@ -186,6 +187,27 @@ impl PostProcessingModule for Bloom {
 }
 
 impl Bloom {
+    pub fn create_bloom_texture(
+        device: &wgpu::Device,
+        width: u32,
+        height: u32,
+        input_texture_format: wgpu::TextureFormat,
+    ) -> wgpu::Texture {
+        device.create_texture(&wgpu::TextureDescriptor {
+            size: wgpu::Extent3d {
+                width,
+                height,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: input_texture_format,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+            view_formats: &[],
+            label: Some("bloom texture"),
+        })
+    }
     /// Use this one instead of `Bloom::new()`
     pub fn new2(
         device: &wgpu::Device,
@@ -201,26 +223,14 @@ impl Bloom {
         let composite_pipeline =
             Self::create_pipeline(device, input_texture_format, fullscreen_tri_vertex_shader);
 
-        let bloom_texture = device.create_texture(&wgpu::TextureDescriptor {
-            size: wgpu::Extent3d {
-                width,
-                height,
-                depth_or_array_layers: 1,
-            },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: input_texture_format,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
-            view_formats: &[],
-            label: Some("bloom texture"),
-        });
+        let bloom_texture = Self::create_bloom_texture(device, width, height, input_texture_format);
 
         Self {
             composite_pipeline,
             bloom_texture,
             brightness_extraction_pipeline,
             kawase_blur_pipeline,
+            input_texture_format,
         }
     }
 
@@ -240,5 +250,10 @@ impl Bloom {
             .execute(device, encoder, output_texture, &self.bloom_texture);
         // composite input texture with the hardcoded bloom to the output texture
         self.execute(device, encoder, input_texture, output_texture);
+    }
+
+    pub fn resize(&mut self, device: &wgpu::Device, width: u32, height: u32) {
+        self.bloom_texture =
+            Self::create_bloom_texture(device, width, height, self.input_texture_format);
     }
 }

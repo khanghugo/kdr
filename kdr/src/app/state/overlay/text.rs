@@ -80,6 +80,10 @@ impl AppState {
     }
 
     pub fn draw_say_text(&mut self, ctx: &egui::Context) {
+        if self.text_state.say_text.is_empty() {
+            return;
+        }
+
         let Some((width, height)) = self.window_dimensions() else {
             return;
         };

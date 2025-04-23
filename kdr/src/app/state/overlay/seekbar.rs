@@ -2,7 +2,7 @@ use crate::app::{constants::DEFAULT_FRAMETIME, state::AppState};
 
 impl AppState {
     pub fn seek_bar(&mut self, ctx: &egui::Context) {
-        const SLIDER_WIDTH_PERC: f32 = 0.75;
+        const SLIDER_WIDTH_PERC: f32 = 0.65;
 
         let (width, height) = self.window_dimensions().unwrap();
         let slider_width = width as f32 * SLIDER_WIDTH_PERC;

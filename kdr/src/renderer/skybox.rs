@@ -5,8 +5,8 @@ use crate::renderer::camera::CameraBuffer;
 
 pub struct SkyboxBuffer {
     pub texture: wgpu::Texture,
-    pub view: wgpu::TextureView,
-    pub sampler: wgpu::Sampler,
+    // pub view: wgpu::TextureView,
+    // pub sampler: wgpu::Sampler,
     pub vertex_buffer: wgpu::Buffer,
     pub index_buffer: wgpu::Buffer,
     pub index_count: u32,
@@ -296,8 +296,8 @@ impl SkyboxLoader {
 
         SkyboxBuffer {
             texture,
-            view,
-            sampler,
+            // view,
+            // sampler,
             vertex_buffer,
             index_buffer,
             index_count,

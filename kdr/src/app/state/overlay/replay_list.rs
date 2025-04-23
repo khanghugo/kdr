@@ -18,6 +18,10 @@ impl AppState {
     // mimicking map_list.rs
     // make sure they both behave similarly
     pub fn replay_list(&mut self, ctx: &egui::Context) {
+        if self.other_resources.replay_list.is_empty() {
+            return;
+        }
+
         let (width, height) = self.window_dimensions().unwrap();
         let row_width = width as f32 * 0.12;
 

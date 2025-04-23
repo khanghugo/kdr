@@ -21,6 +21,10 @@ pub struct MapListUIState {
 
 impl AppState {
     pub fn map_list(&mut self, ctx: &egui::Context) {
+        if self.other_resources.map_list.is_empty() {
+            return;
+        }
+
         let (width, height) = self.window_dimensions().unwrap();
         let row_width = width as f32 * 0.12;
 

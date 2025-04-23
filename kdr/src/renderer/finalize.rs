@@ -10,10 +10,36 @@ use super::utils::FullScrenTriVertexShader;
 
 pub struct FinalizeRenderPipeline {
     pipeline: wgpu::RenderPipeline,
-    bind_group: wgpu::BindGroup,
+    pub bind_group: wgpu::BindGroup,
+    pub bind_group_layout: wgpu::BindGroupLayout,
+    pub sampler: wgpu::Sampler,
 }
 
 impl FinalizeRenderPipeline {
+    pub fn create_bind_group(
+        device: &wgpu::Device,
+        bind_group_layout: &wgpu::BindGroupLayout,
+        texture: &wgpu::TextureView,
+        sampler: &wgpu::Sampler,
+    ) -> wgpu::BindGroup {
+        device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("finalize bind group"),
+            layout: &bind_group_layout,
+            entries: &[
+                // texture
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&texture),
+                },
+                // sampler
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&sampler),
+                },
+            ],
+        })
+    }
+
     pub fn create_pipeline(
         device: &wgpu::Device,
         input_texture: &wgpu::TextureView,
@@ -48,7 +74,7 @@ impl FinalizeRenderPipeline {
 
         let bind_group_layout = device.create_bind_group_layout(&bind_group_layout_descriptor);
 
-        let linear_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             label: Some("finalize sampler"),
             address_mode_u: wgpu::AddressMode::ClampToEdge,
             address_mode_v: wgpu::AddressMode::ClampToEdge,
@@ -59,22 +85,8 @@ impl FinalizeRenderPipeline {
             ..Default::default()
         });
 
-        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("finalize bind group"),
-            layout: &bind_group_layout,
-            entries: &[
-                // texture
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(&input_texture),
-                },
-                // sampler
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::Sampler(&linear_sampler),
-                },
-            ],
-        });
+        let bind_group =
+            Self::create_bind_group(device, &bind_group_layout, input_texture, &sampler);
 
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("finalize pipeline layout"),
@@ -119,6 +131,8 @@ impl FinalizeRenderPipeline {
         Self {
             pipeline,
             bind_group,
+            bind_group_layout,
+            sampler,
         }
     }
 
