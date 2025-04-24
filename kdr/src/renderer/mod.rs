@@ -14,7 +14,7 @@ use world_buffer::WorldLoader;
 #[cfg(target_arch = "wasm32")]
 use winit::platform::web::WindowExtWebSys;
 
-use crate::app::constants::MAX_MVP;
+use crate::app::constants::{MAX_MVP, WINDOW_HEIGHT, WINDOW_WIDTH};
 
 pub mod bsp_lightmap;
 pub mod camera;
@@ -63,7 +63,7 @@ impl RenderContext {
         let size = {
             // for some fucking reasons it has to be like this fuckinghell
             let canvas = window.canvas().unwrap();
-            winit::dpi::LogicalSize::new(canvas.width(), canvas.height())
+            winit::dpi::LogicalSize::new(WINDOW_WIDTH, WINDOW_HEIGHT)
         };
 
         let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {

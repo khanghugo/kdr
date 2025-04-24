@@ -126,7 +126,7 @@ impl EguiRenderer {
             return;
         }
 
-        self.ppp(screen_descriptor.pixels_per_point);
+        // self.ppp(screen_descriptor.pixels_per_point);
 
         let full_output = self.state.egui_ctx().end_pass();
 

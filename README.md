@@ -76,7 +76,10 @@ Currently work in progress, check back later
   - Native
     - [X] Vulkan. This is the definitive backend
     - [X] OpenGL. This is the backup backend to test with WebGL2. So far, all of the weird kinks are ironed out
-    - [ ] Config files. Somehow have a config files so that resource provider is correct. Like how bspguy does
+    - Config files. Somehow have a config files so that resource provider is correct. Like how bspguy does
+      - [X] API server config
+      - [X] Native kdr config
+      - [ ] Web kdr config
   - Web
     - [X] WebGL2. Clear color is different than native OpenGL for some reasons.
     - [X] Minimal web example. This uses simple HTML script block. Basically no javascript or node project to help people bootstrap this
@@ -84,7 +87,7 @@ Currently work in progress, check back later
     - [X] REST API server. There is one now but I guess it is too minimal. It works great though. It uses the game folder so that is very standard
     - [X] Final version of gchimp ResMake. To help the server distribute maps faster, gchimp ResMake zip option pre-processess all the files
     so that the server only needs to distribute the archive instead of searchign for files in the game install.
-    - [ ] URL Query as config. "localhost/?mapname=de_dust2&location=1,3,4" or "localhost/?replayname=abcde.dem"
+    - [X] URL Query as config. "localhost/?mapname=de_dust2&location=1,3,4" or "localhost/?replayname=abcde.dem"
   - BSP Loads:
     - [X] BSP self
     - [ ] BSP another

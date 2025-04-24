@@ -6,7 +6,7 @@ use std::{
 use config::KDRApiServerConfig;
 use ghost::{GhostBlob, get_ghost_blob_from_path};
 use loader::{
-    MapList, ReplayList, ResourceIdentifier, ResourceProvider,
+    MapIdentifier, MapList, ReplayList, ResourceProvider,
     native::{NativeResourceProvider, scan_folder_for_files, search_game_resource},
 };
 use tracing::{Level, info, warn};
@@ -37,7 +37,7 @@ pub fn zip_files(files: Vec<WasmFile>) -> Vec<u8> {
     buf
 }
 
-pub fn sanitize_identifier(identifier: &ResourceIdentifier) -> Option<ResourceIdentifier> {
+pub fn sanitize_identifier(identifier: &MapIdentifier) -> Option<MapIdentifier> {
     let map_name_path: &Path = Path::new(identifier.map_name.as_str());
     let game_mod_path = Path::new(identifier.game_mod.as_str());
 
@@ -50,7 +50,7 @@ pub fn sanitize_identifier(identifier: &ResourceIdentifier) -> Option<ResourceId
         format!("{map_name}.bsp")
     };
 
-    Some(ResourceIdentifier { map_name, game_mod })
+    Some(MapIdentifier { map_name, game_mod })
 }
 
 pub fn start_tracing() {

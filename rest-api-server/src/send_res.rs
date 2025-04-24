@@ -32,7 +32,7 @@
 use std::path::PathBuf;
 
 use loader::{
-    ResourceIdentifier, ResourceProvider,
+    MapIdentifier, ResourceProvider,
     error::ResourceProviderError,
     native::{NativeResourceProvider, search_game_resource},
 };
@@ -62,7 +62,7 @@ pub enum ServerError {
 #[allow(unused)]
 pub async fn gchimp_resmake_way(
     // identifier should already be sanitized at this point
-    identifier: &ResourceIdentifier,
+    identifier: &MapIdentifier,
     resource_provider: &NativeResourceProvider,
 ) -> Result<Vec<u8>, ServerError> {
     let map_relative_path = PathBuf::new().join("maps").join(&identifier.map_name);
@@ -89,7 +89,7 @@ pub async fn gchimp_resmake_way(
 // So, to save on bandwidth, it is best to just use gchimp way and select common resource.
 #[allow(unused)]
 pub async fn native_way(
-    identifier: &ResourceIdentifier,
+    identifier: &MapIdentifier,
     resource_provider: &NativeResourceProvider,
 ) -> Result<Vec<u8>, ServerError> {
     let resources = resource_provider

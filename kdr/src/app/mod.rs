@@ -5,7 +5,7 @@ use std::{
 };
 
 use ::tracing::{info, warn};
-use common::{UNKNOWN_GAME_MOD, vec3};
+use common::{KDR_CANVAS_ID, UNKNOWN_GAME_MOD, vec3};
 
 #[cfg(target_arch = "wasm32")]
 use common::{REQUEST_MAP_ENDPOINT, REQUEST_MAP_GAME_MOD_QUERY, REQUEST_REPLAY_ENDPOINT};
@@ -178,20 +178,24 @@ impl ApplicationHandler<AppEvent> for App {
         #[cfg(target_arch = "wasm32")]
         {
             info!("Attaching <canvas> to winit Window");
+
             // Get the canvas from the DOM
             let window = web_sys::window().unwrap();
             let document = window.document().unwrap();
-            let canvas_element = document.get_element_by_id("canvas").unwrap();
+            let canvas_element = document.get_element_by_id(KDR_CANVAS_ID).unwrap();
 
             // Append canvas to body if it's not already there
             let body = document.body().unwrap();
             if canvas_element.parent_node().is_none() {
-                warn!("cannot find <canvas id=\"canvas\">");
+                warn!("cannot find <canvas id=\"{}\">", KDR_CANVAS_ID);
 
                 body.append_child(&canvas_element).unwrap();
             }
 
             let canvas: web_sys::HtmlCanvasElement = canvas_element.dyn_into().unwrap();
+
+            canvas.set_width(WINDOW_WIDTH);
+            canvas.set_height(WINDOW_HEIGHT);
 
             if canvas.get_context("webgl2").is_err() {
                 warn!("<canvas> does not have webgl2 context");
@@ -266,20 +270,25 @@ impl ApplicationHandler<AppEvent> for App {
                     .texture
                     .create_view(&wgpu::TextureViewDescriptor::default());
 
-                let screen_descriptor = egui_wgpu::ScreenDescriptor {
-                    size_in_pixels: [
-                        render_context.surface_config().width,
-                        render_context.surface_config().height,
-                    ],
-                    pixels_per_point: window.scale_factor() as f32,
-                };
-
                 {
                     self.state
                         .render_state
                         .render(&render_context, &mut encoder, &swapchain_view);
 
                     if let Some(ref mut egui_renderer) = self.egui_renderer {
+                        // dont even touch these things
+                        // serious
+                        let scale_factor = window.scale_factor();
+
+                        let screen_descriptor = egui_wgpu::ScreenDescriptor {
+                            size_in_pixels: [
+                                // the screen must match the render target
+                                render_context.surface_config().width,
+                                render_context.surface_config().height,
+                            ],
+                            pixels_per_point: scale_factor as f32,
+                        };
+
                         let draw_function = self.state.draw_egui();
 
                         egui_renderer.render(
@@ -348,13 +357,47 @@ impl ApplicationHandler<AppEvent> for App {
                 // it doesnt qualify as "a user gesture on the page"
                 // self.state.maybe_start_audio_based_on_user_interaction();
             }
-            WindowEvent::Resized(new_size) => {
+            WindowEvent::Resized(physical_size) => {
                 let Some(render_context) = self.render_context.as_mut() else {
                     warn!("Reszing without render context");
                     return;
                 };
 
-                render_context.resize(new_size.width, new_size.height);
+                let Some(window) = self.state.window.as_ref() else {
+                    warn!("Resizing without window");
+                    return;
+                };
+
+                let logical_size = physical_size.to_logical::<u32>(window.scale_factor());
+
+                // for final size, match the canvas physical size
+                let final_size = physical_size;
+
+                info!(
+                    "Resizing to {:?} ( {:?} with scaling {} )",
+                    physical_size,
+                    logical_size,
+                    window.scale_factor()
+                );
+
+                // resizing natively
+                render_context.resize(final_size.width, final_size.height);
+
+                // resize webly
+                #[cfg(target_arch = "wasm32")]
+                {
+                    let window = web_sys::window().unwrap();
+                    let document = window.document().unwrap();
+                    let Some(canvas_element) = document.get_element_by_id(KDR_CANVAS_ID) else {
+                        warn!("No <canvas> block found");
+                        return;
+                    };
+
+                    let canvas: web_sys::HtmlCanvasElement = canvas_element.dyn_into().unwrap();
+
+                    canvas.set_width(final_size.width);
+                    canvas.set_height(final_size.height);
+                }
             }
             _ => (),
         }

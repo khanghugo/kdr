@@ -25,7 +25,7 @@ impl AppState {
             return;
         }
 
-        let (width, height) = self.window_dimensions().unwrap();
+        let (width, height) = self.winit_window_dimensions().unwrap();
         let row_width = width as f32 * 0.12;
 
         let look_up_table: Vec<usize> = if self.ui_state.map_list.is_search_enabled

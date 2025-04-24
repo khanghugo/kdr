@@ -36,7 +36,7 @@ impl TextState {
 
 impl AppState {
     pub fn draw_entity_text(&mut self, ctx: &egui::Context) {
-        let Some((width, height)) = self.window_dimensions() else {
+        let Some((width, height)) = self.winit_window_dimensions() else {
             return;
         };
 
@@ -84,7 +84,7 @@ impl AppState {
             return;
         }
 
-        let Some((width, height)) = self.window_dimensions() else {
+        let Some((width, height)) = self.winit_window_dimensions() else {
             return;
         };
 

@@ -22,7 +22,7 @@ impl AppState {
             return;
         }
 
-        let (width, height) = self.window_dimensions().unwrap();
+        let (width, height) = self.winit_window_dimensions().unwrap();
         let row_width = width as f32 * 0.12;
 
         let window_max_height = height as f32 * 0.5;

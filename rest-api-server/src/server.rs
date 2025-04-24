@@ -3,7 +3,7 @@ use std::sync::{Arc, RwLock};
 use actix_web::{App, HttpResponse, HttpServer, Responder, get, middleware::Compress, post, web};
 use common::{CANNOT_FIND_REQUESTED_MAP_ERROR, CANNOT_FIND_REQUESTED_REPLAY_ERR};
 use config::KDRApiServerConfig;
-use loader::{MapList, ReplayList, ResourceIdentifier, native::NativeResourceProvider};
+use loader::{MapIdentifier, MapList, ReplayList, native::NativeResourceProvider};
 use serde::Deserialize;
 use tracing::{info, info_span, warn};
 use uuid::Uuid;
@@ -50,10 +50,7 @@ async fn request_common_resource(data: web::Data<AppData>) -> impl Responder {
 
 // must be a POST request
 #[post("/request-map")]
-async fn request_map(
-    req: web::Json<ResourceIdentifier>,
-    data: web::Data<AppData>,
-) -> impl Responder {
+async fn request_map(req: web::Json<MapIdentifier>, data: web::Data<AppData>) -> impl Responder {
     let map_name = &req.map_name;
     let game_mod = &req.game_mod;
 

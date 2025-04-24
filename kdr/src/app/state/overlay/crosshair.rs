@@ -2,7 +2,7 @@ use crate::app::state::AppState;
 
 impl AppState {
     pub fn crosshair(&mut self, ctx: &egui::Context) {
-        let Some((width, height)) = self.window_dimensions() else {
+        let Some((width, height)) = self.winit_window_dimensions() else {
             return;
         };
 
@@ -50,6 +50,8 @@ impl AppState {
 
         egui::Area::new(egui::Id::new("crosshair"))
             .anchor(egui::Align2::CENTER_CENTER, [0., 0.])
+            .movable(false)
+            .interactable(false)
             .show(ctx, |ui| {
                 let painter = ui.painter();
 

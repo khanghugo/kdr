@@ -4,7 +4,8 @@ impl AppState {
     pub fn seek_bar(&mut self, ctx: &egui::Context) {
         const SLIDER_WIDTH_PERC: f32 = 0.65;
 
-        let (width, height) = self.window_dimensions().unwrap();
+        // use winit_window_dimensions() becuase of some weird scaling bugs
+        let (width, height) = self.winit_window_dimensions().unwrap();
         let slider_width = width as f32 * SLIDER_WIDTH_PERC;
         // going up more
         let height_offset = height as f32 * 0.04;
@@ -16,10 +17,12 @@ impl AppState {
 
         egui::Area::new(egui::Id::new("seekbar-area"))
             .anchor(egui::Align2::CENTER_BOTTOM, [0., -height_offset])
+            .constrain(false)
+            .movable(false)
             .show(ctx, |ui| {
                 let frame_margin = width as f32 * 0.01;
 
-                egui::Frame::default()
+                egui::Frame::new()
                     .fill(egui::Color32::from_gray(30))
                     .inner_margin(frame_margin)
                     .outer_margin(frame_margin)
@@ -56,7 +59,9 @@ impl AppState {
 
                             // pause button
                             let pause_button_size = height as f32 * 0.01;
-                            let pause_icon = egui::RichText::new("⏸").size(24.0);
+                            let pause_icon = egui::RichText::new("⏸")
+                            .size(24.0) // AAAAAAA
+                            ;
                             let pause_button = egui::Button::new(pause_icon)
                                 .min_size([pause_button_size, pause_button_size].into())
                                 .selected(self.paused);
