@@ -278,7 +278,15 @@ impl ApplicationHandler<AppEvent> for App {
                     if let Some(ref mut egui_renderer) = self.egui_renderer {
                         // dont even touch these things
                         // serious
-                        let scale_factor = window.scale_factor();
+                        // let scale_factor = window.scale_factor();
+                        // have to use egui pixel per point
+                        // the reason is that its "native_pixels_per_point" is already our "window.scale_factor"
+                        // egui keeps track of its "zoom_factor", so we don't have to do any extra math
+                        // with this, the UI is scaled correctly
+                        // however, there is a slight problem with the UIs elements
+                        // for example, the crosshair, we have to get the correct dimensions after scaling
+                        // basically, anything related to UI must use "context.pixels_per_point"
+                        let scale_factor = egui_renderer.context().pixels_per_point();
 
                         let screen_descriptor = egui_wgpu::ScreenDescriptor {
                             size_in_pixels: [

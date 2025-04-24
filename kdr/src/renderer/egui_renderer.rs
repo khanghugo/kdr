@@ -94,10 +94,6 @@ impl EguiRenderer {
         }
     }
 
-    fn ppp(&mut self, v: f32) {
-        self.context().set_pixels_per_point(v);
-    }
-
     pub fn handle_input(
         &mut self,
         window: &winit::window::Window,
@@ -108,6 +104,7 @@ impl EguiRenderer {
 
     pub fn begin_frame(&mut self, window: &winit::window::Window) {
         let raw_input = self.state.take_egui_input(window);
+
         self.state.egui_ctx().begin_pass(raw_input);
         self.frame_started = true;
     }
@@ -125,9 +122,6 @@ impl EguiRenderer {
             warn!("begin_frame must be called before end_frame_and_draw can be called!");
             return;
         }
-
-        // self.ppp(screen_descriptor.pixels_per_point);
-
         let full_output = self.state.egui_ctx().end_pass();
 
         self.state

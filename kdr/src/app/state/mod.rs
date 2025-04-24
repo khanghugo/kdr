@@ -126,13 +126,13 @@ impl AppState {
     }
 
     // this returns the actual windows dimensions
-    // pub fn egui_window_dimensions(&self, egui_ctx: &egui::Context) -> Option<(u32, u32)> {
-    //     self.window.as_ref().map(|window| {
-    //         // need to use logical size for this
-    //         let x = window
-    //             .inner_size()
-    //             .to_logical(window.scale_factor() * egui_ctx.pixels_per_point() as f64);
-    //         (x.width, x.height)
-    //     })
-    // }
+    pub fn egui_window_dimensions(&self, egui_ctx: &egui::Context) -> Option<(u32, u32)> {
+        self.window.as_ref().map(|window| {
+            // need to use logical size for this
+            let x = window
+                .inner_size()
+                .to_logical(egui_ctx.pixels_per_point() as f64);
+            (x.width, x.height)
+        })
+    }
 }

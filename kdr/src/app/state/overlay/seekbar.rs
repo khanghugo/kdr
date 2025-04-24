@@ -5,10 +5,12 @@ impl AppState {
         const SLIDER_WIDTH_PERC: f32 = 0.65;
 
         // use winit_window_dimensions() becuase of some weird scaling bugs
+        // and we don't need absolute positions anyway
         let (width, height) = self.winit_window_dimensions().unwrap();
         let slider_width = width as f32 * SLIDER_WIDTH_PERC;
-        // going up more
-        let height_offset = height as f32 * 0.04;
+
+        let height_offset = height as f32 * 0.04; // going up more
+
         let slider_max = self
             .replay
             .as_ref()
