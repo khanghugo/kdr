@@ -32,7 +32,7 @@ impl AppState {
                     .stroke(egui::Stroke::new(0.5, egui::Color32::GRAY))
                     .show(ui, |ui| {
                         ui.horizontal_centered(|ui| {
-                            ui.spacing_mut().slider_width = slider_width;
+                            ui.spacing_mut().slider_width = slider_width / ctx.zoom_factor();
 
                             // timeline slider
                             let timeline_slider =

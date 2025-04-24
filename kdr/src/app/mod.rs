@@ -10,7 +10,7 @@ use common::{KDR_CANVAS_ID, UNKNOWN_GAME_MOD, vec3};
 #[cfg(target_arch = "wasm32")]
 use common::{REQUEST_MAP_ENDPOINT, REQUEST_MAP_GAME_MOD_QUERY, REQUEST_REPLAY_ENDPOINT};
 
-use constants::{WINDOW_HEIGHT, WINDOW_WIDTH};
+use constants::{DEFAULT_HEIGHT, DEFAULT_WIDTH};
 use ghost::{GhostBlob, GhostInfo, get_ghost_blob_from_bytes};
 use kira::sound::static_sound::StaticSoundData;
 use state::{
@@ -20,6 +20,7 @@ use state::{
     overlay::control_panel::PostProcessingControlState,
     render::RenderOptions,
     replay::{Replay, ReplayPlaybackMode},
+    window::WindowState,
 };
 
 // can use this for both native and web
@@ -107,6 +108,10 @@ pub enum AppEvent {
     #[cfg(target_arch = "wasm32")]
     ParseLocationSearch,
     UnknownFormatModal,
+    RequestResize,
+    RequestEnterFullScreen,
+    RequestExitFullScreen,
+    RequestToggleFullScreen,
     ErrorEvent(AppError),
 }
 
@@ -163,6 +168,53 @@ impl App {
             event_loop_proxy,
         }
     }
+
+    pub fn resize(&mut self, physical_size: winit::dpi::PhysicalSize<u32>) {
+        let Some(render_context) = self.render_context.as_mut() else {
+            warn!("Reszing without render context");
+            return;
+        };
+
+        let Some(window_state) = self.state.window_state.as_mut() else {
+            warn!("Resizing without window");
+            return;
+        };
+
+        // for final size, match the canvas physical size
+        // I tried doing maxing here but it doesn't work as well.
+        let width = physical_size.width
+        // .max(WINDOW_MINIMUM_WIDTH)
+        ;
+        let height = physical_size.height
+        // .max(WINDOW_MINIMUM_HEIGHT)
+        ;
+
+        // resizing natively
+        render_context.resize(width, height);
+
+        // resize webly
+        #[cfg(target_arch = "wasm32")]
+        {
+            let window = web_sys::window().unwrap();
+            let document = window.document().unwrap();
+            let Some(canvas_element) = document.get_element_by_id(KDR_CANVAS_ID) else {
+                warn!("No <canvas> block found");
+                return;
+            };
+
+            let canvas: web_sys::HtmlCanvasElement = canvas_element.dyn_into().unwrap();
+
+            canvas.set_width(width);
+            canvas.set_height(height);
+        }
+
+        // updating the ui numbers
+        window_state.width = width;
+        window_state.height = height;
+
+        // updating aspect here
+        self.state.update_fov();
+    }
 }
 
 impl ApplicationHandler<AppEvent> for App {
@@ -170,8 +222,8 @@ impl ApplicationHandler<AppEvent> for App {
     fn resumed(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
         #[allow(unused_mut)]
         let mut window_attributes = Window::default_attributes().with_inner_size(LogicalSize {
-            width: WINDOW_WIDTH,
-            height: WINDOW_HEIGHT,
+            width: DEFAULT_WIDTH,
+            height: DEFAULT_HEIGHT,
         });
 
         // need to pass window into web <canvas>
@@ -194,8 +246,8 @@ impl ApplicationHandler<AppEvent> for App {
 
             let canvas: web_sys::HtmlCanvasElement = canvas_element.dyn_into().unwrap();
 
-            canvas.set_width(WINDOW_WIDTH);
-            canvas.set_height(WINDOW_HEIGHT);
+            canvas.set_width(DEFAULT_WIDTH);
+            canvas.set_height(DEFAULT_HEIGHT);
 
             if canvas.get_context("webgl2").is_err() {
                 warn!("<canvas> does not have webgl2 context");
@@ -207,8 +259,22 @@ impl ApplicationHandler<AppEvent> for App {
 
         let window = event_loop.create_window(window_attributes).unwrap();
         let window = Arc::new(window);
+        let window_state = WindowState {
+            window: window.clone(),
+            is_fullscreen: false,
+            width: DEFAULT_WIDTH,
+            height: DEFAULT_HEIGHT,
+        };
 
-        self.state.window = Some(window.clone());
+        // needed
+        // Not needed. The goal is that there is a minimum size of winow that user cannot go below
+        // On native, this works fine. But on the web, everything is broken after scaling it smaller.
+        // window.set_min_inner_size(
+        //     winit::dpi::PhysicalSize::new(WINDOW_MINIMUM_WIDTH, WINDOW_MINIMUM_HEIGHT).into(),
+        // );
+
+        self.state.window_state = Some(window_state);
+
         self.event_loop_proxy
             .send_event(AppEvent::CreateRenderContext(window))
             .unwrap_or_else(|_| warn!("Failed to send CreateRenderContext message"));
@@ -246,7 +312,7 @@ impl ApplicationHandler<AppEvent> for App {
             WindowEvent::RedrawRequested => {
                 self.state.tick();
 
-                let Some(window) = self.state.window.clone() else {
+                let Some(window_state) = self.state.window_state.clone() else {
                     warn!("Redraw requested without window");
                     return;
                 };
@@ -256,7 +322,7 @@ impl ApplicationHandler<AppEvent> for App {
 
                     // need to request redraw even if there's nothing to draw until there's something to draw
                     // definitely not an insanity strat
-                    window.request_redraw();
+                    window_state.window().request_redraw();
 
                     return;
                 };
@@ -303,7 +369,7 @@ impl ApplicationHandler<AppEvent> for App {
                             render_context.device(),
                             render_context.queue(),
                             &mut encoder,
-                            &window,
+                            &window_state.window(),
                             &swapchain_view,
                             screen_descriptor,
                             draw_function,
@@ -316,7 +382,7 @@ impl ApplicationHandler<AppEvent> for App {
                 let fps = (1.0 / self.state.frame_time).round();
 
                 // rename window based on fps
-                window.set_title(
+                window_state.window().set_title(
                     format!(
                         "FPS: {}. Draw calls: {}",
                         fps, self.state.render_state.draw_call
@@ -327,7 +393,7 @@ impl ApplicationHandler<AppEvent> for App {
                 // update
                 render_context.queue().submit(Some(encoder.finish()));
                 swapchain_texture.present();
-                window.request_redraw();
+                window_state.window().request_redraw();
 
                 // polling the states every redraw request
                 self.state.file_state_poll();
@@ -366,57 +432,18 @@ impl ApplicationHandler<AppEvent> for App {
                 // self.state.maybe_start_audio_based_on_user_interaction();
             }
             WindowEvent::Resized(physical_size) => {
-                let Some(render_context) = self.render_context.as_mut() else {
-                    warn!("Reszing without render context");
-                    return;
-                };
-
-                let Some(window) = self.state.window.as_ref() else {
-                    warn!("Resizing without window");
-                    return;
-                };
-
-                let logical_size = physical_size.to_logical::<u32>(window.scale_factor());
-
-                // for final size, match the canvas physical size
-                let final_size = physical_size;
-
-                info!(
-                    "Resizing to {:?} ( {:?} with scaling {} )",
-                    physical_size,
-                    logical_size,
-                    window.scale_factor()
-                );
-
-                // resizing natively
-                render_context.resize(final_size.width, final_size.height);
-
-                // resize webly
-                #[cfg(target_arch = "wasm32")]
-                {
-                    let window = web_sys::window().unwrap();
-                    let document = window.document().unwrap();
-                    let Some(canvas_element) = document.get_element_by_id(KDR_CANVAS_ID) else {
-                        warn!("No <canvas> block found");
-                        return;
-                    };
-
-                    let canvas: web_sys::HtmlCanvasElement = canvas_element.dyn_into().unwrap();
-
-                    canvas.set_width(final_size.width);
-                    canvas.set_height(final_size.height);
-                }
+                self.resize(*physical_size);
             }
             _ => (),
         }
 
-        let Some(window) = self.state.window.clone() else {
+        let Some(window_state) = self.state.window_state.clone() else {
             warn!("Passing window events to egui without window");
             return;
         };
 
         if let Some(egui_renderer) = self.egui_renderer.as_mut() {
-            egui_renderer.handle_input(&window, &event);
+            egui_renderer.handle_input(&window_state.window(), &event);
             egui_renderer.context();
         }
     }
@@ -476,7 +503,7 @@ impl ApplicationHandler<AppEvent> for App {
             AppEvent::CreateEgui => {
                 info!("Creating egui renderer");
 
-                let Some(window) = self.state.window.clone() else {
+                let Some(window_state) = self.state.window_state.clone() else {
                     warn!("Window is not initialized. Cannot create egui renderer");
                     return;
                 };
@@ -491,7 +518,7 @@ impl ApplicationHandler<AppEvent> for App {
                     render_context.swapchain_format().clone(),
                     None,
                     1,
-                    &window,
+                    &window_state.window(),
                 );
 
                 self.egui_renderer = egui_renderer.into();
@@ -1133,6 +1160,78 @@ impl ApplicationHandler<AppEvent> for App {
             }
             AppEvent::UnknownFormatModal => {
                 self.state.ui_state.unknown_format_modal.enabled = true;
+            }
+            AppEvent::RequestResize => {
+                let Some(window_state) = self.state.window_state.as_ref() else {
+                    return;
+                };
+
+                let width = window_state.width;
+                let height = window_state.height;
+
+                let size = winit::dpi::PhysicalSize { width, height };
+
+                // do not use this
+                // this will lock the window min size
+                // window.set_min_inner_size(size.into());
+
+                if window_state.window().request_inner_size(size).is_none() {
+                    warn!("Request resize failed");
+                }
+
+                self.resize(size.clone());
+            }
+            AppEvent::RequestEnterFullScreen => {
+                let Some(window_state) = self.state.window_state.as_mut() else {
+                    return;
+                };
+
+                let window = window_state.window();
+
+                // for some magical reasons, i don't even need to set the width and height???
+                // and when exiting fullscreen, the old resolution is restored
+                // thank you winit
+                if let Some(monitor) = window.current_monitor() {
+                    window.set_fullscreen(
+                        winit::window::Fullscreen::Borderless(monitor.into()).into(),
+                    );
+                }
+
+                // on top of monitor fullscreen, also need canvas fullscreen for the web
+                #[cfg(target_arch = "wasm32")]
+                {
+                    let window = web_sys::window().unwrap();
+                    let document = window.document().unwrap();
+                    let canvas = document.get_element_by_id(KDR_CANVAS_ID).unwrap();
+
+                    if canvas.request_fullscreen().is_err() {
+                        warn!("Failed to request fullscreen");
+                    }
+                }
+            }
+            AppEvent::RequestExitFullScreen => {
+                let Some(window_state) = self.state.window_state.as_mut() else {
+                    return;
+                };
+
+                window_state.window().set_fullscreen(None);
+
+                // doesnt need web specific fullscreen exit
+                #[cfg(target_arch = "wasm32")]
+                {}
+            }
+            AppEvent::RequestToggleFullScreen => {
+                self.state.window_state.as_ref().map(|window_state| {
+                    if window_state.is_fullscreen {
+                        let _ = self
+                            .event_loop_proxy
+                            .send_event(AppEvent::RequestEnterFullScreen);
+                    } else {
+                        let _ = self
+                            .event_loop_proxy
+                            .send_event(AppEvent::RequestExitFullScreen);
+                    }
+                });
             }
             AppEvent::ErrorEvent(app_error) => {
                 warn!("Error: {}", app_error.to_string());

@@ -15,6 +15,10 @@ impl Drop for CameraBuffer {
     }
 }
 
+pub const FOV_MIN: f32 = 1.;
+pub const FOV_MAX: f32 = 179.;
+pub const FOV_DEFAULT: f32 = 90.;
+
 impl CameraBuffer {
     pub fn bind_group_layout_descriptor() -> wgpu::BindGroupLayoutDescriptor<'static> {
         wgpu::BindGroupLayoutDescriptor {
@@ -120,7 +124,10 @@ pub struct Camera {
     pub target: Point3<f32>,
     pub up: Vector3<f32>,
     pub aspect: f32,
+    /// This is the result FOV for the renderer
     pub fovy: Deg<f32>,
+    /// This is the input FOV from the game. Remember to calculate `fovy` and store it.
+    pub fovx: Deg<f32>,
     pub znear: f32,
     pub zfar: f32,
     // use getters
@@ -148,7 +155,8 @@ impl Default for Camera {
             target: target_pos,
             up,
             aspect: 640. / 480.,
-            fovy: Deg(90.0),
+            fovy: Deg(FOV_DEFAULT),
+            fovx: Deg(FOV_DEFAULT),
             znear: 1.0,
             zfar: 131072.0,
             orientation,
@@ -242,5 +250,35 @@ impl Camera {
 
     pub fn set_position(&mut self, pos: [f32; 3]) {
         self.pos = pos.into();
+    }
+
+    // HMMMMMMMMM
+    // This is from HL25. It is the same as legacy.
+    // float CalcFov(float fov_x,float width,float height)
+
+    // {
+    //   float fVar1;
+    //   double dVar2;
+
+    //   if ((fov_x < 1.0) || (179.0 < fov_x)) {
+    //     fVar1 = 1.0;
+    //   }
+    //   else {
+    //     dVar2 = tan((double)((fov_x / 360.0) * 3.141593));
+    //     fVar1 = (float)dVar2;
+    //   }
+    //   dVar2 = atan((double)(height / (width / fVar1)));
+    //   return ((float)dVar2 * 360.0) / 3.141593;
+    // }
+    pub fn calculate_y_fov(x_fov: Deg<f32>, width: f32, height: f32) -> Deg<f32> {
+        let x_fov = x_fov.0;
+        let x_fov = x_fov.clamp(FOV_MIN, FOV_MAX);
+
+        // width and height are hardcoded to 4/3 for reasons
+        Deg(((x_fov.to_radians() / 2.) * (4. / 3.)).atan().to_degrees() * 2.)
+        // Deg(((x_fov.to_radians() / 2.) * (width / height))
+        //     .atan()
+        //     .to_degrees()
+        //     * 2.)
     }
 }

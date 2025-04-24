@@ -1,4 +1,7 @@
-use std::{collections::HashMap, io::Write};
+use std::collections::HashMap;
+
+#[allow(unused)]
+use std::io::Write;
 
 use image::RgbaImage;
 

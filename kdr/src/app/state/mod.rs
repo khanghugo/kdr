@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use crate::renderer::camera::Camera;
 
 // need to do like this
 use super::{Duration, Instant};
@@ -12,7 +12,8 @@ use loader::{ReplayList, ResourceMap};
 use overlay::{UIState, text::TextState};
 use render::RenderState;
 use replay::Replay;
-use winit::{event_loop::EventLoopProxy, window::Window};
+use window::WindowState;
+use winit::event_loop::EventLoopProxy;
 
 use super::AppEvent;
 
@@ -23,6 +24,7 @@ pub mod movement;
 pub mod overlay;
 pub mod render;
 pub mod replay;
+pub mod window;
 
 pub type SortedMapList = Vec<(String, Vec<String>)>;
 
@@ -57,10 +59,10 @@ pub struct AppState {
     pub audio_resource: HashMap<String, StaticSoundData>,
     pub ui_state: UIState,
     pub file_state: FileState,
+    pub window_state: Option<WindowState>,
 
     // talk with other modules
     event_loop_proxy: EventLoopProxy<AppEvent>,
-    pub window: Option<Arc<Window>>,
 }
 
 impl AppState {
@@ -86,7 +88,7 @@ impl AppState {
             file_state: FileState::default(),
 
             event_loop_proxy,
-            window: None,
+            window_state: None,
         }
     }
 
@@ -118,21 +120,41 @@ impl AppState {
     // if things scale wrong or don't use absolute positions on screen
     // use this instead
     pub fn winit_window_dimensions(&self) -> Option<(u32, u32)> {
-        self.window.as_ref().map(|window| {
+        self.window_state.as_ref().map(|window_state| {
             // need to use logical size for this
-            let x = window.inner_size().to_logical(window.scale_factor());
+            let x = window_state
+                .window()
+                .inner_size()
+                .to_logical(window_state.window().scale_factor());
             (x.width, x.height)
         })
     }
 
     // this returns the actual windows dimensions
     pub fn egui_window_dimensions(&self, egui_ctx: &egui::Context) -> Option<(u32, u32)> {
-        self.window.as_ref().map(|window| {
+        self.window_state.as_ref().map(|window_state| {
             // need to use logical size for this
-            let x = window
+            let x = window_state
+                .window()
                 .inner_size()
                 .to_logical(egui_ctx.pixels_per_point() as f64);
             (x.width, x.height)
         })
+    }
+
+    /// This needs camera.fovx assigned before calling
+    pub fn update_fov(&mut self) {
+        let Some(window_state) = self.window_state.as_ref() else {
+            return;
+        };
+
+        let width = window_state.width;
+        let height = window_state.height;
+
+        self.render_state.camera.fovy =
+            Camera::calculate_y_fov(self.render_state.camera.fovx, width as f32, height as f32);
+
+        // only change the aspects
+        self.render_state.camera.aspect = width as f32 / height as f32;
     }
 }

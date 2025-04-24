@@ -306,7 +306,6 @@ impl AppState {
 
     pub fn maybe_start_audio_based_on_user_interaction(&mut self) {
         if !self.audio_state.able_to_start_backend {
-            info!("allowed to start audio");
             self.audio_state.able_to_start_backend = true;
             self.event_loop_proxy
                 .send_event(AppEvent::MaybeStartAudioBackEnd)

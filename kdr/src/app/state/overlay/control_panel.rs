@@ -1,9 +1,15 @@
 use tracing::warn;
 
-use crate::app::{
-    AppEvent,
-    constants::{DEFAULT_FRAMETIME, DEFAULT_NOCLIP_SPEED, DEFAULT_SENSITIVITY},
-    state::{AppState, replay},
+use crate::{
+    app::{
+        AppEvent,
+        constants::{
+            DEFAULT_FRAMETIME, DEFAULT_NOCLIP_SPEED, DEFAULT_SENSITIVITY, WINDOW_MINIMUM_HEIGHT,
+            WINDOW_MINIMUM_WIDTH,
+        },
+        state::{AppState, replay},
+    },
+    renderer::camera::{FOV_DEFAULT, FOV_MAX, FOV_MIN},
 };
 
 // awkward......
@@ -36,6 +42,7 @@ impl AppState {
             .selected_file
             .clone()
             .unwrap_or("kdr".to_string());
+
         let title_name = if title_name.len() > MAX_TITLE_LENGTH {
             format!(
                 "...{}",
@@ -141,6 +148,58 @@ impl AppState {
                     ui.checkbox(&mut self.input_state.free_cam, "Freecam");
 
                     ui.checkbox(&mut self.ui_state.control_panel.crosshair, "Crosshair");
+                });
+
+                // resolutions
+                ui.horizontal(|ui| {
+                    {
+                        let window_state = self.window_state.as_mut().unwrap();
+
+                        let width_drag = egui::DragValue::new(&mut window_state.width)
+                            .range(WINDOW_MINIMUM_WIDTH..=3840);
+                        let height_drag = egui::DragValue::new(&mut window_state.height)
+                            .range(WINDOW_MINIMUM_HEIGHT..=2160);
+
+                        ui.add_enabled_ui(!window_state.is_fullscreen, |ui| {
+                            ui.label("Width");
+                            let width_response = ui.add(width_drag);
+                            ui.label("Height");
+                            let height_response = ui.add(height_drag);
+
+                            if width_response.changed() || height_response.changed() {
+                                self.event_loop_proxy
+                                    .send_event(AppEvent::RequestResize)
+                                    .unwrap_or_else(|_| warn!("Failed to send RequestResize"));
+                            }
+                        });
+
+                        let response = ui
+                            .checkbox(&mut window_state.is_fullscreen, "Fullscreen")
+                            .on_hover_text("Press F11");
+
+                        if response.changed() {
+                            let _ = self
+                                .event_loop_proxy
+                                .send_event(AppEvent::RequestToggleFullScreen);
+                        }
+                    }
+
+                    // fov slider
+                    ui.label("FOV");
+                    let fov_slider = egui::DragValue::new(&mut self.render_state.camera.fovx.0)
+                        .range(FOV_MIN..=FOV_MAX);
+
+                    let response = ui.add(fov_slider);
+
+                    if response.changed() {
+                        self.update_fov();
+                    }
+
+                    // middle click to reset
+                    if response.middle_clicked() {
+                        self.render_state.camera.fovx.0 = FOV_DEFAULT;
+                        self.update_fov();
+                    }
                 });
 
                 // post processing settings

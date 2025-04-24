@@ -5,7 +5,10 @@ use winit::{
     window::CursorGrabMode,
 };
 
-use crate::app::constants::{DEFAULT_NOCLIP_SPEED, DEFAULT_SENSITIVITY};
+use crate::app::{
+    AppEvent,
+    constants::{DEFAULT_NOCLIP_SPEED, DEFAULT_SENSITIVITY},
+};
 
 use super::AppState;
 
@@ -159,6 +162,17 @@ impl AppState {
                         self.paused = !self.paused;
                     }
                 }
+                KeyCode::F11 => {
+                    if state.is_pressed() {
+                        self.window_state.as_mut().map(|window_state| {
+                            window_state.is_fullscreen = !window_state.is_fullscreen;
+
+                            let _ = self
+                                .event_loop_proxy
+                                .send_event(AppEvent::RequestToggleFullScreen);
+                        });
+                    }
+                }
                 _ => (),
             },
             _ => (),
@@ -166,7 +180,9 @@ impl AppState {
     }
 
     pub fn handle_mouse_input(&mut self, mouse_button: &MouseButton, state: &ElementState) {
-        let Some(window) = &self.window else { return };
+        let Some(window_state) = &self.window_state else {
+            return;
+        };
 
         match mouse_button {
             MouseButton::Right => self.input_state.mouse_right_hold = state.is_pressed(),
@@ -175,15 +191,17 @@ impl AppState {
 
         if self.input_state.mouse_right_hold {
             // behave like bspguy
-            window.set_cursor_visible(false);
+            window_state.window().set_cursor_visible(false);
 
             // lock mode is better than confined
             // lock mode doesnt allow cursor to move
             // confined clamps the position
-            let _ = window.set_cursor_grab(CursorGrabMode::Locked);
+            let _ = window_state
+                .window()
+                .set_cursor_grab(CursorGrabMode::Locked);
         } else {
-            window.set_cursor_visible(true);
-            let _ = window.set_cursor_grab(CursorGrabMode::None);
+            window_state.window().set_cursor_visible(true);
+            let _ = window_state.window().set_cursor_grab(CursorGrabMode::None);
         }
     }
 }
