@@ -124,9 +124,9 @@ async fn request_replay(req: web::Json<ReplayRequest>, data: web::Data<AppData>)
         return HttpResponse::NotFound().body(CANNOT_FIND_REQUESTED_REPLAY_ERR);
     };
 
-    // sent as json
-    // TODO: maybe not json
-    HttpResponse::Ok().json(replay_blob)
+    let buf = rmp_serde::to_vec(&replay_blob).unwrap();
+
+    HttpResponse::Ok().body(buf)
 }
 
 #[derive(Deserialize)]

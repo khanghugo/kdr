@@ -10,11 +10,10 @@ use common::{
 };
 use futures_util::StreamExt;
 use ghost::GhostBlob;
-use serde::{Deserialize, Serialize};
 use zip::ZipArchive;
 
 use crate::{
-    MapList, ProgressResourceProvider, ResourceMap, error::ResourceProviderError, fix_bsp_file_name,
+    ProgressResourceProvider, ResourceMap, error::ResourceProviderError, fix_bsp_file_name,
 };
 
 use super::ResourceProvider;
@@ -185,7 +184,7 @@ impl ProgressResourceProvider for WebResourceProvider {
             }
         }
 
-        let ghost_blob: GhostBlob = serde_json::from_slice(&all_bytes).unwrap();
+        let ghost_blob: GhostBlob = rmp_serde::from_slice(&all_bytes).unwrap();
 
         Ok(ghost_blob)
     }
