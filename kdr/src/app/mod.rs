@@ -5,7 +5,10 @@ use std::{
 };
 
 use ::tracing::{info, warn};
-use common::{KDR_CANVAS_ID, UNKNOWN_GAME_MOD, vec3};
+#[cfg(target_arch = "wasm32")]
+use common::KDR_CANVAS_ID;
+use common::{UNKNOWN_GAME_MOD, vec3};
+use puppeteer::Puppeteer;
 
 #[cfg(target_arch = "wasm32")]
 use common::{REQUEST_MAP_ENDPOINT, REQUEST_MAP_GAME_MOD_QUERY, REQUEST_REPLAY_ENDPOINT};
@@ -18,6 +21,7 @@ use state::{
     audio::{AudioBackend, AudioStateError},
     file::{LoadingState, SelectedFileType},
     overlay::control_panel::PostProcessingControlState,
+    puppet::PuppetState,
     render::RenderOptions,
     replay::{Replay, ReplayPlaybackMode},
     window::WindowState,
@@ -79,6 +83,9 @@ pub enum AppError {
 
     #[error("Unknown file format: {file_name}")]
     UnknownFile { file_name: String },
+
+    #[error("Cannot connect to WebSocket server")]
+    WebSocketConnection,
 }
 
 pub enum AppEvent {
@@ -112,6 +119,11 @@ pub enum AppEvent {
     RequestEnterFullScreen,
     RequestExitFullScreen,
     RequestToggleFullScreen,
+    #[allow(unused)]
+    CreatePuppeteerConnection,
+    RequestPuppeteerPlayerList,
+    #[allow(unused)]
+    RequestPuppeteerPlayerChange(String),
     ErrorEvent(AppError),
 }
 
@@ -120,6 +132,8 @@ pub enum AppEvent {
 // the difference might be the "window" aka where the canvas is
 // though not sure how to handle loop, that is for my future self
 struct App {
+    options: RunKDROptions,
+
     render_context: Option<RenderContext>,
     egui_renderer: Option<EguiRenderer>,
 
@@ -137,30 +151,35 @@ struct App {
 
 impl App {
     pub fn new(
-        provider_uri: Option<String>,
+        options: RunKDROptions,
         event_loop: &winit::event_loop::EventLoop<AppEvent>,
     ) -> Self {
-        let provider = provider_uri.and_then(|provider_uri| {
-            #[cfg(not(target_arch = "wasm32"))]
-            {
-                let path = Path::new(provider_uri.as_str());
-                let native_provider = NativeResourceProvider::new(path);
-                return Some(native_provider);
-            }
+        let provider = options
+            .resource_provider_base
+            .as_ref()
+            .and_then(|provider_uri| {
+                #[cfg(not(target_arch = "wasm32"))]
+                {
+                    let path = Path::new(provider_uri.as_str());
+                    let native_provider = NativeResourceProvider::new(path);
+                    return Some(native_provider);
+                }
 
-            #[cfg(target_arch = "wasm32")]
-            {
-                let web_provider = WebResourceProvider::new(provider_uri);
-                return Some(web_provider);
-            }
-        });
+                #[cfg(target_arch = "wasm32")]
+                {
+                    let web_provider = WebResourceProvider::new(provider_uri);
+                    return Some(web_provider);
+                }
+            });
 
         let event_loop_proxy = event_loop.create_proxy();
+        let state = AppState::new(event_loop_proxy.clone());
 
         Self {
+            options: options.clone(),
             render_context: None,
             egui_renderer: None,
-            state: AppState::new(event_loop_proxy.clone()),
+            state,
             #[cfg(not(target_arch = "wasm32"))]
             native_resource_provider: provider,
             #[cfg(target_arch = "wasm32")]
@@ -327,6 +346,11 @@ impl ApplicationHandler<AppEvent> for App {
                     return;
                 };
 
+                // polls the puppeteer before rendering
+                // polls conditionally with target_arch so that it doesn't run on native
+                #[cfg(target_arch = "wasm32")]
+                self.state.poll_puppeteer();
+
                 let mut encoder = render_context
                     .device()
                     .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
@@ -491,14 +515,18 @@ impl ApplicationHandler<AppEvent> for App {
                     .unwrap_or_else(|_| warn!("Failed to send RequestCommonResource"));
 
                 // also requesting map list
-                self.event_loop_proxy
-                    .send_event(AppEvent::RequestMapList)
-                    .unwrap_or_else(|_| warn!("Failed to send RequestMapList"));
+                if self.options.fetch_map_list {
+                    self.event_loop_proxy
+                        .send_event(AppEvent::RequestMapList)
+                        .unwrap_or_else(|_| warn!("Failed to send RequestMapList"));
+                }
 
                 // also replay list
-                self.event_loop_proxy
-                    .send_event(AppEvent::RequestReplayList)
-                    .unwrap_or_else(|_| warn!("Failed to send RequestReplayList"));
+                if self.options.fetch_replay_list {
+                    self.event_loop_proxy
+                        .send_event(AppEvent::RequestReplayList)
+                        .unwrap_or_else(|_| warn!("Failed to send RequestReplayList"));
+                }
             }
             AppEvent::CreateEgui => {
                 info!("Creating egui renderer");
@@ -524,6 +552,13 @@ impl ApplicationHandler<AppEvent> for App {
                 self.egui_renderer = egui_renderer.into();
 
                 info!("Finished creating egui renderer");
+
+                // after creating egui, then we are allowed to connect to websocket
+                // it is so that we have better feedback
+                #[cfg(target_arch = "wasm32")]
+                self.event_loop_proxy
+                    .send_event(AppEvent::CreatePuppeteerConnection)
+                    .unwrap_or_else(|_| warn!("Failed to send CreatePuppeteerConnection"));
             }
             AppEvent::RequestMap(resource_identifier) => {
                 info!("Requesting resources: {:?}", resource_identifier);
@@ -1233,6 +1268,75 @@ impl ApplicationHandler<AppEvent> for App {
                     }
                 });
             }
+            AppEvent::CreatePuppeteerConnection => {
+                info!("Starting WebSocket connection");
+
+                if let Some(ws_uri) = self.options.websocket_url.as_ref() {
+                    let puppeteer = {
+                        let res = Puppeteer::start_puppeteer(&ws_uri);
+                        match res {
+                            Ok(x) => {
+                                info!("Connected to WebSocket puppeteer server");
+                                Some(x)
+                            }
+                            Err(err) => {
+                                self.event_loop_proxy
+                                    .send_event(AppEvent::ErrorEvent(AppError::WebSocketConnection))
+                                    .unwrap_or_else(|_| warn!("Failed to send ErrorEvent"));
+
+                                warn!("Cannot connect to WebSocket server `{}`: {err}", ws_uri);
+                                None
+                            }
+                        }
+                    };
+
+                    let puppet_state = puppeteer.map(|puppeteer| PuppetState {
+                        puppeteer,
+                        player_list: vec![],
+                    });
+
+                    self.state.puppet_state = puppet_state;
+
+                    // request player list instantly
+                    // seems weird here because we might not successfully start the puppet state, but whatever
+                    self.event_loop_proxy
+                        .send_event(AppEvent::RequestPuppeteerPlayerList)
+                        .unwrap_or_else(|_| warn!("Failed to send RequestPuppeteerPlayerList"));
+                }
+            }
+            AppEvent::RequestPuppeteerPlayerList => {
+                info!("Requesting puppeteer player list");
+
+                let Some(puppet_state) = self.state.puppet_state.as_mut() else {
+                    warn!("Requesting puppeteer without puppeteer");
+                    return;
+                };
+
+                // spawn_async(async move {
+                if puppet_state.puppeteer.request_player_list().is_err() {
+                    warn!("Failed to send puppeteer command");
+                }
+
+                // after this, there is a polling function to poll the events
+                // so there is no need to handle these at the app level
+                // the reason why it is done like that is because
+            }
+            AppEvent::RequestPuppeteerPlayerChange(player_name) => {
+                info!("Requesting puppeteer player change");
+
+                let Some(puppet_state) = self.state.puppet_state.as_mut() else {
+                    warn!("Requesting puppeteer without puppeteer");
+                    return;
+                };
+
+                if puppet_state
+                    .puppeteer
+                    .change_player(player_name.as_str())
+                    .is_err()
+                {
+                    warn!("Failed to send puppeteer command");
+                }
+            }
             AppEvent::ErrorEvent(app_error) => {
                 warn!("Error: {}", app_error.to_string());
 
@@ -1256,11 +1360,21 @@ impl ApplicationHandler<AppEvent> for App {
 
 mod tracing;
 
+#[derive(Debug, Clone)]
+pub struct RunKDROptions {
+    // the reason why this is optional is because of native setup
+    // where people don't have folder selected
+    pub resource_provider_base: Option<String>,
+    pub websocket_url: Option<String>,
+    pub fetch_map_list: bool,
+    pub fetch_replay_list: bool,
+}
+
 /// When the app is initialized, we must already know the resource provider.
 ///
 /// In case of native application, we can feed it in later. That is why the argument is optional.
 #[allow(unused)]
-pub fn run_kdr(resource_provider_base: Option<String>) {
+pub fn run_kdr(options: RunKDROptions) {
     tracing::ensure_logging_hooks();
 
     let Ok(event_loop) = EventLoop::<AppEvent>::with_user_event().build() else {
@@ -1278,13 +1392,13 @@ pub fn run_kdr(resource_provider_base: Option<String>) {
     // https://github.com/Jelmerta/Kloenk/blob/main/src/main.rs
     #[cfg(target_arch = "wasm32")]
     {
-        let app = App::new(resource_provider_base, &event_loop);
+        let app = App::new(options, &event_loop);
         event_loop.spawn_app(app);
     }
 
     #[cfg(not(target_arch = "wasm32"))]
     {
-        let mut app = App::new(resource_provider_base, &event_loop);
+        let mut app = App::new(options, &event_loop);
         event_loop.run_app(&mut app).unwrap();
     }
 }

@@ -9,6 +9,7 @@ pub mod control_panel;
 mod crosshair;
 mod loading_spinner;
 mod map_list;
+mod puppet;
 mod replay_list;
 mod seekbar;
 pub mod text;
@@ -60,6 +61,7 @@ impl AppState {
                 self.control_panel(ctx);
                 self.replay_list(ctx);
                 self.map_list(ctx);
+                self.puppet_player_list(ctx);
             }
 
             self.draw_entity_text(ctx);

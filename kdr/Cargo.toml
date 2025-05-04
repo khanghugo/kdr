@@ -12,6 +12,9 @@ mdl = { path = "../mdl" }
 ghost = { path = "../ghost" }
 loader = { path = "../loader" }
 common = { path = "../common" }
+# puppeteer for web only, but we include both here because i don't like adding lots of directives
+# just add directives where it matters, instead of the whole code
+puppeteer = { path = "../puppeteer" }
 
 bytemuck = { version = "1.21.0" }
 # default bytemuck traits aren't available inside base bytemuck when compile wasm32, for some reasons

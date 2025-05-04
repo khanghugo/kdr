@@ -10,6 +10,7 @@ use input::InputState;
 use kira::sound::static_sound::StaticSoundData;
 use loader::{ReplayList, ResourceMap};
 use overlay::{UIState, text::TextState};
+use puppet::PuppetState;
 use render::RenderState;
 use replay::Replay;
 use window::WindowState;
@@ -22,6 +23,7 @@ pub mod file;
 pub mod input;
 pub mod movement;
 pub mod overlay;
+pub mod puppet;
 pub mod render;
 pub mod replay;
 pub mod window;
@@ -60,6 +62,7 @@ pub struct AppState {
     pub ui_state: UIState,
     pub file_state: FileState,
     pub window_state: Option<WindowState>,
+    pub puppet_state: Option<PuppetState>,
 
     // talk with other modules
     event_loop_proxy: EventLoopProxy<AppEvent>,
@@ -86,6 +89,7 @@ impl AppState {
             audio_state: AudioState::default(),
             audio_resource: HashMap::new(),
             file_state: FileState::default(),
+            puppet_state: None,
 
             event_loop_proxy,
             window_state: None,

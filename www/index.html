@@ -24,10 +24,13 @@
     <script type="module">
         import init, { start } from "./pkg/kdr.js";
 
-        const API_SERVER = "http://localhost:3001";
+        const RESOURCE_PROVIDER_BASE = "http://localhost:3001";
+        const WEBSOCKET_URL = "http://localhost:3002/mock-server";
+        const fetch_map_list = true;
+        const fetch_replay_list = true;
 
         function run() {
-            start(API_SERVER);
+            start(RESOURCE_PROVIDER_BASE, WEBSOCKET_URL, fetch_map_list, fetch_replay_list);
         }
 
         init().then(run);

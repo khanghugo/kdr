@@ -1,0 +1,16 @@
+[package]
+name = "puppeteer"
+authors.workspace = true
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+futures = "0.3.31"
+gloo-net = "0.6.0"
+rmp-serde = "1.3.0"
+serde = { version = "1.0.219", features = ["derive"] }
+serde_json = "1.0.140"
+thiserror = "2.0.12"
+tracing = "0.1.41"
+wasm-bindgen-futures = "0.4.50"
+web-sys = "0.3.77"
