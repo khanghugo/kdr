@@ -8,14 +8,23 @@ use super::AppState;
 pub struct PuppetState {
     pub puppeteer: Puppeteer,
     pub player_list: Vec<String>,
+    pub selected_player: usize,
 }
-
-impl PuppetState {}
 
 impl AppState {
     pub fn handle_puppet_event(&mut self, event: PuppetEvent) {
         match event {
-            PuppetEvent::PuppetFrame(puppet_frame) => {
+            PuppetEvent::PuppetFrame { server_time, frame } => {
+                let Some(puppet_state) = self.puppet_state.as_ref() else {
+                    return;
+                };
+
+                if frame.is_empty() {
+                    return;
+                }
+
+                let puppet_frame = &frame[puppet_state.selected_player];
+
                 self.render_state.camera.set_position(puppet_frame.vieworg);
                 self.render_state
                     .camera

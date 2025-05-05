@@ -121,9 +121,6 @@ pub enum AppEvent {
     RequestToggleFullScreen,
     #[allow(unused)]
     CreatePuppeteerConnection,
-    RequestPuppeteerPlayerList,
-    #[allow(unused)]
-    RequestPuppeteerPlayerChange(String),
     ErrorEvent(AppError),
 }
 
@@ -1293,48 +1290,10 @@ impl ApplicationHandler<AppEvent> for App {
                     let puppet_state = puppeteer.map(|puppeteer| PuppetState {
                         puppeteer,
                         player_list: vec![],
+                        selected_player: 0,
                     });
 
                     self.state.puppet_state = puppet_state;
-
-                    // request player list instantly
-                    // seems weird here because we might not successfully start the puppet state, but whatever
-                    self.event_loop_proxy
-                        .send_event(AppEvent::RequestPuppeteerPlayerList)
-                        .unwrap_or_else(|_| warn!("Failed to send RequestPuppeteerPlayerList"));
-                }
-            }
-            AppEvent::RequestPuppeteerPlayerList => {
-                info!("Requesting puppeteer player list");
-
-                let Some(puppet_state) = self.state.puppet_state.as_mut() else {
-                    warn!("Requesting puppeteer without puppeteer");
-                    return;
-                };
-
-                // spawn_async(async move {
-                if puppet_state.puppeteer.request_player_list().is_err() {
-                    warn!("Failed to send puppeteer command");
-                }
-
-                // after this, there is a polling function to poll the events
-                // so there is no need to handle these at the app level
-                // the reason why it is done like that is because
-            }
-            AppEvent::RequestPuppeteerPlayerChange(player_name) => {
-                info!("Requesting puppeteer player change");
-
-                let Some(puppet_state) = self.state.puppet_state.as_mut() else {
-                    warn!("Requesting puppeteer without puppeteer");
-                    return;
-                };
-
-                if puppet_state
-                    .puppeteer
-                    .change_player(player_name.as_str())
-                    .is_err()
-                {
-                    warn!("Failed to send puppeteer command");
                 }
             }
             AppEvent::ErrorEvent(app_error) => {

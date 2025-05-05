@@ -2,23 +2,32 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::PuppeteerError;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Default, Clone)]
+#[repr(C)]
 pub struct PuppetFrame {
     /// View origin
     pub vieworg: [f32; 3],
     /// View angles [PITCH, YAW, ROLL]
     pub viewangles: [f32; 3],
-    /// Frame time
-    pub server_time: f32,
     /// Timer time
     pub timer_time: f32,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+#[repr(C)]
 pub enum PuppetEvent {
-    PuppetFrame(PuppetFrame),
+    PuppetFrame {
+        server_time: f32,
+        /// A list of frames based on the number of player count.
+        ///
+        /// Index will match the player list. For example, player index 0 will have puppet frame index 0
+        frame: Vec<PuppetFrame>,
+    },
     ServerTime(f32),
-    MapChange { game_mod: String, map_name: String },
+    MapChange {
+        game_mod: String,
+        map_name: String,
+    },
     PlayerList(Vec<String>),
 }
 
@@ -40,18 +49,16 @@ impl PuppetEvent {
 mod test {
     use super::{PuppetEvent, PuppetFrame};
 
-    // {"PuppetFrame":{"vieworg":[0.0,0.0,0.0],"viewangles":[0.0,0.0,0.0],"server_time":0.0,"timer_time":0.0}}
+    // {"PuppetFrame":{"server_time":0.0,"frame":[{"vieworg":[0.0,0.0,0.0],"viewangles":[0.0,0.0,0.0],"timer_time":0.0},{"vieworg":[0.0,0.0,0.0],"viewangles":[0.0,0.0,0.0],"timer_time":0.0},{"vieworg":[0.0,0.0,0.0],"viewangles":[0.0,0.0,0.0],"timer_time":0.0}]}}
     // {"ServerTime":0.0}
     // {"MapChange":{"game_mod":"cstrike","map_name":"de_dust2"}}
     // {"PlayerList":["this","is","it"]}
     #[test]
-    fn event_encode() {
-        let puppet_frame = PuppetEvent::PuppetFrame(PuppetFrame {
-            vieworg: [0f32; 3],
-            viewangles: [0f32; 3],
+    fn event_encode_json() {
+        let puppet_frame = PuppetEvent::PuppetFrame {
             server_time: 0.,
-            timer_time: 0.,
-        })
+            frame: vec![PuppetFrame::default(); 3],
+        }
         .encode_message_json()
         .unwrap();
 
@@ -72,5 +79,35 @@ mod test {
         println!("{}", server_time);
         println!("{}", map_change);
         println!("{}", player_list);
+    }
+
+    #[test]
+    fn event_encode_msgpack() {
+        let puppet_frame = PuppetEvent::PuppetFrame {
+            server_time: 0.,
+            frame: vec![PuppetFrame::default(); 3],
+        }
+        .encode_message_msgpack()
+        .unwrap();
+
+        let server_time = PuppetEvent::ServerTime(0.)
+            .encode_message_msgpack()
+            .unwrap();
+
+        let map_change = PuppetEvent::MapChange {
+            game_mod: "cstrike".into(),
+            map_name: "de_dust2".into(),
+        }
+        .encode_message_msgpack()
+        .unwrap();
+
+        let player_list = PuppetEvent::PlayerList(vec!["this".into(), "is".into(), "it".into()])
+            .encode_message_msgpack()
+            .unwrap();
+
+        println!("{:?}", puppet_frame);
+        println!("{:?}", server_time);
+        println!("{:?}", map_change);
+        println!("{:?}", player_list);
     }
 }

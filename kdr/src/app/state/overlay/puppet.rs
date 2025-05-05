@@ -23,7 +23,7 @@ impl AppState {
                             let player_name = &puppet_state.player_list[row];
 
                             if ui.selectable_label(false, player_name).clicked() {
-                                let _ = puppet_state.puppeteer.change_player(player_name);
+                                puppet_state.selected_player = row;
                             }
                         }
                     },

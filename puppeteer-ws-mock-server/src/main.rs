@@ -7,7 +7,7 @@ use actix_web::{
 };
 use actix_ws::{AggregatedMessage, Message};
 use futures_util::StreamExt;
-use puppeteer::{CHANGE_PLAYER, PuppetEvent, PuppetFrame, REQUEST_PLAYER_LIST};
+use puppeteer::{PuppetEvent, PuppetFrame};
 
 async fn echo(req: HttpRequest, stream: web::Payload) -> Result<HttpResponse, Error> {
     let (res, mut session, stream) = actix_ws::handle(&req, stream)?;
@@ -56,70 +56,77 @@ async fn mock_server(req: HttpRequest, stream: web::Payload) -> Result<HttpRespo
     // changing camera thread
     rt::spawn(async move {
         // load map
-        let message = PuppetEvent::MapChange {
-            game_mod: "cstrike".into(),
-            map_name: "bkz_goldbhop".into(),
-        };
+        {
+            let message = PuppetEvent::MapChange {
+                game_mod: "cstrike".into(),
+                map_name: "bkz_goldbhop".into(),
+            };
 
-        let message = message.encode_message_msgpack().unwrap();
+            let message = message.encode_message_msgpack().unwrap();
 
-        session.binary(message).await.unwrap();
+            session.binary(message).await.unwrap();
+        }
 
-        const UPDATE_RATE: f32 = 1.0;
+        // send player list
+        {
+            let message = PuppetEvent::PlayerList(player_list.clone())
+                .encode_message_msgpack()
+                .unwrap();
+
+            session.binary(message).await.unwrap();
+        }
+
+        const UPDATE_RATE: f32 = 0.02;
 
         let mut update_interval = interval(Duration::from_secs_f32(UPDATE_RATE));
-        let mut curr_player = "arte".to_string();
 
         loop {
             let now = Instant::now();
 
-            let mut handle_message = async |s: String| {
-                println!("recived message `{}`", s);
-                if let Some(_s) = s.strip_prefix(REQUEST_PLAYER_LIST) {
-                    let message = PuppetEvent::PlayerList(player_list.clone());
+            // let mut handle_message = async |s: String| {
+            //     println!("recived message `{}`", s);
+            //     if let Some(_s) = s.strip_prefix(REQUEST_PLAYER_LIST) {
+            //         let message = PuppetEvent::PlayerList(player_list.clone());
 
-                    let test = message.encode_message_json().unwrap();
-                    println!("{}", test);
-                    let message = message.encode_message_msgpack().unwrap();
+            //         let test = message.encode_message_json().unwrap();
+            //         println!("{}", test);
+            //         let message = message.encode_message_msgpack().unwrap();
 
-                    println!("received player list message");
+            //         println!("received player list message");
 
-                    match session.binary(message).await {
-                        Ok(_) => {}
-                        Err(_) => {}
-                    }
-                }
-
-                if let Some(s) = s.strip_prefix(CHANGE_PLAYER) {
-                    let s = &s[1..];
-
-                    println!("changed player to {}", s);
-                    curr_player = s.to_string();
-                }
-            };
+            //         match session.binary(message).await {
+            //             Ok(_) => {}
+            //             Err(_) => {}
+            //         }
+            //     }
+            // };
 
             tokio::select! {
                 _ = update_interval.tick() => {
                     let value = (now.duration_since(beginning).as_secs_f32() * 10.) % 360.;
 
-                    let viewangles = match curr_player.as_str() {
-                        "arte" => [0., value, 0.],
-                        "rawe" => [(value - (-90.)).rem_euclid(180. + 1.) + -90. , 0., 0.],
-                        "qicg" => [(value - (-90.)).rem_euclid(180. + 1.) + -90., value, 0.],
-                        _ => [0f32; 3],
-                    };
+                    let frame: Vec<PuppetFrame> = player_list.iter().map(|curr_player| {
+                        let viewangles = match curr_player.as_str() {
+                            "arte" => [0., value, 0.],
+                            "rawe" => [(value - (-90.)).rem_euclid(180. + 1.) + -90. , 0., 0.],
+                            "qicg" => [(value - (-90.)).rem_euclid(180. + 1.) + -90., value, 0.],
+                            _ => [0f32; 3],
+                        };
 
-                    let vieworg = match curr_player.as_str() {
-                        "R3AL" => [0., 0., value],
-                        _ => [0f32; 3],
-                    };
+                        let vieworg = match curr_player.as_str() {
+                            "R3AL" => [0., 0., value],
+                            _ => [0f32; 3],
+                        };
 
-                    let message = PuppetEvent::PuppetFrame(PuppetFrame {
-                        vieworg,
-                        viewangles,
-                        server_time: 0.,
-                        timer_time: 0.,
-                    });
+                        PuppetFrame {
+                            vieworg,
+                            viewangles,
+                            timer_time: 0.,
+                        }
+
+                    }).collect();
+
+                    let message = PuppetEvent::PuppetFrame { server_time: 0., frame };
 
                     let message = message.encode_message_msgpack().unwrap();
 
@@ -139,10 +146,11 @@ async fn mock_server(req: HttpRequest, stream: web::Payload) -> Result<HttpRespo
                         Some(Ok(msg)) => {
                             println!("recived ok `{:?}`", msg);
 
+                            // no more command from client to server
                             match msg {
-                                Message::Text(byte_string) => {
-                                    handle_message(byte_string.to_string()).await;
-                                },
+                                // Message::Text(byte_string) => {
+                                //     handle_message(byte_string.to_string()).await;
+                                // },
                                 _ => ()
                             }
                         },

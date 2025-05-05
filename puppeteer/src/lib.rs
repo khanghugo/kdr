@@ -6,7 +6,6 @@ mod constants;
 pub mod error;
 mod types;
 
-pub use constants::*;
 pub use types::*;
 
 use error::PuppeteerError;
@@ -120,18 +119,5 @@ impl Puppeteer {
             Ok(None) => None,
             Err(_) => None,
         }
-    }
-
-    // will receive player list in an event
-    pub fn request_player_list(&mut self) -> Result<(), PuppeteerError> {
-        self.command_sender
-            .unbounded_send(REQUEST_PLAYER_LIST.to_string())
-            .map_err(|_op| PuppeteerError::CannotSendCommand)
-    }
-
-    pub fn change_player(&mut self, player_name: &str) -> Result<(), PuppeteerError> {
-        self.command_sender
-            .unbounded_send(format!("{} {}", CHANGE_PLAYER, player_name))
-            .map_err(|_op| PuppeteerError::CannotSendCommand)
     }
 }

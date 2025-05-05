@@ -4,15 +4,154 @@
 
 ## Specs
 
-To make the specs easier to implement, messages from server to client can be in JSON text format or MsgPack binary format. However, messages from client to server must be text. When sending text, the message type must be text. When sending binary data, message type must be binary.
+To make the specs easier to implement, messages from server to client can be in JSON text format or MsgPack binary format. For MsgPack, the struct are represented by C struct format.
 
-In the future, there might be changes to specs.
+Enum:
 
-| Message               | Text message                                                                                              | From   | Response   | Notes                                                                                                     |
-|-----------------------|-----------------------------------------------------------------------------------------------------------|--------|------------|-----------------------------------------------------------------------------------------------------------|
-| `request-player-list` | Literal                                                                                                   | Client | PlayerList | Fetching player list to change between players                                                            |
-| `change-player`       | Literal                                                                                                   | Client | None       | Requesting spectating a different player. The server will change PuppetFrame accordingly                  |
-| PuppetFrame           | `{"PuppetFrame":{"vieworg":[0.0,0.0,0.0],"viewangles":[0.0,0.0,0.0],"server_time":0.0,"timer_time":0.0}}` | Server | None       | Sending client view info                                                                                  |
-| ServerTime            | `{"ServerTime":0.0}`                                                                                      | Server | None       | Syncing the client with server time. This is for buffered playback. Buffered playback is not implemented. |
-| MapChange             | `{"MapChange":{"game_mod":"cstrike","map_name":"de_dust2"}}`                                              | Server | None       | Changing map                                                                                              |
-| PlayerList            | `{"PlayerList":["this","is","it"]}`                                                                       | Server | None       | List of players to spectate                                                                               |
+```rust
+enum PuppetEvent {
+    PuppetFrame {
+        server_time: f32,
+        frame: Vec<PuppetFrame>,
+    },
+    ServerTime(f32),
+    MapChange {
+        game_mod: String,
+        map_name: String,
+    },
+    PlayerList(Vec<String>),
+}
+```
+
+This should be the order when implementing server.
+
+0. Client loads, creates connection with resource provider, initializes render context and GUI components
+1. Client starts establishes websocket connection with websocket server.
+2. Server sends MapChange and PlayerList and client receives it
+3. Server sends PuppetFrame and client receives it
+4. Server might send PlayerList and client might receive it as a result.
+5. Repeating step 2-5.
+
+### PuppetFrame
+
+Sending client view info of all players. The index of each view info must match the index of the player list. `server_time` is for syncing with rewinding (unimplemented).
+
+In this example, there are 3 view info for 3 players.
+
+Struct:
+
+```rust
+struct PuppetFrame {
+    /// View origin
+    vieworg: [f32; 3],
+    /// View angles [PITCH, YAW, ROLL]
+    viewangles: [f32; 3],
+    /// Timer time
+    timer_time: f32,
+}
+```
+
+JSON:
+
+```json
+{
+  "PuppetFrame": {
+    "server_time": 0,
+    "frame": [
+      {
+        "vieworg": [
+          0,
+          0,
+          0
+        ],
+        "viewangles": [
+          0,
+          0,
+          0
+        ],
+        "timer_time": 0
+      },
+      {
+        "vieworg": [
+          0,
+          0,
+          0
+        ],
+        "viewangles": [
+          0,
+          0,
+          0
+        ],
+        "timer_time": 0
+      },
+      {
+        "vieworg": [
+          0,
+          0,
+          0
+        ],
+        "viewangles": [
+          0,
+          0,
+          0
+        ],
+        "timer_time": 0
+      }
+    ]
+  }
+}
+```
+
+MsgPack
+
+```text
+[129, 171, 80, 117, 112, 112, 101, 116, 70, 114, 97, 109, 101, 146, 202, 0, 0, 0, 0, 147, 147, 147, 202, 0, 0, 0, 0, 202, 0, 0, 0, 0, 202, 0, 0, 0, 0, 147, 202, 0, 0, 0, 0, 202, 0, 0, 0, 0, 202, 0, 0, 0, 0, 202, 0, 0, 0, 0, 147, 147, 202, 0, 0, 0, 0, 202, 0, 0, 0, 0, 202, 0, 0, 0, 0, 147, 202, 0, 0, 0, 0, 202, 0, 0, 0, 0, 202, 0, 0, 0, 0, 202, 0, 0, 0, 0, 147, 147, 202, 0, 0, 0, 0, 202, 0, 0, 0, 0, 202, 0, 0, 0, 0, 147, 202, 0, 0, 0, 0, 202, 0, 0, 0, 0, 202, 0, 0, 0, 0, 202, 0, 0, 0, 0]
+```
+
+### ServerTime
+
+Syncing the client with server time. This is for buffered playback. Buffered playback is not implemented.
+
+JSON:
+
+```json
+{"ServerTime":0.0}
+```
+
+MsgPack:
+
+```text
+[129, 170, 83, 101, 114, 118, 101, 114, 84, 105, 109, 101, 202, 0, 0, 0, 0]
+```
+
+### MapChange
+
+Changing map
+
+JSON:
+
+```json
+{"MapChange":{"game_mod":"cstrike","map_name":"de_dust2"}}
+```
+
+MsgPack:
+
+```text
+[129, 169, 77, 97, 112, 67, 104, 97, 110, 103, 101, 146, 167, 99, 115, 116, 114, 105, 107, 101, 168, 100, 101, 95, 100, 117, 115, 116, 50]
+```
+
+### PlayerList
+
+List of players to spectate
+
+JSON:
+
+```json
+{"PlayerList":["this","is","it"]}
+```
+
+MsgPack:
+
+```text
+[129, 170, 80, 108, 97, 121, 101, 114, 76, 105, 115, 116, 147, 164, 116, 104, 105, 115, 162, 105, 115, 162, 105, 116]
+```
