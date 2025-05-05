@@ -12,7 +12,8 @@ impl AppState {
         let height_offset = height as f32 * 0.04; // going up more
 
         let slider_max = self
-            .replay
+            .playback_state
+            .get_replay()
             .as_ref()
             .map(|ghost| ghost.ghost.get_ghost_length()(DEFAULT_FRAMETIME))
             .unwrap_or(1.0);

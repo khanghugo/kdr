@@ -22,9 +22,9 @@ use state::{
     audio::{AudioBackend, AudioStateError},
     file::{LoadingState, SelectedFileType},
     overlay::control_panel::PostProcessingControlState,
+    playback::{Replay, ReplayPlaybackMode},
     puppet::PuppetState,
     render::RenderOptions,
-    replay::{Replay, ReplayPlaybackMode},
     window::WindowState,
 };
 
@@ -577,7 +577,7 @@ impl ApplicationHandler<AppEvent> for App {
                     self.state.file_state.selected_file_type,
                     SelectedFileType::Bsp
                 ) {
-                    self.state.replay = None;
+                    self.state.playback_state.set_none();
                 }
 
                 #[cfg(target_arch = "wasm32")]
@@ -906,11 +906,13 @@ impl ApplicationHandler<AppEvent> for App {
             AppEvent::ReceiveReplay(identifier, ghost) => {
                 info!("Finished processing .dem. Loading replay");
 
-                self.state.replay = Some(Replay {
+                let replay = Replay {
                     ghost,
                     playback_mode: ReplayPlaybackMode::Interpolated,
                     last_frame: 0,
-                });
+                };
+
+                self.state.playback_state.set_replay(replay);
 
                 // make sure the user cannot move camera because it is true by default
                 self.state.input_state.free_cam = false;
@@ -1307,8 +1309,8 @@ impl ApplicationHandler<AppEvent> for App {
                 // stop the loading
                 self.state.file_state.loading_state = LoadingState::Idle;
 
-                // stop with ghost
-                self.state.replay = None;
+                // stop with playback
+                self.state.playback_state.set_none();
 
                 // drop all the files
                 self.state.file_state.selected_file = None;

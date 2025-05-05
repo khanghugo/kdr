@@ -7,7 +7,7 @@ use crate::{
             DEFAULT_FRAMETIME, DEFAULT_NOCLIP_SPEED, DEFAULT_SENSITIVITY, WINDOW_MINIMUM_HEIGHT,
             WINDOW_MINIMUM_WIDTH,
         },
-        state::{AppState, replay},
+        state::{AppState, playback},
     },
     renderer::camera::{FOV_DEFAULT, FOV_MAX, FOV_MIN},
 };
@@ -81,27 +81,35 @@ impl AppState {
                     }
                 });
 
-                // replay info
-                if let Some(replay) = &self.replay {
-                    ui.separator();
+                // playback info
+                match &self.playback_state.playback_mode {
+                    playback::PlaybackMode::Replay(replay) => {
+                        ui.separator();
 
-                    ui.vertical(|ui| {
-                        let playback_mode = match replay.playback_mode {
-                            replay::ReplayPlaybackMode::Immediate(_) => "Immediate",
-                            replay::ReplayPlaybackMode::Interpolated => "Interpolated",
-                            replay::ReplayPlaybackMode::FrameAccurate => "Frame Accurate",
-                        };
+                        ui.vertical(|ui| {
+                            let playback_mode = match replay.playback_mode {
+                                playback::ReplayPlaybackMode::Immediate(_) => "Immediate",
+                                playback::ReplayPlaybackMode::Interpolated => "Interpolated",
+                                playback::ReplayPlaybackMode::FrameAccurate => "Frame Accurate",
+                            };
 
-                        ui.label(format!("Ghost name: {}", replay.ghost.ghost_name));
-                        ui.label(format!("Map: {}", replay.ghost.map_name));
-                        ui.label(format!("Game mod: {}", replay.ghost.game_mod));
-                        ui.label(format!(
-                            "Length: {:.2} seconds over {} frames",
-                            replay.ghost.get_ghost_length()(DEFAULT_FRAMETIME),
-                            replay.ghost.frames.len(),
-                        ));
-                        ui.label(format!("Playback mode: {}", playback_mode));
-                    });
+                            ui.label(format!("Ghost name: {}", replay.ghost.ghost_name));
+                            ui.label(format!("Map: {}", replay.ghost.map_name));
+                            ui.label(format!("Game mod: {}", replay.ghost.game_mod));
+                            ui.label(format!(
+                                "Length: {:.2} seconds over {} frames",
+                                replay.ghost.get_ghost_length()(DEFAULT_FRAMETIME),
+                                replay.ghost.frames.len(),
+                            ));
+                            ui.label(format!("Playback mode: {}", playback_mode));
+                        });
+                    }
+                    playback::PlaybackMode::Live => {
+                        ui.separator();
+
+                        ui.label("Live playback");
+                    }
+                    playback::PlaybackMode::None => {}
                 }
 
                 // settings

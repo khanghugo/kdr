@@ -52,7 +52,7 @@ impl AppState {
 
             // need to draw these guys early so they don't stack on top of each other because of area from the saytext
             if self.ui_state.is_main_ui_enabled {
-                if self.replay.is_some() {
+                if !self.playback_state.is_none() {
                     self.seek_bar(ctx);
                 }
 

@@ -10,9 +10,9 @@ use input::InputState;
 use kira::sound::static_sound::StaticSoundData;
 use loader::{ReplayList, ResourceMap};
 use overlay::{UIState, text::TextState};
+use playback::PlaybackState;
 use puppet::PuppetState;
 use render::RenderState;
-use replay::Replay;
 use window::WindowState;
 use winit::event_loop::EventLoopProxy;
 
@@ -23,9 +23,9 @@ pub mod file;
 pub mod input;
 pub mod movement;
 pub mod overlay;
+pub mod playback;
 pub mod puppet;
 pub mod render;
-pub mod replay;
 pub mod window;
 
 pub type SortedMapList = Vec<(String, Vec<String>)>;
@@ -50,8 +50,6 @@ pub struct AppState {
 
     pub render_state: RenderState,
 
-    // optional ghost because we might just want to render bsp
-    pub replay: Option<Replay>,
     pub other_resources: OtherResources,
 
     // other states
@@ -63,6 +61,7 @@ pub struct AppState {
     pub file_state: FileState,
     pub window_state: Option<WindowState>,
     pub puppet_state: Option<PuppetState>,
+    pub playback_state: PlaybackState,
 
     // talk with other modules
     event_loop_proxy: EventLoopProxy<AppEvent>,
@@ -79,7 +78,6 @@ impl AppState {
             paused: false,
 
             render_state: Default::default(),
-            replay: None,
 
             other_resources: OtherResources::default(),
 
@@ -90,6 +88,7 @@ impl AppState {
             audio_resource: HashMap::new(),
             file_state: FileState::default(),
             puppet_state: None,
+            playback_state: PlaybackState::default(),
 
             event_loop_proxy,
             window_state: None,
@@ -103,7 +102,7 @@ impl AppState {
         self.delta_update();
 
         self.interaction_tick();
-        self.replay_tick();
+        self.playback_tick();
         self.text_tick();
         self.audio_state_tick();
     }
@@ -114,7 +113,7 @@ impl AppState {
         self.frame_time = diff.as_secs_f32();
         self.last_instant = now;
 
-        if !(self.paused || self.replay.is_none()) {
+        if !(self.paused || self.playback_state.is_none()) {
             self.last_time = self.time;
             self.time += diff.as_secs_f32() * self.playback_speed;
         }

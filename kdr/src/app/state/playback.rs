@@ -33,17 +33,56 @@ pub struct Replay {
     pub last_frame: usize,
 }
 
-impl AppState {
-    pub fn replay_tick(&mut self) {
-        // don't override the camera if in free cam
-        if self.input_state.free_cam {
-            return;
+pub struct PlaybackState {
+    pub playback_mode: PlaybackMode,
+}
+
+impl Default for PlaybackState {
+    fn default() -> Self {
+        Self {
+            playback_mode: PlaybackMode::None,
         }
+    }
+}
 
-        let Some(replay) = &mut self.replay else {
-            return;
-        };
+impl PlaybackState {
+    pub fn is_none(&self) -> bool {
+        matches!(self.playback_mode, PlaybackMode::None)
+    }
 
+    pub fn set_none(&mut self) {
+        self.playback_mode = PlaybackMode::None;
+    }
+
+    pub fn set_replay(&mut self, replay: Replay) {
+        self.playback_mode = PlaybackMode::Replay(replay);
+    }
+
+    pub fn get_replay(&self) -> Option<&Replay> {
+        if let PlaybackMode::Replay(x) = &self.playback_mode {
+            Some(x)
+        } else {
+            None
+        }
+    }
+}
+
+pub enum PlaybackMode {
+    Replay(Replay),
+    // Check Puppet
+    Live,
+    // Map viewer
+    None,
+}
+
+impl Default for PlaybackMode {
+    fn default() -> Self {
+        Self::None
+    }
+}
+
+impl AppState {
+    fn process_replay(&mut self, replay: &mut Replay) {
         match replay.playback_mode {
             ReplayPlaybackMode::Immediate(_) => todo!("not planned for now until the recorder"),
             ReplayPlaybackMode::FrameAccurate => todo!("will be eventually, an easy task"),
@@ -158,5 +197,32 @@ impl AppState {
                 replay.last_frame = frame_idx;
             }
         }
+    }
+
+    pub fn playback_tick(&mut self) {
+        // don't override the camera if in free cam
+        if self.input_state.free_cam {
+            return;
+        }
+
+        if self.playback_state.is_none() {
+            return;
+        }
+
+        // pain pattern
+        let playback_mode =
+            std::mem::replace(&mut self.playback_state.playback_mode, PlaybackMode::None);
+
+        let playback_mode = match playback_mode {
+            PlaybackMode::Replay(mut replay) => {
+                self.process_replay(&mut replay);
+
+                PlaybackMode::Replay(replay)
+            }
+            PlaybackMode::Live => PlaybackMode::Live,
+            PlaybackMode::None => PlaybackMode::None,
+        };
+
+        self.playback_state.playback_mode = playback_mode;
     }
 }
