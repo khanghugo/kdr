@@ -36,6 +36,12 @@ impl Puppeteer {
                 reason: op.to_string(),
             })?;
 
+        if matches!(ws_connection.state(), gloo_net::websocket::State::Open) {
+            return Err(PuppeteerError::CannotStartWssConnection {
+                reason: "Connection is not Open".into(),
+            });
+        }
+
         let (mut ws_sender, ws_receiver) = ws_connection.split();
         // from server to client
         let (event_sender, event_receiver) = futures::channel::mpsc::unbounded::<PuppetEvent>();
@@ -98,16 +104,18 @@ impl Puppeteer {
         Ok(res)
     }
 
-    // "It is not recommended to call this function from inside of a future"
-    pub fn poll_event(&mut self) -> Option<PuppetEvent> {
+    // Renderer polling from our MPSC. MPSC is polling from websocket.
+    // Renderer is polling at 60hz while MSPC is polling at around 100hz or even more.
+    // This leads to renderer processing older messages.
+    // So, we have to accumulate everything here just to make sure that we have all the messages
+    pub fn poll_events(&mut self) -> Vec<PuppetEvent> {
+        let mut events = vec![];
+
+        // "It is not recommended to call this function from inside of a future"
         while let Ok(Some(event)) = self.event_receiver.try_next() {
-            return event.into();
+            events.push(event);
         }
 
-        match self.event_receiver.try_next() {
-            Ok(Some(event)) => event.into(),
-            Ok(None) => None,
-            Err(_) => None,
-        }
+        events
     }
 }

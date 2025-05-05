@@ -74,7 +74,7 @@ async fn mock_server(req: HttpRequest, stream: web::Payload) -> Result<HttpRespo
             session.binary(message).await.unwrap();
         }
 
-        const UPDATE_RATE: f32 = 0.02;
+        const UPDATE_RATE: f32 = 0.002;
 
         let mut update_interval = interval(Duration::from_secs_f32(UPDATE_RATE));
 
@@ -101,7 +101,7 @@ async fn mock_server(req: HttpRequest, stream: web::Payload) -> Result<HttpRespo
 
             tokio::select! {
                 _ = update_interval.tick() => {
-                    let value = (now.duration_since(beginning).as_secs_f32() * 10.) % 360.;
+                    let value = (now.duration_since(beginning).as_secs_f32() * 50.) % 360.;
 
                     let frame: Vec<ViewInfo> = player_list.iter().map(|curr_player| {
                         let viewangles = match curr_player.as_str() {
@@ -125,7 +125,7 @@ async fn mock_server(req: HttpRequest, stream: web::Payload) -> Result<HttpRespo
 
                     }).collect();
 
-                    let message = PuppetEvent::PuppetFrame(PuppetFrame { server_time: 0., frame });
+                    let message = PuppetEvent::PuppetFrame(PuppetFrame { server_time: 0., frame: frame });
 
                     let message = message.encode_message_msgpack().unwrap();
 

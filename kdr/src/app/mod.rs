@@ -9,7 +9,7 @@ use ::tracing::{info, warn};
 #[cfg(target_arch = "wasm32")]
 use common::KDR_CANVAS_ID;
 use common::{UNKNOWN_GAME_MOD, vec3};
-use puppeteer::Puppeteer;
+use puppeteer::{PuppetFrame, Puppeteer};
 
 #[cfg(target_arch = "wasm32")]
 use common::{REQUEST_MAP_ENDPOINT, REQUEST_MAP_GAME_MOD_QUERY, REQUEST_REPLAY_ENDPOINT};
@@ -1294,6 +1294,7 @@ impl ApplicationHandler<AppEvent> for App {
                         version: 0,
                         frames: VecDeque::new(),
                         current_frame: 0,
+                        fuck: PuppetFrame::default(),
                     });
 
                     self.state.puppet_state = puppet_state;

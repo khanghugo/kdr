@@ -6,9 +6,11 @@ impl AppState {
             return;
         };
 
-        let Some(current_frame) = puppet_state.frames.get(puppet_state.current_frame) else {
-            return;
-        };
+        // let Some(current_frame) = puppet_state.frames.get(puppet_state.current_frame) else {
+        //     return;
+        // };
+
+        let current_frame = &puppet_state.fuck;
 
         let viewinfo_count = current_frame.frame.len();
 
