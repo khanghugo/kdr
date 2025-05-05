@@ -73,7 +73,7 @@ mod test {
     // {"PuppetFrame":{"server_time":0.0,"frame":[{"player":{"name":"arte","steam_id":"1234"},"vieworg":[0.0,0.0,0.0],"viewangles":[0.0,0.0,0.0],"timer_time":0.0},{"player":{"name":"arte","steam_id":"1234"},"vieworg":[0.0,0.0,0.0],"viewangles":[0.0,0.0,0.0],"timer_time":0.0},{"player":{"name":"arte","steam_id":"1234"},"vieworg":[0.0,0.0,0.0],"viewangles":[0.0,0.0,0.0],"timer_time":0.0}]}}
     // {"ServerTime":0.0}
     // {"MapChange":{"game_mod":"cstrike","map_name":"de_dust2"}}
-    // {"PlayerList":["this","is","it"]}
+    // {"Version":0}
     #[test]
     fn event_encode_json() {
         let puppet_frame = PuppetEvent::PuppetFrame(PuppetFrame {

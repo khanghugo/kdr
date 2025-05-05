@@ -162,3 +162,15 @@ MsgPack:
 ### Version
 
 To ensure correct client decoding, the version must be incremented whenever the structure or content of any message defined in this specification is modified. The default version is 0. Adding new message types does not require a version change.
+
+JSON:
+
+```json
+{"Version":0}
+```
+
+MsgPack:
+
+```text
+[129, 167, 86, 101, 114, 115, 105, 111, 110, 0]
+```
