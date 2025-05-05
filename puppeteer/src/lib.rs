@@ -98,16 +98,6 @@ impl Puppeteer {
         Ok(res)
     }
 
-    // frame time accurate playback, huh
-    // pub fn get_puppet_frame(&self, client_time: f32) -> Option<&PuppetFrame> {
-    //     let corrected_time = client_time + self.server_time_offset;
-
-    //     self.frame_buffer
-    //         .iter()
-    //         .rev()
-    //         .find(|frame| frame.server_time <= corrected_time)
-    // }
-
     // "It is not recommended to call this function from inside of a future"
     pub fn poll_event(&mut self) -> Option<PuppetEvent> {
         while let Ok(Some(event)) = self.event_receiver.try_next() {

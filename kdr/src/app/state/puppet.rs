@@ -1,37 +1,56 @@
+use std::collections::VecDeque;
+
 use cgmath::Deg;
 use loader::MapIdentifier;
-use puppeteer::{PuppetEvent, Puppeteer};
+use puppeteer::{PuppetEvent, PuppetFrame, Puppeteer};
 use tracing::warn;
 
 use super::AppState;
 
 pub struct PuppetState {
     pub puppeteer: Puppeteer,
-    pub player_list: Vec<String>,
-    pub selected_player: usize,
+    pub version: u32,
+    pub selected_player: String,
+    pub frames: VecDeque<PuppetFrame>,
+    pub current_frame: usize,
 }
+
+// 5 seconds of 100fps
+pub const MAX_BUFFER_LENGTH: usize = 500;
 
 impl AppState {
     pub fn handle_puppet_event(&mut self, event: PuppetEvent) {
         match event {
-            PuppetEvent::PuppetFrame { server_time, frame } => {
-                let Some(puppet_state) = self.puppet_state.as_ref() else {
+            PuppetEvent::PuppetFrame(frame) => {
+                let Some(puppet_state) = self.puppet_state.as_mut() else {
                     return;
                 };
 
-                if frame.is_empty() {
+                if frame.frame.is_empty() {
                     return;
                 }
 
-                let puppet_frame = &frame[puppet_state.selected_player];
+                // storing the frame
+                // need to store the frames first here so that the ui can have the player list
+                // TODO store all the frames
+                puppet_state.frames.clear();
+                puppet_state.frames.push_back(frame.clone());
 
-                self.render_state.camera.set_position(puppet_frame.vieworg);
+                let Some(viewinfo) = frame
+                    .frame
+                    .iter()
+                    .find(|viewinfo| viewinfo.player.name == puppet_state.selected_player)
+                else {
+                    return;
+                };
+
+                self.render_state.camera.set_position(viewinfo.vieworg);
                 self.render_state
                     .camera
-                    .set_pitch(Deg(puppet_frame.viewangles[0]));
+                    .set_pitch(Deg(viewinfo.viewangles[0]));
                 self.render_state
                     .camera
-                    .set_yaw(Deg(puppet_frame.viewangles[1]));
+                    .set_yaw(Deg(viewinfo.viewangles[1]));
 
                 // need this to update view
                 self.render_state.camera.rebuild_orientation();
@@ -45,10 +64,10 @@ impl AppState {
                     }))
                     .unwrap_or_else(|_| warn!("Failed to send RequestMap"));
             }
-            PuppetEvent::PlayerList(items) => {
-                self.puppet_state.as_mut().map(|puppet_state| {
-                    puppet_state.player_list = items;
-                });
+            PuppetEvent::Version(version) => {
+                self.puppet_state
+                    .as_mut()
+                    .map(|state| state.version = version);
             }
         }
     }

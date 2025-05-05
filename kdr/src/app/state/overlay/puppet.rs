@@ -6,6 +6,12 @@ impl AppState {
             return;
         };
 
+        let Some(current_frame) = puppet_state.frames.get(puppet_state.current_frame) else {
+            return;
+        };
+
+        let viewinfo_count = current_frame.frame.len();
+
         egui::Window::new("Player list")
             .resizable(false)
             .default_open(false)
@@ -17,13 +23,13 @@ impl AppState {
                 egui::ScrollArea::vertical().show_rows(
                     ui,
                     row_height,
-                    puppet_state.player_list.len(),
+                    viewinfo_count,
                     |ui, row_range| {
                         for row in row_range {
-                            let player_name = &puppet_state.player_list[row];
+                            let player_name = &current_frame.frame[row].player.name;
 
                             if ui.selectable_label(false, player_name).clicked() {
-                                puppet_state.selected_player = row;
+                                puppet_state.selected_player = player_name.to_string();
                             }
                         }
                     },

@@ -1,4 +1,5 @@
 use std::{
+    collections::VecDeque,
     io::Cursor,
     path::{Path, PathBuf},
     sync::Arc,
@@ -1289,8 +1290,10 @@ impl ApplicationHandler<AppEvent> for App {
 
                     let puppet_state = puppeteer.map(|puppeteer| PuppetState {
                         puppeteer,
-                        player_list: vec![],
-                        selected_player: 0,
+                        selected_player: "NoPlayerSelected".into(),
+                        version: 0,
+                        frames: VecDeque::new(),
+                        current_frame: 0,
                     });
 
                     self.state.puppet_state = puppet_state;

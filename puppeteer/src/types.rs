@@ -2,9 +2,27 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::PuppeteerError;
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[repr(C)]
+pub struct PlayerInfo {
+    pub name: String,
+    pub steam_id: String,
+}
+
+impl Default for PlayerInfo {
+    fn default() -> Self {
+        Self {
+            name: "arte".into(),
+            steam_id: "1234".into(),
+        }
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize, Default, Clone)]
 #[repr(C)]
-pub struct PuppetFrame {
+pub struct ViewInfo {
+    /// Information related to the player
+    pub player: PlayerInfo,
     /// View origin
     pub vieworg: [f32; 3],
     /// View angles [PITCH, YAW, ROLL]
@@ -13,22 +31,23 @@ pub struct PuppetFrame {
     pub timer_time: f32,
 }
 
+#[derive(Debug, Serialize, Deserialize, Default, Clone)]
+#[repr(C)]
+pub struct PuppetFrame {
+    pub server_time: f32,
+    /// A list of frames based on the number of player count.
+    ///
+    /// Index will match the player list. For example, player index 0 will have puppet frame index 0
+    pub frame: Vec<ViewInfo>,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 #[repr(C)]
 pub enum PuppetEvent {
-    PuppetFrame {
-        server_time: f32,
-        /// A list of frames based on the number of player count.
-        ///
-        /// Index will match the player list. For example, player index 0 will have puppet frame index 0
-        frame: Vec<PuppetFrame>,
-    },
+    PuppetFrame(PuppetFrame),
     ServerTime(f32),
-    MapChange {
-        game_mod: String,
-        map_name: String,
-    },
-    PlayerList(Vec<String>),
+    MapChange { game_mod: String, map_name: String },
+    Version(u32),
 }
 
 impl PuppetEvent {
@@ -47,18 +66,20 @@ impl PuppetEvent {
 
 #[cfg(test)]
 mod test {
-    use super::{PuppetEvent, PuppetFrame};
+    use crate::PuppetFrame;
 
-    // {"PuppetFrame":{"server_time":0.0,"frame":[{"vieworg":[0.0,0.0,0.0],"viewangles":[0.0,0.0,0.0],"timer_time":0.0},{"vieworg":[0.0,0.0,0.0],"viewangles":[0.0,0.0,0.0],"timer_time":0.0},{"vieworg":[0.0,0.0,0.0],"viewangles":[0.0,0.0,0.0],"timer_time":0.0}]}}
+    use super::{PuppetEvent, ViewInfo};
+
+    // {"PuppetFrame":{"server_time":0.0,"frame":[{"player":{"name":"arte","steam_id":"1234"},"vieworg":[0.0,0.0,0.0],"viewangles":[0.0,0.0,0.0],"timer_time":0.0},{"player":{"name":"arte","steam_id":"1234"},"vieworg":[0.0,0.0,0.0],"viewangles":[0.0,0.0,0.0],"timer_time":0.0},{"player":{"name":"arte","steam_id":"1234"},"vieworg":[0.0,0.0,0.0],"viewangles":[0.0,0.0,0.0],"timer_time":0.0}]}}
     // {"ServerTime":0.0}
     // {"MapChange":{"game_mod":"cstrike","map_name":"de_dust2"}}
     // {"PlayerList":["this","is","it"]}
     #[test]
     fn event_encode_json() {
-        let puppet_frame = PuppetEvent::PuppetFrame {
+        let puppet_frame = PuppetEvent::PuppetFrame(PuppetFrame {
             server_time: 0.,
-            frame: vec![PuppetFrame::default(); 3],
-        }
+            frame: vec![ViewInfo::default(); 3],
+        })
         .encode_message_json()
         .unwrap();
 
@@ -71,22 +92,20 @@ mod test {
         .encode_message_json()
         .unwrap();
 
-        let player_list = PuppetEvent::PlayerList(vec!["this".into(), "is".into(), "it".into()])
-            .encode_message_json()
-            .unwrap();
+        let version = PuppetEvent::Version(0).encode_message_json().unwrap();
 
         println!("{}", puppet_frame);
         println!("{}", server_time);
         println!("{}", map_change);
-        println!("{}", player_list);
+        println!("{}", version);
     }
 
     #[test]
     fn event_encode_msgpack() {
-        let puppet_frame = PuppetEvent::PuppetFrame {
+        let puppet_frame = PuppetEvent::PuppetFrame(PuppetFrame {
             server_time: 0.,
-            frame: vec![PuppetFrame::default(); 3],
-        }
+            frame: vec![ViewInfo::default(); 3],
+        })
         .encode_message_msgpack()
         .unwrap();
 
@@ -101,13 +120,11 @@ mod test {
         .encode_message_msgpack()
         .unwrap();
 
-        let player_list = PuppetEvent::PlayerList(vec!["this".into(), "is".into(), "it".into()])
-            .encode_message_msgpack()
-            .unwrap();
+        let version = PuppetEvent::Version(0).encode_message_msgpack().unwrap();
 
         println!("{:?}", puppet_frame);
         println!("{:?}", server_time);
         println!("{:?}", map_change);
-        println!("{:?}", player_list);
+        println!("{:?}", version);
     }
 }

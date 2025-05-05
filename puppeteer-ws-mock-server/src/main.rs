@@ -7,7 +7,7 @@ use actix_web::{
 };
 use actix_ws::{AggregatedMessage, Message};
 use futures_util::StreamExt;
-use puppeteer::{PuppetEvent, PuppetFrame};
+use puppeteer::{PlayerInfo, PuppetEvent, PuppetFrame, ViewInfo};
 
 async fn echo(req: HttpRequest, stream: web::Payload) -> Result<HttpResponse, Error> {
     let (res, mut session, stream) = actix_ws::handle(&req, stream)?;
@@ -67,11 +67,9 @@ async fn mock_server(req: HttpRequest, stream: web::Payload) -> Result<HttpRespo
             session.binary(message).await.unwrap();
         }
 
-        // send player list
+        // send version
         {
-            let message = PuppetEvent::PlayerList(player_list.clone())
-                .encode_message_msgpack()
-                .unwrap();
+            let message = PuppetEvent::Version(0).encode_message_msgpack().unwrap();
 
             session.binary(message).await.unwrap();
         }
@@ -105,7 +103,7 @@ async fn mock_server(req: HttpRequest, stream: web::Payload) -> Result<HttpRespo
                 _ = update_interval.tick() => {
                     let value = (now.duration_since(beginning).as_secs_f32() * 10.) % 360.;
 
-                    let frame: Vec<PuppetFrame> = player_list.iter().map(|curr_player| {
+                    let frame: Vec<ViewInfo> = player_list.iter().map(|curr_player| {
                         let viewangles = match curr_player.as_str() {
                             "arte" => [0., value, 0.],
                             "rawe" => [(value - (-90.)).rem_euclid(180. + 1.) + -90. , 0., 0.],
@@ -118,7 +116,8 @@ async fn mock_server(req: HttpRequest, stream: web::Payload) -> Result<HttpRespo
                             _ => [0f32; 3],
                         };
 
-                        PuppetFrame {
+                        ViewInfo {
+                            player: PlayerInfo { name: curr_player.to_string(), steam_id: "6969".to_string() },
                             vieworg,
                             viewangles,
                             timer_time: 0.,
@@ -126,7 +125,7 @@ async fn mock_server(req: HttpRequest, stream: web::Payload) -> Result<HttpRespo
 
                     }).collect();
 
-                    let message = PuppetEvent::PuppetFrame { server_time: 0., frame };
+                    let message = PuppetEvent::PuppetFrame(PuppetFrame { server_time: 0., frame });
 
                     let message = message.encode_message_msgpack().unwrap();
 
