@@ -9,17 +9,10 @@ To make the specs easier to implement, messages from server to client can be in 
 Enum:
 
 ```rust
-enum PuppetEvent {
-    PuppetFrame {
-        server_time: f32,
-        frame: Vec<ViewInfo>,
-    },
-    ServerTime(f32),
-    MapChange {
-        game_mod: String,
-        map_name: String,
-    },
-    PlayerList(Vec<String>),
+pub enum PuppetEvent {
+    PuppetFrame(PuppetFrame),
+    MapChange { game_mod: String, map_name: String },
+    Version(u32),
 }
 ```
 
@@ -41,6 +34,12 @@ In this example, there are 3 view info for 3 players.
 Struct:
 
 ```rust
+pub struct PuppetFrame {
+    server_time: f32,
+    /// A list of viewinfos for every spectate-able entities in the server
+    frame: Vec<ViewInfo>,
+}
+
 pub struct ViewInfo {
     /// Information related to the player
     player: PlayerInfo,
@@ -125,22 +124,6 @@ MsgPack:
 
 ```text
 [129, 171, 80, 117, 112, 112, 101, 116, 70, 114, 97, 109, 101, 146, 202, 0, 0, 0, 0, 147, 148, 146, 164, 97, 114, 116, 101, 164, 49, 50, 51, 52, 147, 202, 0, 0, 0, 0, 202, 0, 0, 0, 0, 202, 0, 0, 0, 0, 147, 202, 0, 0, 0, 0, 202, 0, 0, 0, 0, 202, 0, 0, 0, 0, 202, 0, 0, 0, 0, 148, 146, 164, 97, 114, 116, 101, 164, 49, 50, 51, 52, 147, 202, 0, 0, 0, 0, 202, 0, 0, 0, 0, 202, 0, 0, 0, 0, 147, 202, 0, 0, 0, 0, 202, 0, 0, 0, 0, 202, 0, 0, 0, 0, 202, 0, 0, 0, 0, 148, 146, 164, 97, 114, 116, 101, 164, 49, 50, 51, 52, 147, 202, 0, 0, 0, 0, 202, 0, 0, 0, 0, 202, 0, 0, 0, 0, 147, 202, 0, 0, 0, 0, 202, 0, 0, 0, 0, 202, 0, 0, 0, 0, 202, 0, 0, 0, 0]
-```
-
-### ServerTime
-
-Syncing the client with server time. This is for buffered playback. Buffered playback is not implemented.
-
-JSON:
-
-```json
-{"ServerTime":0.0}
-```
-
-MsgPack:
-
-```text
-[129, 170, 83, 101, 114, 118, 101, 114, 84, 105, 109, 101, 202, 0, 0, 0, 0]
 ```
 
 ### MapChange

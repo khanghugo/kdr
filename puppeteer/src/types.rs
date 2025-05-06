@@ -35,9 +35,7 @@ pub struct ViewInfo {
 #[repr(C)]
 pub struct PuppetFrame {
     pub server_time: f32,
-    /// A list of frames based on the number of player count.
-    ///
-    /// Index will match the player list. For example, player index 0 will have puppet frame index 0
+    /// A list of viewinfos for every spectate-able entities in the server
     pub frame: Vec<ViewInfo>,
 }
 
@@ -45,7 +43,6 @@ pub struct PuppetFrame {
 #[repr(C)]
 pub enum PuppetEvent {
     PuppetFrame(PuppetFrame),
-    ServerTime(f32),
     MapChange { game_mod: String, map_name: String },
     Version(u32),
 }
@@ -71,7 +68,6 @@ mod test {
     use super::{PuppetEvent, ViewInfo};
 
     // {"PuppetFrame":{"server_time":0.0,"frame":[{"player":{"name":"arte","steam_id":"1234"},"vieworg":[0.0,0.0,0.0],"viewangles":[0.0,0.0,0.0],"timer_time":0.0},{"player":{"name":"arte","steam_id":"1234"},"vieworg":[0.0,0.0,0.0],"viewangles":[0.0,0.0,0.0],"timer_time":0.0},{"player":{"name":"arte","steam_id":"1234"},"vieworg":[0.0,0.0,0.0],"viewangles":[0.0,0.0,0.0],"timer_time":0.0}]}}
-    // {"ServerTime":0.0}
     // {"MapChange":{"game_mod":"cstrike","map_name":"de_dust2"}}
     // {"Version":0}
     #[test]
@@ -83,8 +79,6 @@ mod test {
         .encode_message_json()
         .unwrap();
 
-        let server_time = PuppetEvent::ServerTime(0.).encode_message_json().unwrap();
-
         let map_change = PuppetEvent::MapChange {
             game_mod: "cstrike".into(),
             map_name: "de_dust2".into(),
@@ -95,7 +89,6 @@ mod test {
         let version = PuppetEvent::Version(0).encode_message_json().unwrap();
 
         println!("{}", puppet_frame);
-        println!("{}", server_time);
         println!("{}", map_change);
         println!("{}", version);
     }
@@ -109,10 +102,6 @@ mod test {
         .encode_message_msgpack()
         .unwrap();
 
-        let server_time = PuppetEvent::ServerTime(0.)
-            .encode_message_msgpack()
-            .unwrap();
-
         let map_change = PuppetEvent::MapChange {
             game_mod: "cstrike".into(),
             map_name: "de_dust2".into(),
@@ -123,7 +112,6 @@ mod test {
         let version = PuppetEvent::Version(0).encode_message_msgpack().unwrap();
 
         println!("{:?}", puppet_frame);
-        println!("{:?}", server_time);
         println!("{:?}", map_change);
         println!("{:?}", version);
     }

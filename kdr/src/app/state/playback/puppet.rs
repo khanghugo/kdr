@@ -96,11 +96,6 @@ impl AppState {
                     puppet.frames.pop_front();
                 }
             }
-            PuppetEvent::ServerTime(server_time) => {
-                let puppet = self.playback_state.get_puppet_mut().unwrap();
-
-                // puppet.server_time_offset = server_time - self.time;
-            }
             PuppetEvent::MapChange { game_mod, map_name } => {
                 self.event_loop_proxy
                     .send_event(crate::app::AppEvent::RequestMap(MapIdentifier {
