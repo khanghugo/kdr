@@ -71,7 +71,7 @@ impl AppState {
         }
     }
 
-    pub fn interaction_tick(&mut self) {
+    pub(super) fn interaction_tick(&mut self) {
         // shouldnt be able to move if we are not in free cam
         if !self.input_state.free_cam {
             return;

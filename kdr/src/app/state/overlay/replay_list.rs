@@ -17,7 +17,7 @@ pub struct ReplayListUIState {
 impl AppState {
     // mimicking map_list.rs
     // make sure they both behave similarly
-    pub fn replay_list(&mut self, ctx: &egui::Context) {
+    pub(super) fn replay_list(&mut self, ctx: &egui::Context) {
         if self.other_resources.replay_list.is_empty() {
             return;
         }

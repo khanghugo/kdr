@@ -4,7 +4,7 @@ use crate::{
 };
 
 impl AppState {
-    pub fn seek_bar(&mut self, ctx: &egui::Context) {
+    pub(super) fn seek_bar(&mut self, ctx: &egui::Context) {
         const SLIDER_WIDTH_PERC: f32 = 0.65;
 
         // use winit_window_dimensions() becuase of some weird scaling bugs

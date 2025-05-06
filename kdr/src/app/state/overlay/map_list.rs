@@ -20,7 +20,7 @@ pub struct MapListUIState {
 }
 
 impl AppState {
-    pub fn map_list(&mut self, ctx: &egui::Context) {
+    pub(super) fn map_list(&mut self, ctx: &egui::Context) {
         if self.other_resources.map_list.is_empty() {
             return;
         }

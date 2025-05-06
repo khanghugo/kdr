@@ -35,7 +35,7 @@ impl TextState {
 }
 
 impl AppState {
-    pub fn draw_entity_text(&mut self, ctx: &egui::Context) {
+    pub(super) fn draw_entity_text(&mut self, ctx: &egui::Context) {
         let Some((width, height)) = self.egui_window_dimensions(ctx) else {
             return;
         };
@@ -79,7 +79,7 @@ impl AppState {
             });
     }
 
-    pub fn draw_say_text(&mut self, ctx: &egui::Context) {
+    pub(super) fn draw_say_text(&mut self, ctx: &egui::Context) {
         if self.text_state.say_text.is_empty() {
             return;
         }

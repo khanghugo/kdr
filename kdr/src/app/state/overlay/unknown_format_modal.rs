@@ -20,7 +20,7 @@ impl Default for UnknownFormatModalUIState {
 }
 
 impl AppState {
-    pub fn draw_unknown_format_modal(&mut self, ctx: &egui::Context) {
+    pub(super) fn draw_unknown_format_modal(&mut self, ctx: &egui::Context) {
         if !self.ui_state.unknown_format_modal.enabled {
             return;
         }

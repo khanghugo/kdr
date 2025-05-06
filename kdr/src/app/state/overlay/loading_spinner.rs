@@ -2,7 +2,7 @@ use crate::app::state::{AppState, file::LoadingState};
 
 impl AppState {
     // returns a boolean just to see if something is loading
-    pub fn loading_spinner(&mut self, ctx: &egui::Context) -> bool {
+    pub(super) fn loading_spinner(&mut self, ctx: &egui::Context) -> bool {
         match &self.file_state.loading_state {
             LoadingState::Fetching { .. } | LoadingState::Loading { .. } => {
                 egui::Area::new("loading spinner".into())

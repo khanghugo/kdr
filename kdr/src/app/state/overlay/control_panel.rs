@@ -38,7 +38,7 @@ impl Default for ControlPanelUIState {
 }
 
 impl AppState {
-    pub fn control_panel(&mut self, ctx: &egui::Context) {
+    pub(super) fn control_panel(&mut self, ctx: &egui::Context) {
         const MAX_TITLE_LENGTH: usize = 44;
         let title_name = self
             .file_state

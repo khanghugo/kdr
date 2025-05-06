@@ -1,7 +1,7 @@
 use crate::app::state::AppState;
 
 impl AppState {
-    pub fn crosshair(&mut self, ctx: &egui::Context) {
+    pub(super) fn crosshair(&mut self, ctx: &egui::Context) {
         // we want to pin the text with absolute positions, so we need to use egui dimensions
         let Some((width, height)) = self.egui_window_dimensions(ctx) else {
             return;

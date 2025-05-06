@@ -258,7 +258,7 @@ impl AudioBackend {
 }
 
 impl AppState {
-    pub fn audio_state_tick(&mut self) {
+    pub(super) fn audio_state_tick(&mut self) {
         let Some(backend) = &mut self.audio_state.backend else {
             return;
         };

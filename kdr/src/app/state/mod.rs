@@ -152,7 +152,7 @@ impl AppState {
     }
 
     /// This needs camera.fovx assigned before calling
-    pub fn update_fov(&mut self) {
+    pub(super) fn update_fov(&mut self) {
         let Some(window_state) = self.window_state.as_ref() else {
             return;
         };

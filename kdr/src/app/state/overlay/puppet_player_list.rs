@@ -1,7 +1,7 @@
 use crate::app::state::AppState;
 
 impl AppState {
-    pub fn puppet_player_list(&mut self, ctx: &egui::Context) {
+    pub(super) fn puppet_player_list(&mut self, ctx: &egui::Context) {
         let Some(puppet) = self.playback_state.get_puppet_mut() else {
             return;
         };

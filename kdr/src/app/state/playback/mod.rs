@@ -75,7 +75,7 @@ impl Default for PlaybackMode {
 }
 
 impl AppState {
-    pub fn playback_tick(&mut self) {
+    pub(super) fn playback_tick(&mut self) {
         // don't override the camera if in free cam
         if self.input_state.free_cam {
             return;
