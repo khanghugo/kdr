@@ -176,3 +176,30 @@ pub fn vec3(i: &str) -> Option<[f32; 3]> {
 
     Some([res[0], res[1], res[2]])
 }
+
+/// Difference between curr and next
+pub fn angle_diff(curr: f32, next: f32) -> f32 {
+    let curr = curr.to_radians();
+    let next = next.to_radians();
+
+    (-(curr - next).sin()).asin().to_degrees()
+}
+
+use glam::FloatExt;
+
+pub fn lerp_viewangles(from: [f32; 3], to: [f32; 3], target: f32) -> [f32; 3] {
+    let viewangles_diff: [f32; 3] = from_fn(|i| {
+        angle_diff(
+            // normalize is not what we want as we are in between +/-
+            from[i], to[i],
+        )
+    });
+
+    let actual_to: [f32; 3] = from_fn(|i| from[i] + viewangles_diff[i]);
+
+    lerp_arr3(from, actual_to, target)
+}
+
+pub fn lerp_arr3(from: [f32; 3], to: [f32; 3], target: f32) -> [f32; 3] {
+    from_fn(|i| from[i].lerp(to[i], target))
+}

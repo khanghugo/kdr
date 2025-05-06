@@ -1,6 +1,7 @@
 use std::collections::VecDeque;
 
 use cgmath::Deg;
+use common::{lerp_arr3, lerp_viewangles};
 use loader::MapIdentifier;
 use puppeteer::{PuppetEvent, PuppetFrame, Puppeteer};
 use tracing::warn;
@@ -32,6 +33,11 @@ impl Puppet {
     }
 }
 
+pub struct JustViewInfo {
+    vieworg: [f32; 3],
+    viewangles: [f32; 3],
+}
+
 pub struct PuppetFrames(pub VecDeque<PuppetFrame>);
 
 impl PuppetFrames {
@@ -53,8 +59,9 @@ impl PuppetFrames {
 
     // currently no interpolation
     // should there be interpolation?
-    pub fn get_frame_idx(&self, time: f32) -> Option<usize> {
-        self.0
+    pub fn get_viewinfo(&self, time: f32, player_name: &str) -> Option<(usize, JustViewInfo)> {
+        let from_index = self
+            .0
             .iter()
             .enumerate()
             .rev()
@@ -65,6 +72,59 @@ impl PuppetFrames {
                     None
                 }
             })
+            // maybe early exit?
+            .unwrap_or(0);
+
+        // exit here if we dont have any frames
+        let from_frame = self.get(from_index)?;
+
+        let from_viewinfo = from_frame.frame.iter().find_map(|viewinfo| {
+            if viewinfo.player.name == player_name {
+                viewinfo.into()
+            } else {
+                None
+            }
+        })?;
+
+        if from_index == self.len() - 1 {
+            return Some((
+                from_index,
+                JustViewInfo {
+                    vieworg: from_viewinfo.vieworg,
+                    viewangles: from_viewinfo.viewangles,
+                },
+            ));
+        }
+
+        // to_index is guaranteed here because of the condition above
+        let to_index = from_index + 1;
+
+        let to_frame = &self.0[to_index];
+        let to_viewinfo = to_frame.frame.iter().find_map(|viewinfo| {
+            if viewinfo.player.name == player_name {
+                viewinfo.into()
+            } else {
+                None
+            }
+        })?;
+
+        let lerp_range = to_frame.server_time - from_frame.server_time;
+        let lerp_target = (time - from_frame.server_time) / lerp_range;
+
+        let lerped_vieworg = lerp_arr3(from_viewinfo.vieworg, to_viewinfo.vieworg, lerp_target);
+        let lerped_viewangles = lerp_viewangles(
+            from_viewinfo.viewangles,
+            to_viewinfo.viewangles,
+            lerp_target,
+        );
+
+        Some((
+            from_index,
+            JustViewInfo {
+                vieworg: lerped_vieworg,
+                viewangles: lerped_viewangles,
+            },
+        ))
     }
 
     pub fn get(&self, index: usize) -> Option<&PuppetFrame> {
@@ -138,7 +198,10 @@ impl AppState {
         // BECAUSE OF THE EGUI ELEMENT
         // WHAT THE FUCK
         // SO WE DONT ADD TIMER OFFSET HERE, THAT MEANS WE DONT NEED TIME OFFSET
-        let Some(frame_idx) = puppet.frames.get_frame_idx(self.time) else {
+        let Some((frame_idx, viewinfo)) = puppet
+            .frames
+            .get_viewinfo(self.time, &puppet.selected_player)
+        else {
             return;
         };
 
@@ -148,22 +211,6 @@ impl AppState {
         // the alternative is to store player list.
         // Doesn't seem worth it.
         puppet.current_frame = frame_idx;
-
-        let frame = &puppet.frames.0[frame_idx];
-
-        if puppet.selected_player == NO_PLAYER_SELECTED {
-            puppet.selected_player = frame.frame[0].player.name.clone();
-        }
-
-        let Some(viewinfo_index) = frame
-            .frame
-            .iter()
-            .position(|viewinfo| viewinfo.player.name == puppet.selected_player)
-        else {
-            return;
-        };
-
-        let viewinfo = &frame.frame[viewinfo_index];
 
         self.render_state.camera.set_position(viewinfo.vieworg);
 

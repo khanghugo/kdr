@@ -1,5 +1,6 @@
 use std::{array::from_fn, path::Path};
 
+use common::angle_diff;
 use dem::types::Demo;
 use glam::{FloatExt, Vec3};
 
@@ -225,14 +226,6 @@ impl GhostInfo {
                 .unwrap_or(false)
         })
     }
-}
-
-/// Difference between curr and next
-pub fn angle_diff(curr: f32, next: f32) -> f32 {
-    let curr = curr.to_radians();
-    let next = next.to_radians();
-
-    (-(curr - next).sin()).asin().to_degrees()
 }
 
 pub fn file_name_get_stem(file_name: &str) -> Option<String> {
