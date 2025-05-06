@@ -11,7 +11,6 @@ use kira::sound::static_sound::StaticSoundData;
 use loader::{ReplayList, ResourceMap};
 use overlay::{UIState, text::TextState};
 use playback::PlaybackState;
-use puppet::PuppetState;
 use render::RenderState;
 use window::WindowState;
 use winit::event_loop::EventLoopProxy;
@@ -24,7 +23,6 @@ pub mod input;
 pub mod movement;
 pub mod overlay;
 pub mod playback;
-pub mod puppet;
 pub mod render;
 pub mod window;
 
@@ -40,7 +38,11 @@ pub struct OtherResources {
 
 // Decouples states from App so that we can impl specific stuffs that affect states without affecting App.
 pub struct AppState {
-    // time
+    /// Client time
+    ///
+    /// During replay playback, this syncs with demo time
+    ///
+    /// During live playback, this shouldn't be changed too significantly
     pub time: f32,
     pub last_time: f32,
     pub last_instant: Instant,
@@ -60,7 +62,6 @@ pub struct AppState {
     pub ui_state: UIState,
     pub file_state: FileState,
     pub window_state: Option<WindowState>,
-    pub puppet_state: Option<PuppetState>,
     pub playback_state: PlaybackState,
 
     // talk with other modules
@@ -87,7 +88,6 @@ impl AppState {
             audio_state: AudioState::default(),
             audio_resource: HashMap::new(),
             file_state: FileState::default(),
-            puppet_state: None,
             playback_state: PlaybackState::default(),
 
             event_loop_proxy,
@@ -101,6 +101,11 @@ impl AppState {
     pub fn tick(&mut self) {
         self.delta_update();
 
+        // polls conditionally with target_arch so that it doesn't run on native
+        // polling before playback, maybe it makes sense
+        #[cfg(target_arch = "wasm32")]
+        self.poll_puppeteer();
+
         self.interaction_tick();
         self.playback_tick();
         self.text_tick();
@@ -113,6 +118,7 @@ impl AppState {
         self.frame_time = diff.as_secs_f32();
         self.last_instant = now;
 
+        // only updates delta if unpaused or there is playback
         if !(self.paused || self.playback_state.is_none()) {
             self.last_time = self.time;
             self.time += diff.as_secs_f32() * self.playback_speed;

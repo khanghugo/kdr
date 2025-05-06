@@ -9,7 +9,7 @@ pub mod control_panel;
 mod crosshair;
 mod loading_spinner;
 mod map_list;
-mod puppet;
+mod puppet_player_list;
 mod replay_list;
 mod seekbar;
 pub mod text;

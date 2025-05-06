@@ -18,12 +18,6 @@ use tracing::warn;
 use wasm_bindgen_futures::spawn_local;
 
 pub struct Puppeteer {
-    // buffered playback means we can rewind and whatever, that is for later
-    // pub frame_buffer: VecDeque<PuppetFrame>,
-    // client has its own timer
-    // when connecting to a server, it will tell us its current time
-    // with that, the client can has its own timer
-    pub server_time_offset: f32,
     // sender is doing nothing, whatever
     pub event_receiver: UnboundedReceiver<PuppetEvent>,
     pub command_sender: UnboundedSender<String>,
@@ -95,8 +89,6 @@ impl Puppeteer {
         });
 
         let res = Self {
-            // frame_buffer: VecDeque::new(),
-            server_time_offset: 0.,
             event_receiver,
             command_sender,
         };

@@ -7,7 +7,10 @@ use crate::{
             DEFAULT_FRAMETIME, DEFAULT_NOCLIP_SPEED, DEFAULT_SENSITIVITY, WINDOW_MINIMUM_HEIGHT,
             WINDOW_MINIMUM_WIDTH,
         },
-        state::{AppState, playback},
+        state::{
+            AppState,
+            playback::{self, replay::ReplayPlaybackMode},
+        },
     },
     renderer::camera::{FOV_DEFAULT, FOV_MAX, FOV_MIN},
 };
@@ -88,9 +91,9 @@ impl AppState {
 
                         ui.vertical(|ui| {
                             let playback_mode = match replay.playback_mode {
-                                playback::ReplayPlaybackMode::Immediate(_) => "Immediate",
-                                playback::ReplayPlaybackMode::Interpolated => "Interpolated",
-                                playback::ReplayPlaybackMode::FrameAccurate => "Frame Accurate",
+                                ReplayPlaybackMode::Immediate(_) => "Immediate",
+                                ReplayPlaybackMode::Interpolated => "Interpolated",
+                                ReplayPlaybackMode::FrameAccurate => "Frame Accurate",
                             };
 
                             ui.label(format!("Ghost name: {}", replay.ghost.ghost_name));
@@ -104,7 +107,7 @@ impl AppState {
                             ui.label(format!("Playback mode: {}", playback_mode));
                         });
                     }
-                    playback::PlaybackMode::Live => {
+                    playback::PlaybackMode::Live(puppet) => {
                         ui.separator();
 
                         ui.label("Live playback");

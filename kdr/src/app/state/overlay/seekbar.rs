@@ -11,12 +11,29 @@ impl AppState {
 
         let height_offset = height as f32 * 0.04; // going up more
 
-        let slider_max = self
-            .playback_state
-            .get_replay()
-            .as_ref()
-            .map(|ghost| ghost.ghost.get_ghost_length()(DEFAULT_FRAMETIME))
-            .unwrap_or(1.0);
+        let (slider_min, slider_max) = match &self.playback_state.playback_mode {
+            crate::app::state::playback::PlaybackMode::Replay(replay) => {
+                (0., replay.ghost.get_ghost_length()(DEFAULT_FRAMETIME))
+            }
+            crate::app::state::playback::PlaybackMode::Live(puppet) => {
+                let min = puppet
+                    .frames
+                    .0
+                    .front()
+                    .map(|frame| frame.server_time)
+                    .unwrap_or(0.);
+                let max = puppet
+                    .frames
+                    .0
+                    .iter()
+                    .last()
+                    .map(|frame| frame.server_time)
+                    .unwrap_or(1.);
+
+                (min, max)
+            }
+            crate::app::state::playback::PlaybackMode::None => unreachable!(),
+        };
 
         egui::Area::new(egui::Id::new("seekbar-area"))
             .anchor(egui::Align2::CENTER_BOTTOM, [0., -height_offset])
@@ -37,7 +54,7 @@ impl AppState {
 
                             // timeline slider
                             let timeline_slider =
-                                egui::Slider::new(&mut self.time, 0.0..=slider_max)
+                                egui::Slider::new(&mut self.time, slider_min..=slider_max)
                                     .show_value(false);
 
                             let response = ui.add(timeline_slider);

@@ -2,15 +2,13 @@ use crate::app::state::AppState;
 
 impl AppState {
     pub fn puppet_player_list(&mut self, ctx: &egui::Context) {
-        let Some(puppet_state) = self.puppet_state.as_mut() else {
+        let Some(puppet) = self.playback_state.get_puppet_mut() else {
             return;
         };
 
-        // let Some(current_frame) = puppet_state.frames.get(puppet_state.current_frame) else {
-        //     return;
-        // };
-
-        let current_frame = &puppet_state.fuck;
+        let Some(current_frame) = puppet.frames.get(puppet.current_frame) else {
+            return;
+        };
 
         let viewinfo_count = current_frame.frame.len();
 
@@ -31,7 +29,7 @@ impl AppState {
                             let player_name = &current_frame.frame[row].player.name;
 
                             if ui.selectable_label(false, player_name).clicked() {
-                                puppet_state.selected_player = player_name.to_string();
+                                puppet.selected_player = player_name.to_string();
                             }
                         }
                     },

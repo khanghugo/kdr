@@ -1,5 +1,4 @@
 use std::{
-    collections::VecDeque,
     io::Cursor,
     path::{Path, PathBuf},
     sync::Arc,
@@ -9,7 +8,7 @@ use ::tracing::{info, warn};
 #[cfg(target_arch = "wasm32")]
 use common::KDR_CANVAS_ID;
 use common::{UNKNOWN_GAME_MOD, vec3};
-use puppeteer::{PuppetFrame, Puppeteer};
+use puppeteer::Puppeteer;
 
 #[cfg(target_arch = "wasm32")]
 use common::{REQUEST_MAP_ENDPOINT, REQUEST_MAP_GAME_MOD_QUERY, REQUEST_REPLAY_ENDPOINT};
@@ -22,8 +21,10 @@ use state::{
     audio::{AudioBackend, AudioStateError},
     file::{LoadingState, SelectedFileType},
     overlay::control_panel::PostProcessingControlState,
-    playback::{Replay, ReplayPlaybackMode},
-    puppet::PuppetState,
+    playback::{
+        puppet::Puppet,
+        replay::{Replay, ReplayPlaybackMode},
+    },
     render::RenderOptions,
     window::WindowState,
 };
@@ -343,11 +344,6 @@ impl ApplicationHandler<AppEvent> for App {
 
                     return;
                 };
-
-                // polls the puppeteer before rendering
-                // polls conditionally with target_arch so that it doesn't run on native
-                #[cfg(target_arch = "wasm32")]
-                self.state.poll_puppeteer();
 
                 let mut encoder = render_context
                     .device()
@@ -1290,16 +1286,12 @@ impl ApplicationHandler<AppEvent> for App {
                         }
                     };
 
-                    let puppet_state = puppeteer.map(|puppeteer| PuppetState {
-                        puppeteer,
-                        selected_player: "NoPlayerSelected".into(),
-                        version: 0,
-                        frames: VecDeque::new(),
-                        current_frame: 0,
-                        fuck: PuppetFrame::default(),
-                    });
+                    puppeteer.map(|puppeteer| {
+                        let puppet = Puppet::new(puppeteer);
 
-                    self.state.puppet_state = puppet_state;
+                        self.state.playback_state.set_puppet(puppet);
+                        self.state.input_state.free_cam = false;
+                    });
                 }
             }
             AppEvent::ErrorEvent(app_error) => {
