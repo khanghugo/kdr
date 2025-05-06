@@ -1,4 +1,7 @@
-use crate::app::{constants::DEFAULT_FRAMETIME, state::AppState};
+use crate::{
+    app::{constants::DEFAULT_FRAMETIME, state::AppState},
+    utils::format_time,
+};
 
 impl AppState {
     pub fn seek_bar(&mut self, ctx: &egui::Context) {
@@ -111,15 +114,4 @@ impl AppState {
                     });
             });
     }
-}
-
-fn format_time(time_in_secs: f32) -> String {
-    let minutes = time_in_secs.div_euclid(60.);
-    let seconds = (time_in_secs % 60.0).floor();
-    let fract = (time_in_secs.fract() * 100.0).floor();
-
-    format!(
-        "{:02}:{:02}.{:02}",
-        minutes as i32, seconds as i32, fract as i32
-    )
 }

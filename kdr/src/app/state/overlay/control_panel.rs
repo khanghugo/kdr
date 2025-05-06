@@ -111,6 +111,7 @@ impl AppState {
                         ui.separator();
 
                         ui.label("Live playback");
+                        ui.label(format!("Name: {}", puppet.selected_player));
                     }
                     playback::PlaybackMode::None => {}
                 }

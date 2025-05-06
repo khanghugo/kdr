@@ -132,9 +132,9 @@ impl PuppetFrames {
     }
 }
 
-// 5 seconds of 100fps
-// this is estimated to be around 6MiB of data
-pub const MAX_BUFFER_LENGTH: usize = 3000;
+// 15 seconds of 100fps
+// this is estimated to be around 3MiB of data
+pub const MAX_BUFFER_LENGTH: usize = 1500;
 
 impl AppState {
     pub(super) fn handle_puppet_event(&mut self, event: PuppetEvent) {

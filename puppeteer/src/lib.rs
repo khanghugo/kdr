@@ -11,7 +11,7 @@ pub use types::*;
 use error::PuppeteerError;
 use futures::{
     SinkExt, StreamExt,
-    channel::mpsc::{UnboundedReceiver, UnboundedSender},
+    channel::mpsc::{Receiver, UnboundedSender},
 };
 use gloo_net::websocket::{Message, futures::WebSocket};
 use tracing::warn;
@@ -19,7 +19,7 @@ use wasm_bindgen_futures::spawn_local;
 
 pub struct Puppeteer {
     // sender is doing nothing, whatever
-    pub event_receiver: UnboundedReceiver<PuppetEvent>,
+    pub event_receiver: Receiver<PuppetEvent>,
     pub command_sender: UnboundedSender<String>,
 }
 
@@ -36,9 +36,12 @@ impl Puppeteer {
             });
         }
 
+        const BUFFER_SIZE: usize = 1024;
+
         let (mut ws_sender, ws_receiver) = ws_connection.split();
         // from server to client
-        let (event_sender, event_receiver) = futures::channel::mpsc::unbounded::<PuppetEvent>();
+        let (event_sender, event_receiver) =
+            futures::channel::mpsc::channel::<PuppetEvent>(BUFFER_SIZE);
         // fromt client to server
         let (command_sender, mut command_receiver) = futures::channel::mpsc::unbounded::<String>();
 
