@@ -53,6 +53,9 @@ impl AppState {
                             ui.spacing_mut().slider_width = slider_width / ctx.zoom_factor();
 
                             // timeline slider
+                            // WHAT THE FUCK
+                            // THIS IMPLICITLY CHANGE THE SELF.TIME VALUE
+                            // SO, WE DONT NEED SERVER TIME OFFSET
                             let timeline_slider =
                                 egui::Slider::new(&mut self.time, slider_min..=slider_max)
                                     .show_value(false);

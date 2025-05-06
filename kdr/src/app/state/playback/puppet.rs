@@ -3,7 +3,7 @@ use std::collections::VecDeque;
 use cgmath::Deg;
 use loader::MapIdentifier;
 use puppeteer::{PuppetEvent, PuppetFrame, Puppeteer};
-use tracing::{info, warn};
+use tracing::warn;
 
 use super::AppState;
 
@@ -13,9 +13,9 @@ pub struct Puppet {
     pub selected_player: String,
     pub frames: PuppetFrames,
     pub current_frame: usize,
-    // offset = server time - client time
-    // with this, client can find live time by looking at this offset
-    pub server_time_offset: f32,
+    // // offset = server time - client time
+    // // with this, client can find live time by looking at this offset
+    // pub server_time_offset: f32,
 }
 
 const NO_PLAYER_SELECTED: &str = "NoPlayerSelected";
@@ -28,7 +28,6 @@ impl Puppet {
             version: 0,
             frames: PuppetFrames::new(),
             current_frame: 0,
-            server_time_offset: 0.,
         }
     }
 }
@@ -84,10 +83,10 @@ impl AppState {
                 // function calling handle_puppet_event should make sure that there is puppet
                 let puppet = self.playback_state.get_puppet_mut().unwrap();
 
-                // server time offset is the first frame that we receive
-                if puppet.server_time_offset == 0. {
-                    puppet.server_time_offset = frame.server_time;
-                }
+                // // server time offset is the first frame that we receive
+                // if puppet.server_time_offset == 0. {
+                //     puppet.server_time_offset = frame.server_time;
+                // }
 
                 // storing the frame
                 // need to store the frames first here so that the ui can have the player list
@@ -100,7 +99,7 @@ impl AppState {
             PuppetEvent::ServerTime(server_time) => {
                 let puppet = self.playback_state.get_puppet_mut().unwrap();
 
-                puppet.server_time_offset = server_time - self.time;
+                // puppet.server_time_offset = server_time - self.time;
             }
             PuppetEvent::MapChange { game_mod, map_name } => {
                 self.event_loop_proxy
@@ -140,10 +139,11 @@ impl AppState {
     }
 
     pub(super) fn process_puppet_tick(&mut self, puppet: &mut Puppet) {
-        let Some(frame_idx) = puppet
-            .frames
-            .get_frame_idx(self.time + puppet.server_time_offset)
-        else {
+        // SELF.TIME IS IMPLICITLY SET IN THE RANGE OF ALL PUPPET FRAMES
+        // BECAUSE OF THE EGUI ELEMENT
+        // WHAT THE FUCK
+        // SO WE DONT ADD TIMER OFFSET HERE, THAT MEANS WE DONT NEED TIME OFFSET
+        let Some(frame_idx) = puppet.frames.get_frame_idx(self.time) else {
             return;
         };
 
