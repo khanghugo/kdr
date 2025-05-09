@@ -43,4 +43,10 @@ mod test {
 
         assert_eq!(mdl.textures.len(), 0);
     }
+
+    #[test]
+    fn parse_chick() {
+        let bytes = include_bytes!("./tests/chick.mdl");
+        let mdl = Mdl::open_from_bytes(bytes).unwrap();
+    }
 }

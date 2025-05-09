@@ -39,8 +39,6 @@ fn parse_mdl(i: &[u8]) -> IResult<Mdl> {
     let start = i;
     let (_, mdl_header) = parse_header(start)?;
 
-    let (_, sequences) = parse_sequences(start, &mdl_header)?;
-
     let (_, textures) = parse_textures(start, &mdl_header)?;
 
     let (_, bodyparts) = parse_bodyparts(start, &mdl_header)?;
@@ -56,6 +54,8 @@ fn parse_mdl(i: &[u8]) -> IResult<Mdl> {
     let (_, skin_families) = parse_skin_families(start, &mdl_header)?;
 
     let (_, attachments) = parse_attachments(start, &mdl_header)?;
+
+    let (_, sequences) = parse_sequences(start, &mdl_header)?;
 
     Ok((
         i,
@@ -169,7 +169,7 @@ fn parse_header(i: &[u8]) -> IResult<Header> {
 }
 
 // https://github.com/LogicAndTrick/sledge-formats/blob/7a3bfb33562aece483e15796b8573b23d71319ab/Sledge.Formats.Model/Goldsource/MdlFile.cs#L442
-fn _parse_animation_frame_values(br: &[u8], read_count: usize) -> IResult<Vec<i16>> {
+fn _parse_animation_frame_rle_sledge(br: &[u8], read_count: usize) -> IResult<Vec<i16>> {
     let mut values: Vec<i16> = vec![0; read_count];
 
     let mut i = 0;
@@ -198,8 +198,8 @@ fn _parse_animation_frame_values(br: &[u8], read_count: usize) -> IResult<Vec<i1
     Ok((reader, values))
 }
 
-// gemini2.5 solution. just send it the entire mdl documentation and send it the other implementation
-fn parse_animation_frame_values4(
+// gemini2.5 solution. just send it the entire mdl documentation and send it the compression algorithm
+fn _parse_animation_frame_rle_gemini(
     mut reader: &[u8], // Track input slice consumption
     num_frames: usize,
 ) -> IResult<Vec<i16>> {
@@ -270,6 +270,125 @@ fn parse_animation_frame_values4(
     Ok((reader, output_values))
 }
 
+// Based on the comments from this
+// https://github.com/LogicAndTrick/sledge-formats/blob/7a3bfb33562aece483e15796b8573b23d71319ab/Sledge.Formats.Model/Goldsource/MdlFile.cs#L442
+// And then make it more idiomatic rust
+pub fn parse_animation_frame_rle(rle_start: &[u8], num_frame: usize) -> IResult<Vec<i16>> {
+    let mut res = vec![0i16; num_frame];
+    let mut next = rle_start;
+
+    let mut i = 0;
+
+    while i < num_frame {
+        let (_next, run) = take(2usize)(next)?;
+
+        let valid = run[0];
+        let total = run[1];
+
+        // compressed values
+        let (_next, compressed_values) = count(le_i16, valid as usize)(_next)?;
+
+        // advancing reader
+        next = _next;
+
+        let last_value = compressed_values.last();
+
+        // uncompressed values
+        // repeating the last element
+        match last_value {
+            Some(x) => compressed_values.iter().chain(std::iter::repeat(x)),
+            // no values, it is all 0
+            None => {
+                break;
+            }
+        }
+        .take(total as usize)
+        .for_each(|&value| {
+            // this loop isn't aware of the exit
+            if i >= num_frame {
+                return;
+            }
+
+            res[i] = value;
+            i += 1;
+        });
+    }
+
+    Ok((next, res))
+}
+
+// parse starting from animation offset based off what I see in the bone setup function
+fn _parse_blend_studiomdl_impl<'a>(
+    panim: &'a [u8],
+    mdl_header: &Header,
+    sequence_header: &SequenceHeader,
+) -> IResult<'a, Blend> {
+    let offset_parser = map(count(le_u16, 6 as usize), |res| {
+        [res[0], res[1], res[2], res[3], res[4], res[5]]
+    });
+
+    let (end_of_blend, blends_offets) = count(offset_parser, mdl_header.num_bones as usize)(panim)?;
+
+    let mut res: Blend = vec![];
+    let num_frames = sequence_header.num_frames as usize;
+
+    for blend_offsets in blends_offets.into_iter() {
+        let mut bone_values: [Vec<i16>; 6] = from_fn(|_| vec![0; num_frames]);
+
+        for (motion_idx, offset) in blend_offsets.into_iter().enumerate() {
+            // if no offset, the whole run of bone blend value is 0
+            if offset == 0 {
+                // TODO: bone controller
+                continue;
+            }
+
+            //  typedef union
+            // {
+            // 	struct {
+            // 		unsigned char	valid;
+            // 		unsigned char	total;
+            // 	} num;
+            // 	short		value;
+            // } mstudioanimvalue_t;
+
+            for frame_index in 0..num_frames {
+                let mut panimvalue = &panim[offset as usize..];
+
+                // "find span of values that includes the frame we want"
+                let mut k = frame_index as u8;
+
+                while panimvalue[1] <= k {
+                    let num_valid = panimvalue[0];
+
+                    k -= panimvalue[1];
+                    panimvalue = &panimvalue[(num_valid as usize + 1) * 2..];
+                }
+
+                let mut anim_value = 0;
+
+                // "if we're inside the span"
+                if panimvalue[0] > k {
+                    // "and there's more data in the span"
+                    let idx = (k as usize + 1) * 2;
+
+                    anim_value = i16::from_le_bytes([panimvalue[idx], panimvalue[idx + 1]]);
+                } else {
+                    // "are we at the end of the repeating values section and there's another section with data?"
+                    let idx = panimvalue[0] as usize * 2;
+
+                    anim_value = i16::from_le_bytes([panimvalue[idx], panimvalue[idx + 1]]);
+                }
+
+                bone_values[motion_idx][frame_index] = anim_value;
+            }
+        }
+
+        res.push(bone_values);
+    }
+
+    Ok((end_of_blend, res))
+}
+
 // parse starting from animation offset
 fn parse_blend<'a>(
     // panimvalue points to the current blend
@@ -305,7 +424,7 @@ fn parse_blend<'a>(
 
     // at the moment, we have the bone count and the offsets
     // now we have to fit animations inside the bone count
-    for bone in blend {
+    for bone in blend.into_iter() {
         let mut bone_values: [Vec<i16>; 6] = from_fn(|_| vec![0; num_frames]);
 
         for (motion_idx, offset) in bone.into_iter().enumerate() {
@@ -314,7 +433,7 @@ fn parse_blend<'a>(
             }
 
             let rle_start = &panimvalue[offset as usize..];
-            let (_, values) = parse_animation_frame_values4(rle_start, num_frames)?;
+            let (_, values) = parse_animation_frame_rle(rle_start, num_frames)?;
 
             bone_values[motion_idx] = values;
         }
