@@ -5,6 +5,7 @@ use super::{Duration, Instant};
 
 use audio::AudioState;
 use egui::ahash::{HashMap, HashMapExt};
+use entities::EntityState;
 use file::FileState;
 use input::InputState;
 use kira::sound::static_sound::StaticSoundData;
@@ -18,6 +19,7 @@ use winit::event_loop::EventLoopProxy;
 use super::AppEvent;
 
 pub mod audio;
+pub mod entities;
 pub mod file;
 pub mod input;
 pub mod movement;
@@ -63,6 +65,7 @@ pub struct AppState {
     pub file_state: FileState,
     pub window_state: Option<WindowState>,
     pub playback_state: PlaybackState,
+    pub entity_state: Option<EntityState>,
 
     // talk with other modules
     event_loop_proxy: EventLoopProxy<AppEvent>,
@@ -89,6 +92,7 @@ impl AppState {
             audio_resource: HashMap::new(),
             file_state: FileState::default(),
             playback_state: PlaybackState::default(),
+            entity_state: None,
 
             event_loop_proxy,
             window_state: None,
@@ -106,6 +110,7 @@ impl AppState {
         #[cfg(target_arch = "wasm32")]
         self.poll_puppeteer();
 
+        self.entity_tick();
         self.interaction_tick();
         self.playback_tick();
         self.text_tick();
@@ -118,8 +123,10 @@ impl AppState {
         self.frame_time = diff.as_secs_f32();
         self.last_instant = now;
 
-        // only updates delta if unpaused or there is playback
-        if !(self.paused || self.playback_state.is_none()) {
+        // only updates delta if
+        // playback and unpaused
+        // or noplayback
+        if !(self.paused || self.playback_state.is_none()) || self.playback_state.is_none() {
             self.last_time = self.time;
             self.time += diff.as_secs_f32() * self.playback_speed;
         }

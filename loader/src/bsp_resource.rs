@@ -2,12 +2,12 @@
 //!
 //! Now, they process all of them and feed that into the renderer context.
 
-use std::{collections::HashMap, io::Cursor, path::PathBuf, str::from_utf8};
+use std::{collections::HashMap, io::Cursor, path::PathBuf};
 
-use cgmath::{Rad, Rotation, Rotation3, Zero};
+use cgmath::{One, Rad, Rotation3, VectorSpace, Zero};
 use common::{
-    BspAngles, NO_DRAW_FUNC_BRUSHES, build_mvp_from_origin_angles,
-    get_bone_sequence_anim_origin_angles, vec3,
+    BspAngles, MdlPosRot, NO_DRAW_FUNC_BRUSHES, PosRot, build_mvp_from_pos_and_rot,
+    model_to_world_transformation, setup_studio_model_transformations, vec3,
 };
 use image::RgbaImage;
 use kira::sound::static_sound::StaticSoundData;
@@ -38,7 +38,9 @@ pub enum EntityModel {
     /// In addition, they will have renderamt 0. This causes hall of mirror effect on GLES.
     NoDrawBrush(i32),
     // Data stored inside is the model name to get it from the `models` hash map inside [`BspResource`].
-    Mdl(String),
+    Mdl {
+        model_name: String,
+    },
     // TODO: implement sprite loading, sprite will likely be inside transparent buffer
     Sprite,
 }
@@ -51,16 +53,16 @@ pub struct CustomRender {
 
 pub struct WorldTransformation {
     /// World coordinate XYZ
-    pub origin: [f32; 3],
+    pub position: cgmath::Vector3<f32>,
     /// World rotation XYZ (RPY)
-    pub angles: cgmath::Quaternion<f32>,
+    pub quaternion: cgmath::Quaternion<f32>,
 }
 
 impl WorldTransformation {
     fn origin() -> Self {
         Self {
-            origin: [0f32; 3],
-            angles: cgmath::Quaternion::zero(),
+            position: cgmath::Vector3::zero(),
+            quaternion: cgmath::Quaternion::one(),
         }
     }
 }
@@ -71,7 +73,21 @@ pub enum WorldTransformationType {
     /// For skeletal system, multiple transformations means there are multiple bones.
     ///
     /// So, we store all bones transformation and then put it back in shader when possible.
-    Skeletal(Vec<WorldTransformation>),
+    ///
+    /// And we also store all information related to the model. Basically a lite mdl format
+    Skeletal {
+        current_sequence_index: usize,
+        // storing base world transformation
+        world_transformation: PosRot,
+        // storing model transformation on top of that
+        model_transformations: MdlPosRot,
+        // data related to each model transformation
+        model_transformation_infos: Vec<ModelTransformationInfo>,
+    },
+}
+
+pub struct ModelTransformationInfo {
+    pub frame_per_second: f32,
 }
 
 impl WorldTransformationType {
@@ -106,23 +122,76 @@ impl WorldEntity {
         }
     }
 
-    pub fn build_mvp(&self) -> BuildMvpResult {
+    pub fn build_mvp(&self, time: f32) -> BuildMvpResult {
         match &self.transformation {
             WorldTransformationType::Entity(world_transformation) => {
-                BuildMvpResult::Entity(build_mvp_from_origin_angles(
-                    world_transformation.origin,
-                    world_transformation.angles,
+                BuildMvpResult::Entity(build_mvp_from_pos_and_rot(
+                    world_transformation.position,
+                    world_transformation.quaternion,
                 ))
             }
-            WorldTransformationType::Skeletal(world_transformations) => {
-                let transformations: Vec<_> = world_transformations
-                    .iter()
-                    .map(|transformation| {
-                        build_mvp_from_origin_angles(transformation.origin, transformation.angles)
-                    })
-                    .collect();
+            WorldTransformationType::Skeletal {
+                current_sequence_index,
+                world_transformation: (world_pos, world_rot),
+                model_transformations,
+                model_transformation_infos,
+            } => {
+                let current_sequence = &model_transformations[*current_sequence_index];
+                let current_sequence_info = &model_transformation_infos[*current_sequence_index];
 
-                BuildMvpResult::Skeletal(transformations)
+                // TODO blending
+                let current_blend = &current_sequence[0];
+                let frame_count = current_blend.len();
+
+                // TODO start time
+                let anim_total_time = frame_count as f32 / current_sequence_info.frame_per_second;
+                let anim_time = time % anim_total_time;
+                let anim_frame_from_idx = (anim_time * frame_count as f32).floor() as usize;
+
+                // usually, the first condition will never hit, but whatever
+                if anim_frame_from_idx == frame_count - 1 {
+                    let anim_frame = &current_blend[anim_frame_from_idx];
+
+                    let transformations = anim_frame
+                        .iter()
+                        .map(|&posrot| {
+                            let (pos, rot) =
+                                model_to_world_transformation(posrot, *world_pos, *world_rot);
+
+                            build_mvp_from_pos_and_rot(pos, rot)
+                        })
+                        .collect();
+
+                    BuildMvpResult::Skeletal(transformations)
+                } else {
+                    let anim_frame_to_idx = anim_frame_from_idx + 1;
+
+                    let from_frame = &current_blend[anim_frame_from_idx];
+                    let to_frame = &current_blend[anim_frame_to_idx];
+
+                    let target = anim_time / anim_total_time;
+
+                    let transformations = from_frame
+                        .iter()
+                        .zip(to_frame.iter())
+                        .map(|((from_pos, from_rot), (to_pos, to_rot))| {
+                            let lerped_posrot = (
+                                from_pos.lerp(*to_pos, target),
+                                from_rot.lerp(*to_rot, target),
+                            );
+
+                            let (pos, rot) = model_to_world_transformation(
+                                lerped_posrot,
+                                *world_pos,
+                                *world_rot,
+                            );
+
+                            build_mvp_from_pos_and_rot(pos, rot)
+                        })
+                        .collect();
+
+                    BuildMvpResult::Skeletal(transformations)
+                }
             }
         }
     }
@@ -231,18 +300,18 @@ fn load_world_entities(
                 && is_valid_model_displaying_entity
                 && model_path.ends_with(".mdl");
 
-            let origin = entity
+            let entity_world_position: cgmath::Vector3<f32> = entity
                 .get("origin")
                 .and_then(|origin| vec3(origin))
-                .unwrap_or(VEC3_ZERO);
-            let bsp_angles = BspAngles(
+                .unwrap_or(VEC3_ZERO)
+                .into();
+
+            let entity_bsp_angles = BspAngles(
                 entity
                     .get("angles")
                     .and_then(|angles| vec3(angles))
                     .unwrap_or(VEC3_ZERO),
             );
-
-            let angles = bsp_angles.get_world_angles();
 
             let rendermode = entity
                 .get("rendermode")
@@ -275,7 +344,8 @@ fn load_world_entities(
 
                 // "angles" key only works on model, not world/entity brush
                 // it is reserved for the like of func_door and alikes
-                let angles = cgmath::Quaternion::zero();
+                // NEED TO USE IDENTITY QUATERNION
+                let angles = cgmath::Quaternion::one();
 
                 let normal_opaque_brush = is_opaque && !is_nodraw;
                 let normal_transparent_brush = !is_opaque && !is_nodraw;
@@ -302,8 +372,8 @@ fn load_world_entities(
                             unreachable!("trying to add an unknown brush type: {}", classname)
                         },
                         transformation: WorldTransformationType::Entity(WorldTransformation {
-                            origin,
-                            angles,
+                            position: entity_world_position,
+                            quaternion: angles,
                         }),
                     },
                 );
@@ -340,55 +410,24 @@ fn load_world_entities(
                     return;
                 }
 
-                let transformations: Vec<_> = mdl
-                    .bones
+                let model_transformations = setup_studio_model_transformations(mdl);
+
+                let entity_world_angles = entity_bsp_angles.get_world_angles();
+                let entity_world_angles_rad = [
+                    Rad(entity_world_angles[0].to_radians()),
+                    Rad(entity_world_angles[1].to_radians()),
+                    Rad(entity_world_angles[2].to_radians()),
+                ];
+                let entity_world_rotation =
+                    cgmath::Quaternion::from_angle_z(entity_world_angles_rad[2])
+                        * cgmath::Quaternion::from_angle_y(entity_world_angles_rad[1])
+                        * cgmath::Quaternion::from_angle_x(entity_world_angles_rad[0]);
+
+                let model_transformation_infos: Vec<ModelTransformationInfo> = mdl
+                    .sequences
                     .iter()
-                    .enumerate()
-                    .map(|(bone_idx, _bone)| {
-                        let (idle_origin, idle_angles) =
-                            get_bone_sequence_anim_origin_angles(&mdl, bone_idx, 0, 0);
-
-                        let idle_angles = idle_angles.get_world_angles();
-
-                        let bsp_angles = [
-                            Rad(angles[0].to_radians()),
-                            Rad(angles[1].to_radians()),
-                            Rad(angles[2].to_radians()),
-                        ];
-                        let mdl_angles = [
-                            Rad(idle_angles[0]),
-                            Rad(idle_angles[1]),
-                            Rad(idle_angles[2]),
-                        ];
-
-                        // "angles" is already correctly corrected by our helper
-                        // just treat it like we are in our own world now, instead of bsp
-                        let world_rotation = cgmath::Quaternion::from_angle_z(bsp_angles[2])
-                            * cgmath::Quaternion::from_angle_y(bsp_angles[1])
-                            * cgmath::Quaternion::from_angle_x(bsp_angles[0]);
-
-                        let mdl_rotation = cgmath::Quaternion::from_angle_z(mdl_angles[2])
-                            * cgmath::Quaternion::from_angle_y(mdl_angles[1])
-                            * cgmath::Quaternion::from_angle_x(mdl_angles[0]);
-
-                        let new_angles = world_rotation * mdl_rotation;
-
-                        // need to find the direction of bone translation in world
-                        // the goal is to derive two numbers, angles and origin
-                        // that means, we cannot combine them
-                        // so, we do things like this
-                        let rotated_world_origin = world_rotation.rotate_vector(idle_origin.into());
-
-                        let new_origin = [
-                            origin[0] + rotated_world_origin[0],
-                            origin[1] + rotated_world_origin[1],
-                            origin[2] + rotated_world_origin[2],
-                        ];
-
-                        WorldTransformation {
-                            origin: new_origin,
-                            angles: new_angles,
-                        }
+                    .map(|sequence| ModelTransformationInfo {
+                        frame_per_second: sequence.header.fps,
                     })
                     .collect();
 
@@ -396,8 +435,15 @@ fn load_world_entities(
                     bsp_entity_index,
                     WorldEntity {
                         world_index: assign_world_index(),
-                        model: EntityModel::Mdl(model_path.to_string()),
-                        transformation: WorldTransformationType::Skeletal(transformations),
+                        model: EntityModel::Mdl {
+                            model_name: model_path.to_string(),
+                        },
+                        transformation: WorldTransformationType::Skeletal {
+                            current_sequence_index: 0,
+                            world_transformation: (entity_world_position, entity_world_rotation),
+                            model_transformations,
+                            model_transformation_infos,
+                        },
                     },
                 );
             }

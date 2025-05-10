@@ -19,6 +19,7 @@ use kira::sound::static_sound::StaticSoundData;
 use state::{
     AppState,
     audio::{AudioBackend, AudioStateError},
+    entities::EntityState,
     file::{LoadingState, SelectedFileType},
     overlay::control_panel::PostProcessingControlState,
     playback::{
@@ -402,8 +403,8 @@ impl ApplicationHandler<AppEvent> for App {
                 // rename window based on fps
                 window_state.window().set_title(
                     format!(
-                        "FPS: {}. Draw calls: {}",
-                        fps, self.state.render_state.draw_call
+                        "FPS: {}. Draw calls: {}. Time: {:.2}",
+                        fps, self.state.render_state.draw_call, self.state.time
                     )
                     .as_str(),
                 );
@@ -688,8 +689,8 @@ impl ApplicationHandler<AppEvent> for App {
                     .audio_resource
                     .retain(|k, _| self.state.other_resources.common_resource.contains_key(k));
 
-                bsp_resource.sound_lookup.into_iter().for_each(|(k, v)| {
-                    self.state.audio_resource.insert(k, v);
+                bsp_resource.sound_lookup.iter().for_each(|(k, v)| {
+                    self.state.audio_resource.insert(k.to_string(), v.clone());
                 });
 
                 // restart the camera
@@ -734,7 +735,13 @@ impl ApplicationHandler<AppEvent> for App {
                 // resetting time when we are ready
                 self.state.time = 0.;
 
+                // stop spinner
                 self.state.file_state.stop_spinner();
+
+                // entity dictionary
+                self.state.entity_state = Some(EntityState {
+                    entity_dictionary: bsp_resource.entity_dictionary,
+                });
             }
             AppEvent::NewFileSelected => {
                 self.state.file_state.selected_file_type = SelectedFileType::None;

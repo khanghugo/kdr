@@ -385,7 +385,7 @@ impl WorldLoader {
         let opaque_vertex_buffer = create_world_vertex_buffer(device, opaque_batch);
         let transparent_vertex_buffer = create_world_vertex_buffer(device, transparent_batch);
 
-        let mvp_buffer = MvpBuffer::create_mvp(device, &entity_infos);
+        let mvp_buffer = MvpBuffer::create_mvp(device, queue, &entity_infos);
 
         // need to find which buffer sky brushes are in
         let skybrush_batch_index = resource
@@ -437,16 +437,16 @@ impl WorldLoader {
                         get_bsp_textures(&resource.bsp, &resource.external_wad_textures),
                     );
                 }
-                EntityModel::Mdl(ref mdl_name) => {
-                    if entity_textures.contains_key(mdl_name) {
+                EntityModel::Mdl { ref model_name, .. } => {
+                    if entity_textures.contains_key(model_name) {
                         return;
                     }
 
-                    let Some(mdl_data) = resource.model_lookup.get(mdl_name) else {
+                    let Some(mdl_data) = resource.model_lookup.get(model_name) else {
                         return;
                     };
 
-                    entity_textures.insert(mdl_name.to_string(), get_mdl_textures(&mdl_data));
+                    entity_textures.insert(model_name.to_string(), get_mdl_textures(&mdl_data));
                 }
                 EntityModel::Sprite => {
                     todo!("cannot load sprite at the moment")
@@ -467,7 +467,7 @@ impl WorldLoader {
             .iter()
             .filter_map(|(_, entity)| match entity.model {
                 EntityModel::Bsp => Some(("worldspawn", entity.world_index)),
-                EntityModel::Mdl(ref name) => Some((name, entity.world_index)),
+                EntityModel::Mdl { ref model_name, .. } => Some((model_name, entity.world_index)),
                 EntityModel::Sprite => todo!("not implemented for sprite loading"),
                 _ => None,
             })
@@ -675,10 +675,10 @@ fn create_batch_lookups(
                 // create_bsp_batch_lookup(bsp)
             }
             // for some reasons this is inline but the bsp face is not
-            EntityModel::Mdl(mdl_name) => {
+            EntityModel::Mdl { model_name, .. } => {
                 // REMINDER: at the end of this scope, need to increment the bone number
-                let Some(mdl) = resource.model_lookup.get(mdl_name) else {
-                    warn!("Cannot find model `{mdl_name}` to create a batch lookup");
+                let Some(mdl) = resource.model_lookup.get(model_name) else {
+                    warn!("Cannot find model `{model_name}` to create a batch lookup");
 
                     return;
                 };
