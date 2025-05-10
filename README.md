@@ -31,6 +31,8 @@ Currently work in progress, check back later
       - [ ] less simple stuffs like correctly load all of the transformation. At the moment, it seems like RLE decoding is very incorrectly implemented. The result is that the rotation is not that all correct. But for simple models like flags in chk_kobayashi, this seems to work just fine. More complicated models like chick.mdl in cs_italy doesn't seem to work well. 
     - [ ] Can load any model
     - [X] Shading
+    - [X] Pre-calculating all animation values like the game, this results in some models have correct model view, except for some, check kzro_pussy
+    - [ ] Make all models have correct animation
   - [X] Skybox
   - [ ] SPRites
   - Texture Filtering
@@ -79,7 +81,7 @@ Currently work in progress, check back later
     - Config files. Somehow have a config files so that resource provider is correct. Like how bspguy does
       - [X] API server config
       - [X] Native kdr config
-      - [ ] Web kdr config
+      - [X] Web kdr config
   - Web
     - [X] WebGL2. Clear color is different than native OpenGL for some reasons.
     - [X] Minimal web example. This uses simple HTML script block. Basically no javascript or node project to help people bootstrap this
@@ -99,9 +101,14 @@ Currently work in progress, check back later
     - [ ] demo checker ui?
     - [X] Map list
     - [X] Demo list
+  - Live Playback
+    - [X] Working client
+    - [X] Mock server
+    - [X] Specs for server implementation
 - [X] Sound
 - On screen text
   - [X] Chat message
   - [ ] Timer? Health? Armor? maybe not needed
   - [X] TeTextMessage?
+  - [X] Timer during playback
 - [ ] Instructions on how to use it
