@@ -146,7 +146,9 @@ impl WorldEntity {
                 // TODO start time
                 let anim_total_time = frame_count as f32 / current_sequence_info.frame_per_second;
                 let anim_time = time % anim_total_time;
-                let anim_frame_from_idx = (anim_time * frame_count as f32).floor() as usize;
+                let anim_frame_from_idx =
+                    ((anim_time * current_sequence_info.frame_per_second as f32).floor() as usize)
+                        .min(frame_count - 1);
 
                 // usually, the first condition will never hit, but whatever
                 if anim_frame_from_idx == frame_count - 1 {
@@ -169,7 +171,7 @@ impl WorldEntity {
                     let from_frame = &current_blend[anim_frame_from_idx];
                     let to_frame = &current_blend[anim_frame_to_idx];
 
-                    let target = anim_time / anim_total_time;
+                    let target = (anim_time * current_sequence_info.frame_per_second).fract();
 
                     let transformations = from_frame
                         .iter()
@@ -177,7 +179,7 @@ impl WorldEntity {
                         .map(|((from_pos, from_rot), (to_pos, to_rot))| {
                             let lerped_posrot = (
                                 from_pos.lerp(*to_pos, target),
-                                from_rot.lerp(*to_rot, target),
+                                from_rot.slerp(*to_rot, target),
                             );
 
                             let (pos, rot) = model_to_world_transformation(
