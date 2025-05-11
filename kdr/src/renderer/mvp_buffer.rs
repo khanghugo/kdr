@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use loader::bsp_resource::WorldEntity;
 use wgpu::util::DeviceExt;
 
@@ -12,6 +14,10 @@ pub struct MvpBuffer {
     // but starting from bone #2, they all will be in this buffer
     pub skeletal_buffer: wgpu::Buffer,
     queue: wgpu::Queue,
+    /// Key: World entity index
+    ///
+    /// Value: Skeletal buffer MVP start index
+    skeletal_lookup: HashMap<usize, usize>,
 }
 
 impl Drop for MvpBuffer {
@@ -64,6 +70,8 @@ impl MvpBuffer {
         // it has emtpy matrix as index 0 because index 0 is unambiguous for our data structure
         let mut skeletal_mvps: Vec<[[f32; 4]; 4]> = vec![EMPTY_MATRIX];
 
+        let mut skeletal_lookup = HashMap::new();
+
         // for entity, it is pretty straightforward
         // for skeletal, build mvp(s). the first mvp will be inside entity mvps
         // subsequent mvps are inside skeletal mvps
@@ -75,8 +83,13 @@ impl MvpBuffer {
                     entity_mvps.push(matrix4.into());
                 }
                 loader::bsp_resource::BuildMvpResult::Skeletal(matrix4s) => {
+                    // first matrix is in the entity mvp
                     entity_mvps.push(matrix4s[0].into());
 
+                    // mutating the lookup
+                    skeletal_lookup.insert(entity.world_index, skeletal_mvps.len());
+
+                    // the rest is inside skeletal mvps
                     matrix4s[1..].into_iter().for_each(|&x| {
                         skeletal_mvps.push(x.into());
                     });
@@ -124,6 +137,7 @@ impl MvpBuffer {
             entity_buffer,
             skeletal_buffer,
             queue: queue.clone(),
+            skeletal_lookup,
         }
     }
 
@@ -138,6 +152,8 @@ impl MvpBuffer {
                     .write_buffer(&self.entity_buffer, offset as u64, mvp_bytes);
             }
             loader::bsp_resource::BuildMvpResult::Skeletal(matrix4s) => {
+                let entity_skeletal_start = self.skeletal_lookup.get(&entity_info.world_index);
+
                 matrix4s.iter().enumerate().for_each(|(idx, mat)| {
                     let mvp_cast: &[f32; 16] = mat.as_ref();
                     let mvp_bytes: &[u8] = bytemuck::cast_slice(mvp_cast);
@@ -147,8 +163,15 @@ impl MvpBuffer {
                         self.queue
                             .write_buffer(&self.entity_buffer, offset as u64, mvp_bytes);
                     } else {
-                        // need to know the entire entity list to correctly find the offset
-                        todo!("doesnt know how to update mvp buffer for skeletal models yet")
+                        let Some(entity_skeletal_start) = entity_skeletal_start else {
+                            return;
+                        };
+
+                        let mvp_idx = entity_skeletal_start + idx - 1;
+                        let offset = mvp_idx * 4 * 4 * 4;
+
+                        self.queue
+                            .write_buffer(&self.skeletal_buffer, offset as u64, mvp_bytes);
                     }
                 });
             }
