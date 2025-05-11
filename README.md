@@ -29,10 +29,13 @@ Currently work in progress, check back later
     - Bone based vertex transformation
       - [X] just simple stuffs
       - [ ] less simple stuffs like correctly load all of the transformation. At the moment, it seems like RLE decoding is very incorrectly implemented. The result is that the rotation is not that all correct. But for simple models like flags in chk_kobayashi, this seems to work just fine. More complicated models like chick.mdl in cs_italy doesn't seem to work well. 
-    - [ ] Can load any model
+    - [X] Can load any model
     - [X] Shading
     - [X] Pre-calculating all animation values like the game, this results in some models have correct model view, except for some, check kzro_pussy
-    - [ ] Make all models have correct animation
+    - [X] Make all models have correct animation
+    - [ ] More than 1 blending. Not sure if this is neeeded
+    - [ ] Model lighting
+    - [ ] Viewmodel bob
   - [X] Skybox
   - [ ] SPRites
   - Texture Filtering
@@ -65,7 +68,7 @@ Currently work in progress, check back later
   - [X] Mouse view. Similar to bspguy
 - Demo Player
   - [X] Demo. Easy to do because this is the same code I have in other two projects
-  - [ ] Viewmodel. That needs good MDL rendering first
+  - [X] Viewmodel. That needs good MDL rendering first
   - [X] Ghost. Same thing. Very easy to implement
   - [X] Demo player UI. This needs to be compatible in both native and web. egui is the best bet. This needs some refactor to separate the "app" logic so that it is platform agnostic.
 - Demo Renderer
