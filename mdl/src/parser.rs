@@ -438,7 +438,8 @@ fn parse_blend<'a>(
         [res[0], res[1], res[2], res[3], res[4], res[5]]
     });
 
-    let (end_of_blend, blend) = count(offset_parser, mdl_header.num_bones as usize).parse(panim)?;
+    let (end_of_blend, blends_offsets) =
+        count(offset_parser, mdl_header.num_bones as usize).parse(panim)?;
 
     // the animation frame is offset from the beginning of the panim "struct", which is anim_offset + current blend number
     // https://github.com/ValveSoftware/halflife/blob/c7240b965743a53a29491dd49320c88eecf6257b/utils/mdlviewer/studio_render.cpp#L190
@@ -447,15 +448,19 @@ fn parse_blend<'a>(
 
     // at the moment, we have the bone count and the offsets
     // now we have to fit animations inside the bone count
-    for (_bone_idx, bone) in blend.into_iter().enumerate() {
+    for (bone_idx, blend_offsets) in blends_offsets.into_iter().enumerate() {
         let mut bone_values: [Vec<i16>; 6] = from_fn(|_| vec![0; num_frames]);
 
-        for (motion_idx, offset) in bone.into_iter().enumerate() {
+        for (motion_idx, offset) in blend_offsets.into_iter().enumerate() {
             if offset == 0 {
                 continue;
             }
 
-            let panimvalue = &panim[offset as usize..];
+            let panimvalue = &panim[
+                // not sure why, but i have to offset this by this
+                // thanks to newbspguy for easy compilation so that i can debug this
+                (offset as usize + bone_idx * 12)..];
+
             let (_, values) = parse_animation_frame_rle(panimvalue, num_frames)?;
 
             bone_values[motion_idx] = values;
