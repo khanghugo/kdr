@@ -12,6 +12,7 @@ common_resource = [
     "sound/weapons/knife_hitwall1.wav",
     "sound/common/wpn_denyselect.wav",
     "sound/weapons/knife_slash2.wav",
+    "models/v_usp.mdl",
 ]
 
 # List of folders containing replays
