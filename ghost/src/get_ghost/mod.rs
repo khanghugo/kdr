@@ -46,6 +46,8 @@ pub struct GhostFrameExtra {
     pub entity_text: Vec<GhostFrameEntityText>,
     pub anim: Option<GhostFrameAnim>,
     pub say_text: Vec<GhostFrameSayText>,
+    pub weapon_change: Option<String>,
+    pub weapon_sequence: Option<i32>,
 }
 
 #[derive(Debug, Clone)]

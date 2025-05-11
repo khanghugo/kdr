@@ -438,7 +438,7 @@ impl WorldLoader {
                     );
                 }
                 EntityModel::Mdl { ref model_name, .. }
-                | EntityModel::ViewModel { ref model_name } => {
+                | EntityModel::ViewModel { ref model_name, .. } => {
                     if entity_textures.contains_key(model_name) {
                         return;
                     }
@@ -472,7 +472,7 @@ impl WorldLoader {
             .filter_map(|(_, entity)| match entity.model {
                 EntityModel::Bsp => Some(("worldspawn", entity.world_index)),
                 EntityModel::Mdl { ref model_name, .. }
-                | EntityModel::ViewModel { ref model_name } => {
+                | EntityModel::ViewModel { ref model_name, .. } => {
                     Some((model_name, entity.world_index))
                 }
                 EntityModel::Sprite => todo!("not implemented for sprite loading"),
@@ -686,7 +686,7 @@ fn create_batch_lookups(
                 // create_bsp_batch_lookup(bsp)
             }
             // for some reasons this is inline but the bsp face is not
-            EntityModel::Mdl { model_name, .. } | EntityModel::ViewModel { model_name } => {
+            EntityModel::Mdl { model_name, .. } | EntityModel::ViewModel { model_name, .. } => {
                 // REMINDER: at the end of this scope, need to increment the bone number
                 let Some(mdl) = resource.model_lookup.get(model_name) else {
                     warn!("Cannot find model `{model_name}` to create a batch lookup");

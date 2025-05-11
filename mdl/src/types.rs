@@ -55,11 +55,18 @@ pub struct Header {
     pub transition_index: i32,
 }
 
+bitflags! {
+    #[derive(Debug)]
+    pub struct SequenceFlag: i32 {
+        const LOOPING = 1 << 0;
+    }
+}
+
 #[derive(Debug)]
 pub struct SequenceHeader {
     pub label: [u8; 32],
     pub fps: f32,
-    pub flags: i32,
+    pub flags: SequenceFlag,
     pub activity: i32,
     pub act_weight: i32,
     pub num_events: i32,

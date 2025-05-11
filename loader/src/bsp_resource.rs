@@ -15,7 +15,7 @@ use common::{
 };
 use image::RgbaImage;
 use kira::sound::static_sound::StaticSoundData;
-use mdl::Mdl;
+use mdl::{Mdl, SequenceFlag};
 use tracing::warn;
 use wad::types::Wad;
 
@@ -51,6 +51,7 @@ pub enum EntityModel {
     /// View model
     ViewModel {
         model_name: String,
+        active: bool,
     },
 }
 
@@ -105,6 +106,7 @@ impl WorldTransformation {
 
 pub struct ModelTransformationInfo {
     pub frame_per_second: f32,
+    pub looping: bool,
 }
 
 pub struct WorldEntity {
@@ -153,7 +155,11 @@ impl WorldEntity {
 
                 // TODO start time
                 let anim_total_time = frame_count as f32 / current_sequence_info.frame_per_second;
-                let anim_time = time % anim_total_time;
+                let anim_time = if current_sequence_info.looping {
+                    time % anim_total_time
+                } else {
+                    time
+                };
                 let anim_frame_from_idx =
                     ((anim_time * current_sequence_info.frame_per_second as f32).floor() as usize)
                         .min(frame_count - 1);
@@ -187,7 +193,7 @@ impl WorldEntity {
                         .map(|((from_pos, from_rot), (to_pos, to_rot))| {
                             let lerped_posrot = (
                                 from_pos.lerp(*to_pos, target),
-                                from_rot.slerp(*to_rot, target),
+                                from_rot.nlerp(*to_rot, target),
                             );
 
                             let (pos, rot) = model_to_world_transformation(
@@ -439,6 +445,7 @@ fn load_world_entities(
                     .iter()
                     .map(|sequence| ModelTransformationInfo {
                         frame_per_second: sequence.header.fps,
+                        looping: sequence.header.flags.contains(SequenceFlag::LOOPING),
                     })
                     .collect();
 
@@ -476,6 +483,11 @@ fn load_viewmodels(
     entity_dictionary: &mut EntityDictionary,
     model_lookup: &mut HashMap<String, mdl::Mdl>,
 ) {
+    let available_world_index = entity_dictionary
+        .values()
+        .fold(0, |acc, e| e.world_index.max(acc))
+        + 1;
+
     resource
         .resources
         .iter()
@@ -490,7 +502,8 @@ fn load_viewmodels(
                 false
             }
         })
-        .for_each(|(model_path, model_bytes)| {
+        .enumerate()
+        .for_each(|(viewmodel_index, (model_path, model_bytes))| {
             // check that model is not loaded
             let mdl = model_lookup
                 .entry(model_path.to_string())
@@ -510,23 +523,19 @@ fn load_viewmodels(
                 .iter()
                 .map(|sequence| ModelTransformationInfo {
                     frame_per_second: sequence.header.fps,
+                    // explicit no loop for all view models
+                    looping: false,
                 })
                 .collect();
 
-            let available_world_index = entity_dictionary
-                .values()
-                .fold(0, |acc, e| e.world_index.max(acc))
-                + 1;
-
-            println!("aavailable world index {}", available_world_index);
-
             entity_dictionary.insert(
-                // not sure
-                3000,
+                // this doesn't do anything
+                3000 + viewmodel_index,
                 WorldEntity {
-                    world_index: available_world_index,
+                    world_index: available_world_index + viewmodel_index,
                     model: EntityModel::ViewModel {
                         model_name: model_path.to_string(),
+                        active: false,
                     },
                     transformation: WorldTransformation::Skeletal(WorldTransformationSkeletal {
                         current_sequence_index: 0,

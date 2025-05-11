@@ -10,8 +10,8 @@ use nom::{
 
 use crate::{
     Attachment, Blend, Bodypart, BodypartHeader, Bone, BoneController, Hitbox, Mesh, MeshHeader,
-    MeshTriangles, Model, ModelHeader, PALETTE_COUNT, Sequence, SequenceGroup, SkinFamilies,
-    Trivert, TrivertHeader, VEC3_T_SIZE,
+    MeshTriangles, Model, ModelHeader, PALETTE_COUNT, Sequence, SequenceFlag, SequenceGroup,
+    SkinFamilies, Trivert, TrivertHeader, VEC3_T_SIZE,
     error::MdlError,
     nom_helpers::{IResult, vec3},
     types::{Header, Mdl, SequenceHeader, Texture, TextureFlag, TextureHeader},
@@ -558,7 +558,7 @@ fn parse_sequence_description(i: &[u8]) -> IResult<SequenceHeader> {
         )| SequenceHeader {
             label: from_fn(|i| label[i]),
             fps,
-            flags,
+            flags: SequenceFlag::from_bits(flags).unwrap(),
             activity,
             act_weight,
             num_events,

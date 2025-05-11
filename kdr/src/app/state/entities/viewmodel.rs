@@ -1,6 +1,6 @@
 use std::f32::{self, consts::PI};
 
-pub(super) struct ViewModelState {
+pub struct ViewModelState {
     // settings
     pub _bob: f32,
     pub _bob_cycle: f32,
@@ -9,6 +9,8 @@ pub(super) struct ViewModelState {
     pub cycle: f32,
     pub bob: f32,
     pub bob_time: f32,
+    pub active_viewmodel: String,
+    pub time: f32,
 }
 
 impl Default for ViewModelState {
@@ -20,6 +22,8 @@ impl Default for ViewModelState {
             cycle: 0.,
             bob: 0.,
             bob_time: 0.,
+            active_viewmodel: "usp".to_string(),
+            time: 0.,
         }
     }
 }

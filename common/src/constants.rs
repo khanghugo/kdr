@@ -45,3 +45,17 @@ pub const COMMON_RESOURCE_SOUND: &[&str] = &[
     "sound/common/wpn_denyselect.wav",
     "sound/weapons/knife_slash2.wav",
 ];
+
+pub const RESOURCE_VIEWMODELS: &[&str] = &[
+    "models/v_ak47.mdl",
+    "models/v_awp.mdl",
+    "models/v_deagle.mdl",
+    "models/v_famas.mdl",
+    "models/v_knife.mdl",
+    "models/v_m4a1.mdl",
+    "models/v_m249.mdl",
+    "models/v_p90.mdl",
+    "models/v_scout.mdl",
+    "models/v_sg552.mdl",
+    "models/v_usp.mdl",
+];

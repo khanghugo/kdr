@@ -141,6 +141,11 @@ pub fn model_to_world_transformation(
     world_pos: cgmath::Vector3<f32>,
     world_rot: cgmath::Quaternion<f32>,
 ) -> PosRot {
+    // welp, if the world rot is 0, which is intentional, then no model rendered
+    if world_rot == cgmath::Quaternion::zero() {
+        return (cgmath::Vector3::zero(), cgmath::Quaternion::zero());
+    }
+
     let new_rot = world_rot * model_rot;
 
     let entity_world_rotated_origin = world_rot.rotate_vector(model_pos);

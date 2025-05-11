@@ -115,33 +115,22 @@ impl AppState {
                                         // since we have a lot of text, we will use index insetad
 
                                         // clear every time
-                                        self.ui_state.replay_list.filtered_items = Some(vec![]);
+                                        // self.ui_state.replay_list.filtered_items = Some(vec![]);
+                                        let mut filtered = vec![];
 
-                                        // for (game_mod_idx, (_, maps)) in
-                                        //     self.other_resources.replay_list.iter().enumerate()
-                                        // {
-                                        //     let mut new_set = HashSet::new();
+                                        self.other_resources
+                                            .replay_list
+                                            .iter()
+                                            .enumerate()
+                                            .for_each(|(replay_idx, replay_name)| {
+                                                if replay_name.to_lowercase().contains(
+                                                    &self.ui_state.replay_list.search_text,
+                                                ) {
+                                                    filtered.push(replay_idx);
+                                                }
+                                            });
 
-                                        //     for (map_idx, map) in maps.iter().enumerate() {
-                                        //         // case insensitive
-                                        //         if map.to_lowercase().contains(
-                                        //             &self
-                                        //                 .ui_state
-                                        //                 .replay_list
-                                        //                 .search_text
-                                        //                 .to_lowercase(),
-                                        //         ) {
-                                        //             new_set.insert(map_idx);
-                                        //         }
-                                        //     }
-
-                                        //     self.ui_state.replay_list.filtered_items.as_mut().map(
-                                        //         |what| {
-                                        //             what[game_mod_idx] =
-                                        //                 new_set.into_iter().collect();
-                                        //         },
-                                        //     );
-                                        // }
+                                        self.ui_state.replay_list.filtered_items = filtered.into();
                                     };
                                 },
                             );

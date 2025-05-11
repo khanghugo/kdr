@@ -1,12 +1,14 @@
-use cgmath::EuclideanSpace;
+use cgmath::{EuclideanSpace, Zero};
 use loader::bsp_resource::EntityDictionary;
+use viewmodel::ViewModelState;
 
 use super::AppState;
 
-mod viewmodel;
+pub mod viewmodel;
 
 pub struct EntityState {
     pub entity_dictionary: EntityDictionary,
+    pub viewmodel_state: ViewModelState,
 }
 
 impl AppState {
@@ -35,7 +37,7 @@ impl AppState {
                             .mvp_buffer
                             .update_entity_mvp_buffer(&entity, self.time);
                     }
-                    loader::bsp_resource::EntityModel::ViewModel { .. } => {
+                    loader::bsp_resource::EntityModel::ViewModel { model_name, active } => {
                         // like mdl but here we will update the world offsets for it
                         let skeletal = entity.transformation.get_skeletal_mut();
 
@@ -49,9 +51,19 @@ impl AppState {
                         skeletal.world_transformation =
                             (view_origin, self.render_state.camera.orientation);
 
+                        // zero quaternion to have nothing for the mvp
+                        if !*active {
+                            skeletal.world_transformation.1 = cgmath::Quaternion::zero();
+                        }
+
                         self.render_state.world_buffer[0]
                             .mvp_buffer
-                            .update_entity_mvp_buffer(&entity, self.time);
+                            .update_entity_mvp_buffer(&entity, entity_state.viewmodel_state.time);
+
+                        // need to do this so that the time is guaranteed to hit once
+                        if *active {
+                            entity_state.viewmodel_state.time += self.frame_time;
+                        }
                     }
                 }
             });

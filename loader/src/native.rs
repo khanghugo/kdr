@@ -3,7 +3,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use common::{COMMON_GAME_MODS, COMMON_RESOURCE_SOUND, UNKNOWN_GAME_MOD};
+use common::{COMMON_GAME_MODS, COMMON_RESOURCE_SOUND, RESOURCE_VIEWMODELS, UNKNOWN_GAME_MOD};
 use ghost::get_ghost_blob_from_path;
 use tracing::{info, warn};
 
@@ -608,15 +608,17 @@ fn get_other_sound(resource_map: &mut ResourceMap, game_dir: &Path, game_mod: &s
 }
 
 fn get_viewmodel(resource_map: &mut ResourceMap, game_dir: &Path, game_mod: &str) {
-    let path = Path::new("models/v_usp.mdl");
+    RESOURCE_VIEWMODELS.iter().for_each(|path| {
+        let path = Path::new(path);
 
-    if let Some(absolute_path) = search_game_resource(game_dir, game_mod, path, true) {
-        let bytes = std::fs::read(absolute_path.as_path()).unwrap();
+        if let Some(absolute_path) = search_game_resource(game_dir, game_mod, path, true) {
+            let bytes = std::fs::read(absolute_path.as_path()).unwrap();
 
-        resource_map.insert(path.display().to_string(), bytes);
-    } else {
-        warn!("Cannot find viewmodel {}", path.display());
-    };
+            resource_map.insert(path.display().to_string(), bytes);
+        } else {
+            warn!("Cannot find view model {}", path.display());
+        };
+    });
 }
 
 // search through the game files by switching between different game mods just to makes sure

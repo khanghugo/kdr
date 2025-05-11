@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, str::from_utf8};
 
 use dem::{
     bit::BitSliceCast,
@@ -33,6 +33,10 @@ pub fn demo_ghost_parse(filename: &str, demo: &Demo) -> eyre::Result<GhostInfo> 
     // key is the resource index
     let mut resource_lookup: HashMap<u32, String> = HashMap::new();
 
+    // weapon/viewmodel related stuffs
+    let mut weapon_list: HashMap<u8, String> = HashMap::new();
+    let mut weapon_sequence = None;
+
     // can only build resource lookup from entry 0
     demo.directory.entries[0]
         .frames
@@ -63,7 +67,26 @@ pub fn demo_ghost_parse(filename: &str, demo: &Demo) -> eyre::Result<GhostInfo> 
                             _ => (),
                         }
                     }
-                    _ => (),
+                    NetMessage::UserMessage(user_message) => {
+                        let name = user_message.name.to_str().unwrap();
+
+                        // this is only in entry 0
+                        if name == "WeaponList" {
+                            let null_pos = user_message
+                                .data
+                                .iter()
+                                .position(|&x| x == 0)
+                                .expect("invalid WeaponList user message");
+
+                            let weapon_name = from_utf8(&user_message.data[..null_pos])
+                                .unwrap()
+                                .strip_prefix("weapon_")
+                                .expect("weapon does not have `weapon_` prefix");
+                            let weapon_id = user_message.data[user_message.data.len() - 2];
+
+                            weapon_list.insert(weapon_id, weapon_name.to_string());
+                        }
+                    }
                 });
             }
             _ => (),
@@ -87,6 +110,11 @@ pub fn demo_ghost_parse(filename: &str, demo: &Demo) -> eyre::Result<GhostInfo> 
             //         buttons: None,
             //     })
             // }
+            FrameData::WeaponAnimation(weapon_anim) => {
+                weapon_sequence = weapon_anim.sequence.into();
+
+                None
+            }
             FrameData::ClientData(client) => {
                 // origin = [client.origin[0], client.origin[1], client.origin[2]];
 
@@ -129,6 +157,7 @@ pub fn demo_ghost_parse(filename: &str, demo: &Demo) -> eyre::Result<GhostInfo> 
 
                 let mut entity_text = vec![];
                 let mut say_text = vec![];
+                let mut weapon_change = None;
 
                 messages.iter().for_each(|message| {
                     match message {
@@ -145,6 +174,16 @@ pub fn demo_ghost_parse(filename: &str, demo: &Demo) -> eyre::Result<GhostInfo> 
                                 let saytext = processing_saytext(&saytext, player_name);
 
                                 say_text.push(GhostFrameSayText { text: saytext });
+                            }
+
+                            if message_name == "CurWeapon" {
+                                let weapon_state = user_message.data[0];
+                                let weapon_id = user_message.data[1];
+
+                                if weapon_state != 0 {
+                                    weapon_change =
+                                        weapon_list.get(&weapon_id).unwrap().to_string().into()
+                                }
                             }
                         }
                         NetMessage::EngineMessage(engine_message) => match &**engine_message {
@@ -274,8 +313,11 @@ pub fn demo_ghost_parse(filename: &str, demo: &Demo) -> eyre::Result<GhostInfo> 
                         blending,
                     }),
                     say_text,
+                    weapon_change,
+                    weapon_sequence,
                 };
 
+                weapon_sequence = None;
                 sound_vec.clear();
 
                 Some(GhostFrame {
