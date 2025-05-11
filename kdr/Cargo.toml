@@ -71,7 +71,7 @@ tracing-chrome = "0.7.2"
 # web specific dependencies
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 # enable js support for wasm compile
-getrandom = { version = "0.2.15", features = ["js"] }
+getrandom = { version = "0.3.3", features = ["wasm_js"] }
 web-sys = { version = "0.3.77", features = [
     "Window",
     "Document",
