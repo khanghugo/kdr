@@ -16,22 +16,23 @@ impl AppState {
             .entity_dictionary
             .iter_mut()
             .for_each(|(&bsp_idx, entity)| {
-                if bsp_idx != 8 {
-                    return;
-                }
-
                 match &mut entity.transformation {
                     WorldTransformationType::Entity(world_transformation) => {
-                        self.render_state.world_buffer[0]
-                            .mvp_buffer
-                            .update_entity_mvp_buffer(&entity, self.time);
+                        // self.render_state.world_buffer[0]
+                        //     .mvp_buffer
+                        //     .update_entity_mvp_buffer(&entity, self.time);
                     }
                     WorldTransformationType::Skeletal {
                         current_sequence_index,
                         world_transformation,
                         model_transformations,
                         model_transformation_infos,
-                    } => {}
+                    } => {
+                        // only updates models
+                        self.render_state.world_buffer[0]
+                            .mvp_buffer
+                            .update_entity_mvp_buffer(&entity, self.time);
+                    }
                 };
 
                 // let mvp = entity.build_mvp()
