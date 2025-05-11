@@ -62,7 +62,7 @@ pub fn setup_studio_model_transformations(mdl: &Mdl) -> MdlPosRot {
                                     compute_local_transformation(bone, blend_bone, frame_idx);
 
                                 let (parent_pos, parent_rot) = if bone.parent == -1 {
-                                    (cgmath::Vector3::zero(), cgmath::Quaternion::one())
+                                    origin_posrot()
                                 } else {
                                     transforms[bone.parent as usize]
                                 };
@@ -148,4 +148,8 @@ pub fn model_to_world_transformation(
     let new_pos = world_pos + entity_world_rotated_origin;
 
     (new_pos, new_rot)
+}
+
+pub fn origin_posrot() -> PosRot {
+    (cgmath::Vector3::zero(), cgmath::Quaternion::one())
 }

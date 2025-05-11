@@ -131,6 +131,8 @@ impl ResourceProvider for NativeResourceProvider {
 
         get_other_sound(&mut resource_map, &self.game_dir, &identifier.game_mod);
 
+        get_viewmodel(&mut resource_map, &self.game_dir, &identifier.game_mod);
+
         Ok(super::Resource {
             bsp,
             resources: resource_map,
@@ -603,6 +605,18 @@ fn get_other_sound(resource_map: &mut ResourceMap, game_dir: &Path, game_mod: &s
 
         resource_map.insert(sound_path.to_owned(), sound_bytes);
     });
+}
+
+fn get_viewmodel(resource_map: &mut ResourceMap, game_dir: &Path, game_mod: &str) {
+    let path = Path::new("models/v_usp.mdl");
+
+    if let Some(absolute_path) = search_game_resource(game_dir, game_mod, path, true) {
+        let bytes = std::fs::read(absolute_path.as_path()).unwrap();
+
+        resource_map.insert(path.display().to_string(), bytes);
+    } else {
+        warn!("Cannot find viewmodel {}", path.display());
+    };
 }
 
 // search through the game files by switching between different game mods just to makes sure

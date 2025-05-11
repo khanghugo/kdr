@@ -110,8 +110,11 @@ impl AppState {
         #[cfg(target_arch = "wasm32")]
         self.poll_puppeteer();
 
-        self.entity_tick();
+        // need interaction tick to process first so that the viewmodel is updated
+        // TODO maybe viewmodel a different state?
         self.interaction_tick();
+        self.entity_tick();
+
         self.playback_tick();
         self.text_tick();
         self.audio_state_tick();

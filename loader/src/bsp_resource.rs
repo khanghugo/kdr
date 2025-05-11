@@ -2,15 +2,20 @@
 //!
 //! Now, they process all of them and feed that into the renderer context.
 
-use std::{collections::HashMap, io::Cursor, path::PathBuf};
+use std::{
+    collections::HashMap,
+    io::Cursor,
+    path::{Path, PathBuf},
+};
 
-use cgmath::{One, Rad, Rotation3, VectorSpace, Zero};
+use cgmath::{Rad, Rotation3, VectorSpace};
 use common::{
     BspAngles, MdlPosRot, NO_DRAW_FUNC_BRUSHES, PosRot, build_mvp_from_pos_and_rot,
-    model_to_world_transformation, setup_studio_model_transformations, vec3,
+    model_to_world_transformation, origin_posrot, setup_studio_model_transformations, vec3,
 };
 use image::RgbaImage;
 use kira::sound::static_sound::StaticSoundData;
+use mdl::Mdl;
 use tracing::warn;
 use wad::types::Wad;
 
@@ -43,6 +48,10 @@ pub enum EntityModel {
     },
     // TODO: implement sprite loading, sprite will likely be inside transparent buffer
     Sprite,
+    /// View model
+    ViewModel {
+        model_name: String,
+    },
 }
 
 pub struct CustomRender {
@@ -51,49 +60,51 @@ pub struct CustomRender {
     pub renderfx: i32,
 }
 
-pub struct WorldTransformation {
-    /// World coordinate XYZ
-    pub position: cgmath::Vector3<f32>,
-    /// World rotation XYZ (RPY)
-    pub quaternion: cgmath::Quaternion<f32>,
+pub struct WorldTransformationSkeletal {
+    pub current_sequence_index: usize,
+    // storing base world transformation
+    pub world_transformation: PosRot,
+    // storing model transformation on top of that
+    pub model_transformations: MdlPosRot,
+    // data related to each model transformation
+    pub model_transformation_infos: Vec<ModelTransformationInfo>,
 }
 
-impl WorldTransformation {
-    fn origin() -> Self {
-        Self {
-            position: cgmath::Vector3::zero(),
-            quaternion: cgmath::Quaternion::one(),
-        }
-    }
-}
+pub type WorldTransformationEntity = PosRot;
 
-pub enum WorldTransformationType {
+pub enum WorldTransformation {
     /// For entity brushes, they only have one transformation, so that is good.
-    Entity(WorldTransformation),
+    Entity(PosRot),
     /// For skeletal system, multiple transformations means there are multiple bones.
     ///
     /// So, we store all bones transformation and then put it back in shader when possible.
     ///
     /// And we also store all information related to the model. Basically a lite mdl format
-    Skeletal {
-        current_sequence_index: usize,
-        // storing base world transformation
-        world_transformation: PosRot,
-        // storing model transformation on top of that
-        model_transformations: MdlPosRot,
-        // data related to each model transformation
-        model_transformation_infos: Vec<ModelTransformationInfo>,
-    },
+    Skeletal(WorldTransformationSkeletal),
+}
+
+impl WorldTransformation {
+    fn worldspawn() -> Self {
+        Self::Entity(origin_posrot())
+    }
+
+    pub fn get_entity(&self) -> &WorldTransformationEntity {
+        match self {
+            WorldTransformation::Entity(x) => x,
+            WorldTransformation::Skeletal(_) => unreachable!(),
+        }
+    }
+
+    pub fn get_skeletal_mut(&mut self) -> &mut WorldTransformationSkeletal {
+        match self {
+            WorldTransformation::Entity(_) => unreachable!(),
+            WorldTransformation::Skeletal(x) => x,
+        }
+    }
 }
 
 pub struct ModelTransformationInfo {
     pub frame_per_second: f32,
-}
-
-impl WorldTransformationType {
-    fn worldspawn() -> Self {
-        Self::Entity(WorldTransformation::origin())
-    }
 }
 
 pub struct WorldEntity {
@@ -105,7 +116,7 @@ pub struct WorldEntity {
     /// The reason why it is a vector is so that we can have an entity with multiple transformation based on its vertices.
     ///
     /// This seems like a hack to retrofit mdl skeletal system. It does.
-    pub transformation: WorldTransformationType,
+    pub transformation: WorldTransformation,
 }
 
 pub enum BuildMvpResult {
@@ -118,24 +129,21 @@ impl WorldEntity {
         Self {
             world_index: 0,
             model: EntityModel::Bsp,
-            transformation: WorldTransformationType::worldspawn(),
+            transformation: WorldTransformation::worldspawn(),
         }
     }
 
     pub fn build_mvp(&self, time: f32) -> BuildMvpResult {
         match &self.transformation {
-            WorldTransformationType::Entity(world_transformation) => {
-                BuildMvpResult::Entity(build_mvp_from_pos_and_rot(
-                    world_transformation.position,
-                    world_transformation.quaternion,
-                ))
+            WorldTransformation::Entity((position, rotation)) => {
+                BuildMvpResult::Entity(build_mvp_from_pos_and_rot(*position, *rotation))
             }
-            WorldTransformationType::Skeletal {
+            WorldTransformation::Skeletal(WorldTransformationSkeletal {
                 current_sequence_index,
                 world_transformation: (world_pos, world_rot),
                 model_transformations,
                 model_transformation_infos,
-            } => {
+            }) => {
                 let current_sequence = &model_transformations[*current_sequence_index];
                 let current_sequence_info = &model_transformation_infos[*current_sequence_index];
 
@@ -231,6 +239,7 @@ impl BspResource {
         let mut sound_lookup = HashMap::new();
 
         load_world_entities(&resource, &mut entity_dictionary, &mut model_lookup);
+        load_viewmodels(&resource, &mut entity_dictionary, &mut model_lookup);
         load_skybox(&resource, &mut skybox);
 
         // find external wad files
@@ -347,7 +356,7 @@ fn load_world_entities(
                 // "angles" key only works on model, not world/entity brush
                 // it is reserved for the like of func_door and alikes
                 // NEED TO USE IDENTITY QUATERNION
-                let angles = cgmath::Quaternion::one();
+                let rotation = origin_posrot().1;
 
                 let normal_opaque_brush = is_opaque && !is_nodraw;
                 let normal_transparent_brush = !is_opaque && !is_nodraw;
@@ -373,10 +382,10 @@ fn load_world_entities(
                         } else {
                             unreachable!("trying to add an unknown brush type: {}", classname)
                         },
-                        transformation: WorldTransformationType::Entity(WorldTransformation {
-                            position: entity_world_position,
-                            quaternion: angles,
-                        }),
+                        transformation: WorldTransformation::Entity((
+                            entity_world_position,
+                            rotation,
+                        )),
                     },
                 );
 
@@ -440,12 +449,17 @@ fn load_world_entities(
                         model: EntityModel::Mdl {
                             model_name: model_path.to_string(),
                         },
-                        transformation: WorldTransformationType::Skeletal {
-                            current_sequence_index: 0,
-                            world_transformation: (entity_world_position, entity_world_rotation),
-                            model_transformations,
-                            model_transformation_infos,
-                        },
+                        transformation: WorldTransformation::Skeletal(
+                            WorldTransformationSkeletal {
+                                current_sequence_index: 0,
+                                world_transformation: (
+                                    entity_world_position,
+                                    entity_world_rotation,
+                                ),
+                                model_transformations,
+                                model_transformation_infos,
+                            },
+                        ),
                     },
                 );
             }
@@ -454,6 +468,74 @@ fn load_world_entities(
             if is_sprite {
                 42;
             }
+        });
+}
+
+fn load_viewmodels(
+    resource: &Resource,
+    entity_dictionary: &mut EntityDictionary,
+    model_lookup: &mut HashMap<String, mdl::Mdl>,
+) {
+    resource
+        .resources
+        .iter()
+        // only concerned about view models
+        .filter(|(k, _)| {
+            let file_path = Path::new(k);
+            let file_name = file_path.file_name().unwrap().to_str().unwrap();
+
+            if file_name.starts_with("v_") && file_name.ends_with(".mdl") {
+                true
+            } else {
+                false
+            }
+        })
+        .for_each(|(model_path, model_bytes)| {
+            // check that model is not loaded
+            let mdl = model_lookup
+                .entry(model_path.to_string())
+                .or_insert_with(|| {
+                    // insert model
+                    match Mdl::open_from_bytes(&model_bytes) {
+                        Ok(x) => x,
+                        Err(err) => {
+                            panic!("cannot parse model {}: {}", model_path, err);
+                        }
+                    }
+                });
+
+            let model_transformations = setup_studio_model_transformations(&mdl);
+            let model_transformation_infos: Vec<ModelTransformationInfo> = mdl
+                .sequences
+                .iter()
+                .map(|sequence| ModelTransformationInfo {
+                    frame_per_second: sequence.header.fps,
+                })
+                .collect();
+
+            let available_world_index = entity_dictionary
+                .values()
+                .fold(0, |acc, e| e.world_index.max(acc))
+                + 1;
+
+            println!("aavailable world index {}", available_world_index);
+
+            entity_dictionary.insert(
+                // not sure
+                3000,
+                WorldEntity {
+                    world_index: available_world_index,
+                    model: EntityModel::ViewModel {
+                        model_name: model_path.to_string(),
+                    },
+                    transformation: WorldTransformation::Skeletal(WorldTransformationSkeletal {
+                        current_sequence_index: 0,
+                        world_transformation: origin_posrot(),
+                        model_transformations,
+                        model_transformation_infos,
+                    }),
+                },
+            );
         });
 }
 

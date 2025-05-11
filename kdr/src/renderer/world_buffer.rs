@@ -437,12 +437,14 @@ impl WorldLoader {
                         get_bsp_textures(&resource.bsp, &resource.external_wad_textures),
                     );
                 }
-                EntityModel::Mdl { ref model_name, .. } => {
+                EntityModel::Mdl { ref model_name, .. }
+                | EntityModel::ViewModel { ref model_name } => {
                     if entity_textures.contains_key(model_name) {
                         return;
                     }
 
                     let Some(mdl_data) = resource.model_lookup.get(model_name) else {
+                        warn!("cannot get model for loading texture {}", model_name);
                         return;
                     };
 
@@ -451,8 +453,10 @@ impl WorldLoader {
                 EntityModel::Sprite => {
                     todo!("cannot load sprite at the moment")
                 }
-                // for all other bsp brushes, they don't need to load their own textures
-                _ => (),
+                // for other entities, we don't load texture
+                EntityModel::OpaqueEntityBrush(_)
+                | EntityModel::TransparentEntityBrush(_)
+                | EntityModel::NoDrawBrush(_) => {}
             });
 
         // looking up which texture array to use from dimensions
@@ -467,9 +471,16 @@ impl WorldLoader {
             .iter()
             .filter_map(|(_, entity)| match entity.model {
                 EntityModel::Bsp => Some(("worldspawn", entity.world_index)),
-                EntityModel::Mdl { ref model_name, .. } => Some((model_name, entity.world_index)),
+                EntityModel::Mdl { ref model_name, .. }
+                | EntityModel::ViewModel { ref model_name } => {
+                    Some((model_name, entity.world_index))
+                }
                 EntityModel::Sprite => todo!("not implemented for sprite loading"),
-                _ => None,
+                // be explicit
+                // not being explicit bit me in the ass
+                EntityModel::OpaqueEntityBrush(_)
+                | EntityModel::TransparentEntityBrush(_)
+                | EntityModel::NoDrawBrush(_) => None,
             })
             .collect::<Vec<_>>();
 
@@ -675,7 +686,7 @@ fn create_batch_lookups(
                 // create_bsp_batch_lookup(bsp)
             }
             // for some reasons this is inline but the bsp face is not
-            EntityModel::Mdl { model_name, .. } => {
+            EntityModel::Mdl { model_name, .. } | EntityModel::ViewModel { model_name } => {
                 // REMINDER: at the end of this scope, need to increment the bone number
                 let Some(mdl) = resource.model_lookup.get(model_name) else {
                     warn!("Cannot find model `{model_name}` to create a batch lookup");
