@@ -2,6 +2,7 @@
 //!
 //! https://github.com/malortie/assimp/wiki/MDL:-Half-Life-1-file-format
 //!
+pub mod error;
 mod nom_helpers;
 mod parser;
 mod types;
@@ -47,6 +48,12 @@ mod test {
     #[test]
     fn parse_chick() {
         let bytes = include_bytes!("./tests/chick.mdl");
+        let mdl = Mdl::open_from_bytes(bytes).unwrap();
+    }
+
+    #[test]
+    fn parse_usp() {
+        let bytes = include_bytes!("./tests/v_usp.mdl");
         let mdl = Mdl::open_from_bytes(bytes).unwrap();
     }
 }
