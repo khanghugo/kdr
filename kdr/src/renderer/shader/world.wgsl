@@ -256,8 +256,8 @@ fn calculate_base_color(
 ) -> vec4f {
     var albedo: vec4f;
 
-    // albedo = textureSample(texture, linear_sampler, tex_coord, layer_idx);
-    albedo = bicubic_filtering(tex_coord, layer_idx);
+    albedo = textureSample(texture, linear_sampler, tex_coord, layer_idx);
+    // albedo = bicubic_filtering(tex_coord, layer_idx);
     // albedo = nearest_aa_filtering(tex_coord, layer_idx);
     // albedo = pixel_art_filter2(tex_coord, layer_idx);
 
