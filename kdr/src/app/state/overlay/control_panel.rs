@@ -24,7 +24,8 @@ pub struct PostProcessingControlState {
     pub kuwahara: bool,
     pub bloom: bool,
     pub chromatic_aberration: bool,
-    pub gray_scale: bool,
+    pub grayscale: bool,
+    pub posterize: bool,
 }
 
 pub struct ControlPanelUIState {
@@ -226,13 +227,16 @@ impl AppState {
                         &mut self.ui_state.pp_control.chromatic_aberration,
                         "C. Aberration",
                     );
-                    let gs_response =
-                        ui.checkbox(&mut self.ui_state.pp_control.gray_scale, "Gray Scale");
+                    let grayscale =
+                        ui.checkbox(&mut self.ui_state.pp_control.grayscale, "GrayScale");
+                    let posterize =
+                        ui.checkbox(&mut self.ui_state.pp_control.posterize, "Posterize");
 
                     if kuwahara_response.clicked()
                         || bloom_response.clicked()
                         || cr_response.clicked()
-                        || gs_response.clicked()
+                        || grayscale.clicked()
+                        || posterize.clicked()
                     {
                         self.event_loop_proxy
                             .send_event(AppEvent::ReceivePostProcessingUpdate(

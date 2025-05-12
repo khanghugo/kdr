@@ -76,11 +76,16 @@ impl PostProcessingModule for ChromaticAberration {
 
     fn new(
         device: &wgpu::Device,
+        queue: &wgpu::Queue,
         input_texture_format: wgpu::TextureFormat,
         fullscreen_tri_vertex_shader: &FullScrenTriVertexShader,
     ) -> Self {
-        let pipeline =
-            Self::create_pipeline(device, input_texture_format, fullscreen_tri_vertex_shader);
+        let pipeline = Self::create_pipeline(
+            device,
+            queue,
+            input_texture_format,
+            fullscreen_tri_vertex_shader,
+        );
 
         Self { pipeline }
     }

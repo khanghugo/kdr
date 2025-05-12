@@ -29,11 +29,16 @@ impl PostProcessingModule for BrightnessExtraction {
 
     fn new(
         device: &wgpu::Device,
+        queue: &wgpu::Queue,
         input_texture_format: wgpu::TextureFormat,
         fullscreen_tri_vertex_shader: &FullScrenTriVertexShader,
     ) -> Self {
-        let pipeline =
-            Self::create_pipeline(device, input_texture_format, fullscreen_tri_vertex_shader);
+        let pipeline = Self::create_pipeline(
+            device,
+            queue,
+            input_texture_format,
+            fullscreen_tri_vertex_shader,
+        );
 
         Self { pipeline }
     }
@@ -66,11 +71,16 @@ impl PostProcessingModule for KawaseBlur {
 
     fn new(
         device: &wgpu::Device,
+        queue: &wgpu::Queue,
         input_texture_format: wgpu::TextureFormat,
         fullscreen_tri_vertex_shader: &FullScrenTriVertexShader,
     ) -> Self {
-        let pipeline =
-            Self::create_pipeline(device, input_texture_format, fullscreen_tri_vertex_shader);
+        let pipeline = Self::create_pipeline(
+            device,
+            queue,
+            input_texture_format,
+            fullscreen_tri_vertex_shader,
+        );
 
         Self { pipeline }
     }
@@ -179,6 +189,7 @@ impl PostProcessingModule for Bloom {
 
     fn new(
         _device: &wgpu::Device,
+        _queue: &wgpu::Queue,
         _input_texture_format: wgpu::TextureFormat,
         _fullscreen_tri_vertex_shader: &FullScrenTriVertexShader,
     ) -> Self {
@@ -211,17 +222,30 @@ impl Bloom {
     /// Use this one instead of `Bloom::new()`
     pub fn new2(
         device: &wgpu::Device,
+        queue: &wgpu::Queue,
         input_texture_format: wgpu::TextureFormat,
         fullscreen_tri_vertex_shader: &FullScrenTriVertexShader,
         width: u32,
         height: u32,
     ) -> Self {
-        let brightness_extraction_pipeline =
-            BrightnessExtraction::new(device, input_texture_format, fullscreen_tri_vertex_shader);
-        let kawase_blur_pipeline =
-            KawaseBlur::new(device, input_texture_format, fullscreen_tri_vertex_shader);
-        let composite_pipeline =
-            Self::create_pipeline(device, input_texture_format, fullscreen_tri_vertex_shader);
+        let brightness_extraction_pipeline = BrightnessExtraction::new(
+            device,
+            queue,
+            input_texture_format,
+            fullscreen_tri_vertex_shader,
+        );
+        let kawase_blur_pipeline = KawaseBlur::new(
+            device,
+            queue,
+            input_texture_format,
+            fullscreen_tri_vertex_shader,
+        );
+        let composite_pipeline = Self::create_pipeline(
+            device,
+            queue,
+            input_texture_format,
+            fullscreen_tri_vertex_shader,
+        );
 
         let bloom_texture = Self::create_bloom_texture(device, width, height, input_texture_format);
 

@@ -1,6 +1,8 @@
 use crate::renderer::utils::FullScrenTriVertexShader;
 
 pub struct PostProcessingPipeline {
+    pub device: wgpu::Device,
+    pub queue: wgpu::Queue,
     pub bind_group_layout: wgpu::BindGroupLayout,
     pub pipeline: wgpu::RenderPipeline,
     pub sampler: wgpu::Sampler,
@@ -131,6 +133,7 @@ pub trait PostProcessingModule {
 
     fn create_pipeline(
         device: &wgpu::Device,
+        queue: &wgpu::Queue,
         input_texture_format: wgpu::TextureFormat,
         fullscreen_tri_vertex_shader: &FullScrenTriVertexShader,
     ) -> PostProcessingPipeline {
@@ -173,6 +176,8 @@ pub trait PostProcessingModule {
         });
 
         PostProcessingPipeline {
+            device: device.clone(),
+            queue: queue.clone(),
             bind_group_layout,
             pipeline,
             sampler,
@@ -217,6 +222,7 @@ pub trait PostProcessingModule {
 
     fn new(
         device: &wgpu::Device,
+        queue: &wgpu::Queue,
         input_texture_format: wgpu::TextureFormat,
         fullscreen_tri_vertex_shader: &FullScrenTriVertexShader,
     ) -> Self;

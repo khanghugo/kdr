@@ -27,11 +27,16 @@ impl PostProcessingModule for Kuwahara {
 
     fn new(
         device: &wgpu::Device,
+        queue: &wgpu::Queue,
         input_texture_format: wgpu::TextureFormat,
         fullscreen_tri_vertex_shader: &crate::renderer::utils::FullScrenTriVertexShader,
     ) -> Self {
-        let pipeline =
-            Self::create_pipeline(device, input_texture_format, fullscreen_tri_vertex_shader);
+        let pipeline = Self::create_pipeline(
+            device,
+            queue,
+            input_texture_format,
+            fullscreen_tri_vertex_shader,
+        );
 
         Self { pipeline }
     }

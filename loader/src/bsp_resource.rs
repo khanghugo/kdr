@@ -146,8 +146,13 @@ impl WorldEntity {
                 model_transformations,
                 model_transformation_infos,
             }) => {
-                let current_sequence = &model_transformations[*current_sequence_index];
-                let current_sequence_info = &model_transformation_infos[*current_sequence_index];
+                // quick hack to avoid some weird timing issue,
+                // TODO: reset the sequence on timeline scrub
+                let current_sequence_index =
+                    (*current_sequence_index).min(model_transformations.len() - 1);
+
+                let current_sequence = &model_transformations[current_sequence_index];
+                let current_sequence_info = &model_transformation_infos[current_sequence_index];
 
                 // TODO blending
                 let current_blend = &current_sequence[0];

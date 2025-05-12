@@ -101,7 +101,7 @@ impl RenderContext {
         limits.max_texture_array_layers = 1024;
         // this is for mvp matrices
         limits.max_uniform_buffer_binding_size = (4 * 4 * 4) // 1 matrix4x4f
-            * MAX_MVP; // 512 entities at 32.8 KB
+            * MAX_MVP; // 1024 entities at 32.8 KB
         limits.max_push_constant_size = 128; // TODO may not be working
         // end limits
 
@@ -199,6 +199,7 @@ impl RenderContext {
 
         let post_processing = Arc::new(RwLock::new(PostProcessing::create_pipelines(
             &device,
+            &queue,
             size.width,
             size.height,
             render_target_format,

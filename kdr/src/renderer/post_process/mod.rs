@@ -4,6 +4,7 @@ use bloom::Bloom;
 use chromatic_aberration::ChromaticAberration;
 use gray_scale::GrayScale;
 use kuwahara::Kuwahara;
+use posterize::Posterize;
 use pp_trait::PostProcessingModule;
 
 use super::utils::FullScrenTriVertexShader;
@@ -12,6 +13,7 @@ mod bloom;
 mod chromatic_aberration;
 mod gray_scale;
 mod kuwahara;
+mod posterize;
 mod pp_trait;
 
 pub struct PostProcessing {
@@ -38,6 +40,7 @@ pub enum PostEffect {
     Bloom(Bloom),
     ChromaticAberration(ChromaticAberration),
     GrayScale(GrayScale),
+    Posterize(Posterize),
 }
 
 impl PostProcessing {
@@ -73,6 +76,7 @@ impl PostProcessing {
 
     pub fn create_pipelines(
         device: &wgpu::Device,
+        queue: &wgpu::Queue,
         width: u32,
         height: u32,
         input_texture_format: wgpu::TextureFormat,
@@ -92,12 +96,14 @@ impl PostProcessing {
         // make sure the order is correct
         res.add_effect(PostEffect::Kuwahara(Kuwahara::new(
             device,
+            queue,
             input_texture_format,
             fullscreen_tri_vertex_shader,
         )));
 
         res.add_effect(PostEffect::Bloom(Bloom::new2(
             device,
+            queue,
             input_texture_format,
             fullscreen_tri_vertex_shader,
             width,
@@ -106,12 +112,21 @@ impl PostProcessing {
 
         res.add_effect(PostEffect::ChromaticAberration(ChromaticAberration::new(
             device,
+            queue,
             input_texture_format,
             fullscreen_tri_vertex_shader,
         )));
 
         res.add_effect(PostEffect::GrayScale(GrayScale::new(
             device,
+            queue,
+            input_texture_format,
+            fullscreen_tri_vertex_shader,
+        )));
+
+        res.add_effect(PostEffect::Posterize(Posterize::new(
+            device,
+            queue,
             input_texture_format,
             fullscreen_tri_vertex_shader,
         )));
@@ -206,6 +221,14 @@ impl PostProcessing {
                         current_intermediate_output_texture,
                     );
                 }
+                PostEffect::Posterize(x) => {
+                    x.execute(
+                        device,
+                        encoder,
+                        current_input_texture,
+                        current_intermediate_output_texture,
+                    );
+                }
             };
 
             // ping pong intermediate textures
@@ -234,7 +257,7 @@ impl PostProcessing {
 }
 
 impl PostProcessing {
-    pub fn get_gray_scale_toggle(&mut self) -> Option<&mut bool> {
+    pub fn get_grayscale_toggle(&mut self) -> Option<&mut bool> {
         self.effects
             .iter_mut()
             .find(|(_, e)| matches!(e, PostEffect::GrayScale(_)))
@@ -260,5 +283,21 @@ impl PostProcessing {
             .iter_mut()
             .find(|(_, e)| matches!(e, PostEffect::Kuwahara(_)))
             .map(|(is_enabled, _)| is_enabled)
+    }
+
+    pub fn get_posterize_toggle(&mut self) -> Option<&mut bool> {
+        self.effects
+            .iter_mut()
+            .find(|(_, e)| matches!(e, PostEffect::Posterize(_)))
+            .map(|(is_enabled, e)| {
+                let PostEffect::Posterize(x) = e else {
+                    unreachable!()
+                };
+
+                // update color every time this is called
+                x.update_color_buffer();
+
+                is_enabled
+            })
     }
 }

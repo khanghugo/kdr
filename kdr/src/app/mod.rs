@@ -19,7 +19,7 @@ use kira::sound::static_sound::StaticSoundData;
 use state::{
     AppState,
     audio::{AudioBackend, AudioStateError},
-    entities::EntityState,
+    entities::{EntityState, viewmodel::ViewModelState},
     file::{LoadingState, SelectedFileType},
     overlay::control_panel::PostProcessingControlState,
     playback::{
@@ -762,6 +762,7 @@ impl ApplicationHandler<AppEvent> for App {
                 // entity dictionary
                 self.state.entity_state = Some(EntityState {
                     entity_dictionary: bsp_resource.entity_dictionary,
+                    viewmodel_state: ViewModelState::default(),
                 });
             }
             AppEvent::NewFileSelected => {
@@ -960,8 +961,9 @@ impl ApplicationHandler<AppEvent> for App {
                 pp.get_chromatic_aberration_toggle()
                     .map(|res| *res = state.chromatic_aberration);
 
-                pp.get_gray_scale_toggle()
-                    .map(|res| *res = state.gray_scale);
+                pp.get_grayscale_toggle().map(|res| *res = state.grayscale);
+
+                pp.get_posterize_toggle().map(|res| *res = state.posterize);
             }
             AppEvent::MaybeStartAudioBackEnd => {
                 // We can only start audio manager after the user interacts with the site.
