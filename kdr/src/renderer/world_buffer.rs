@@ -686,7 +686,16 @@ fn create_batch_lookups(
                 // create_bsp_batch_lookup(bsp)
             }
             // for some reasons this is inline but the bsp face is not
-            EntityModel::Mdl { model_name, .. } | EntityModel::ViewModel { model_name, .. } => {
+            EntityModel::Mdl {
+                model_name,
+                submodel,
+                ..
+            }
+            | EntityModel::ViewModel {
+                model_name,
+                submodel,
+                ..
+            } => {
                 // REMINDER: at the end of this scope, need to increment the bone number
                 let Some(mdl) = resource.model_lookup.get(model_name) else {
                     warn!("Cannot find model `{model_name}` to create a batch lookup");
@@ -695,7 +704,7 @@ fn create_batch_lookups(
                 };
 
                 mdl.bodyparts.iter().for_each(|bodypart| {
-                    bodypart.models.iter().for_each(|model| {
+                    bodypart.models.get(*submodel).map(|model| {
                         model.meshes.iter().for_each(|mesh| {
                             // one mesh has the same texture everything
                             let texture_idx = mesh.header.skin_ref as usize;

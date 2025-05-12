@@ -37,7 +37,9 @@ impl AppState {
                             .mvp_buffer
                             .update_entity_mvp_buffer(&entity, self.time);
                     }
-                    loader::bsp_resource::EntityModel::ViewModel { model_name, active } => {
+                    loader::bsp_resource::EntityModel::ViewModel {
+                        model_name, active, ..
+                    } => {
                         // like mdl but here we will update the world offsets for it
                         let skeletal = entity.transformation.get_skeletal_mut();
 

@@ -45,6 +45,8 @@ pub enum EntityModel {
     // Data stored inside is the model name to get it from the `models` hash map inside [`BspResource`].
     Mdl {
         model_name: String,
+        /// submodel
+        submodel: usize,
     },
     // TODO: implement sprite loading, sprite will likely be inside transparent buffer
     Sprite,
@@ -52,6 +54,7 @@ pub enum EntityModel {
     ViewModel {
         model_name: String,
         active: bool,
+        submodel: usize,
     },
 }
 
@@ -426,6 +429,12 @@ fn load_world_entities(
                     // this this should always work
                     .expect("cannot get recently inserted model.");
 
+                let submodel = entity
+                    .get("body")
+                    .and_then(|body| body.parse::<f32>().ok())
+                    .map(|x| x.floor() as usize)
+                    .unwrap_or(0);
+
                 // if model has external textures, just stop bothering
                 // TODO: work for models with external textures
                 if mdl.textures.is_empty() {
@@ -460,6 +469,7 @@ fn load_world_entities(
                         world_index: assign_world_index(),
                         model: EntityModel::Mdl {
                             model_name: model_path.to_string(),
+                            submodel: submodel as usize,
                         },
                         transformation: WorldTransformation::Skeletal(
                             WorldTransformationSkeletal {
@@ -540,6 +550,7 @@ fn load_viewmodels(
                     world_index: available_world_index + viewmodel_index,
                     model: EntityModel::ViewModel {
                         model_name: model_path.to_string(),
+                        submodel: 0,
                         active: false,
                     },
                     transformation: WorldTransformation::Skeletal(WorldTransformationSkeletal {

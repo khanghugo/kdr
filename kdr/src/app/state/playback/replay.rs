@@ -144,6 +144,7 @@ impl AppState {
                                             loader::bsp_resource::EntityModel::ViewModel {
                                                 model_name,
                                                 active,
+                                                ..
                                             } => {
                                                 if model_name.contains(
                                                     &entity_state.viewmodel_state.active_viewmodel,
