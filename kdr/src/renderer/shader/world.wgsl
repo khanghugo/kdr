@@ -17,9 +17,13 @@ var<uniform> camera_proj: mat4x4f;
 @group(0) @binding(2)
 var<uniform> camera_pos: vec3f;
 @group(1) @binding(0)
-var<uniform> entity_mvp: array<mat4x4f, 512>; // make sure to match the max entity count
+var<uniform> entity_mvp: array<mat4x4f, 1024>; // make sure to match the max entity count
 @group(1) @binding(1)
-var<uniform> skeletal_mvp: array<mat4x4f, 512>; // make sure to match the max entity count
+var<uniform> skeletal_mvp: array<mat4x4f, 1024>; // make sure to match the max entity count
+@group(1) @binding(2)
+var<uniform> player_mvp_1: array<mat4x4f, 1024>; // make sure to match the max entity count
+@group(1) @binding(3)
+var<uniform> player_mvp_2: array<mat4x4f, 1024>; // make sure to match the max entity count
 
 @vertex
 fn skybox_mask_vs(
@@ -50,6 +54,15 @@ fn skybox_mask_vs(
             // make sure that this behavior is consistent
             // subtract 1 because bone idx1 is idx0 in skeletal mvp
             model_view = skeletal_mvp[bone_idx];   
+        }
+    } else if type_ == 2 {
+        let mvp_index: u32 = data_b[1] / 1024;
+        let bone_index: u32 = data_b[1] % 1024;
+
+        if mvp_index == 0 {
+            model_view = player_mvp_1[bone_index];
+        } else if mvp_index == 1 {
+            model_view = player_mvp_2[bone_index];
         }
     }
 
@@ -113,6 +126,15 @@ fn vs_main(
             // if boneidx is not 0, it means we have to use it from our skeletal mvp
             // make sure that this behavior is consistent
             model_view = skeletal_mvp[bone_idx];
+        }
+    } else if type_ == 2 {
+        let mvp_index: u32 = data_b[1] / 1024;
+        let bone_index: u32 = data_b[1] % 1024;
+
+        if mvp_index == 0 {
+            model_view = player_mvp_1[bone_index];
+        } else if mvp_index == 1 {
+            model_view = player_mvp_2[bone_index];
         }
     }
 
@@ -314,7 +336,7 @@ fn calculate_base_color(
         }
 
         return vec4(final_color, alpha);
-    } else if type_ == 1 {
+    } else if type_ == 1 || type_ == 2 {
         // this is mdl vertex
 
         let alpha = albedo.a;

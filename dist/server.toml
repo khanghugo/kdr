@@ -27,6 +27,7 @@ common_resource = [
     "models/v_scout.mdl",
     "models/v_sg552.mdl",
     "models/v_usp.mdl",
+    "models/player/leet/leet.mdl",
 ]
 
 # List of folders containing replays

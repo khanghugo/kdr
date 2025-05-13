@@ -1,8 +1,8 @@
 use std::collections::VecDeque;
 
-use cgmath::Deg;
+use cgmath::{Deg, One};
 use common::{lerp_arr3, lerp_viewangles};
-use loader::MapIdentifier;
+use loader::{MapIdentifier, bsp_resource::EntityModel};
 use puppeteer::{PuppetEvent, PuppetFrame, Puppeteer};
 use tracing::warn;
 
@@ -40,6 +40,11 @@ pub struct JustViewInfo {
 
 pub struct PuppetFrames(pub VecDeque<PuppetFrame>);
 
+pub struct GetInterpolatedFrameResult {
+    pub frame_idx: usize,
+    pub viewinfos: Vec<JustViewInfo>,
+}
+
 impl PuppetFrames {
     pub fn new() -> Self {
         Self(VecDeque::new())
@@ -57,9 +62,7 @@ impl PuppetFrames {
         self.0.len()
     }
 
-    // currently no interpolation
-    // should there be interpolation?
-    pub fn get_viewinfo(&self, time: f32, player_name: &str) -> Option<(usize, JustViewInfo)> {
+    pub fn get_interpolated_frame(&self, time: f32) -> Option<GetInterpolatedFrameResult> {
         let from_index = self
             .0
             .iter()
@@ -78,53 +81,63 @@ impl PuppetFrames {
         // exit here if we dont have any frames
         let from_frame = self.get(from_index)?;
 
-        let from_viewinfo = from_frame.frame.iter().find_map(|viewinfo| {
-            if viewinfo.player.name == player_name {
-                viewinfo.into()
-            } else {
-                None
-            }
-        })?;
-
         if from_index == self.len() - 1 {
-            return Some((
-                from_index,
-                JustViewInfo {
-                    vieworg: from_viewinfo.vieworg,
-                    viewangles: from_viewinfo.viewangles,
-                },
-            ));
+            return Some(GetInterpolatedFrameResult {
+                frame_idx: from_index,
+                viewinfos: from_frame
+                    .frame
+                    .iter()
+                    .map(|viewinfo| JustViewInfo {
+                        vieworg: viewinfo.vieworg,
+                        viewangles: viewinfo.viewangles,
+                    })
+                    .collect(),
+            });
         }
 
         // to_index is guaranteed here because of the condition above
         let to_index = from_index + 1;
-
         let to_frame = &self.0[to_index];
-        let to_viewinfo = to_frame.frame.iter().find_map(|viewinfo| {
-            if viewinfo.player.name == player_name {
-                viewinfo.into()
-            } else {
-                None
-            }
-        })?;
 
         let lerp_range = to_frame.server_time - from_frame.server_time;
         let lerp_target = (time - from_frame.server_time) / lerp_range;
 
-        let lerped_vieworg = lerp_arr3(from_viewinfo.vieworg, to_viewinfo.vieworg, lerp_target);
-        let lerped_viewangles = lerp_viewangles(
-            from_viewinfo.viewangles,
-            to_viewinfo.viewangles,
-            lerp_target,
-        );
+        Some(GetInterpolatedFrameResult {
+            frame_idx: from_index,
+            viewinfos: from_frame
+                .frame
+                .iter()
+                .filter_map(|from_viewinfo| {
+                    // need to find the player to correctly interpolate
+                    // if there is no player, use the previous frame
+                    let Some(to_viewinfo) = to_frame.frame.iter().find_map(|viewinfo| {
+                        if viewinfo.player.name == from_viewinfo.player.name {
+                            viewinfo.into()
+                        } else {
+                            None
+                        }
+                    }) else {
+                        return Some(JustViewInfo {
+                            vieworg: from_viewinfo.vieworg,
+                            viewangles: from_viewinfo.viewangles,
+                        });
+                    };
 
-        Some((
-            from_index,
-            JustViewInfo {
-                vieworg: lerped_vieworg,
-                viewangles: lerped_viewangles,
-            },
-        ))
+                    let lerped_vieworg =
+                        lerp_arr3(from_viewinfo.vieworg, to_viewinfo.vieworg, lerp_target);
+                    let lerped_viewangles = lerp_viewangles(
+                        from_viewinfo.viewangles,
+                        to_viewinfo.viewangles,
+                        lerp_target,
+                    );
+
+                    Some(JustViewInfo {
+                        vieworg: lerped_vieworg,
+                        viewangles: lerped_viewangles,
+                    })
+                })
+                .collect(),
+        })
     }
 
     pub fn get(&self, index: usize) -> Option<&PuppetFrame> {
@@ -198,10 +211,15 @@ impl AppState {
         // BECAUSE OF THE EGUI ELEMENT
         // WHAT THE FUCK
         // SO WE DONT ADD TIMER OFFSET HERE, THAT MEANS WE DONT NEED TIME OFFSET
-        let Some((frame_idx, viewinfo)) = puppet
-            .frames
-            .get_viewinfo(self.time, &puppet.selected_player)
+        let Some(GetInterpolatedFrameResult {
+            frame_idx,
+            viewinfos,
+        }) = puppet.frames.get_interpolated_frame(self.time)
         else {
+            return;
+        };
+
+        let Some(entity_state) = self.entity_state.as_mut() else {
             return;
         };
 
@@ -212,18 +230,69 @@ impl AppState {
         // Doesn't seem worth it.
         puppet.current_frame = frame_idx;
 
-        self.render_state.camera.set_position(viewinfo.vieworg);
+        let current_player_viewinfo_idx = puppet
+            .frames
+            .get(frame_idx)
+            .and_then(|frame| {
+                frame
+                    .frame
+                    .iter()
+                    .position(|viewinfo| viewinfo.player.name == puppet.selected_player)
+            })
+            // ehhhh
+            .unwrap_or(9999);
 
-        // our world has correct pitch, the game doesnt
-        self.render_state
-            .camera
-            .set_pitch(Deg(-viewinfo.viewangles[0]));
+        // reset all viewmodel entites
+        let player_model_entities: Vec<_> = entity_state
+            .entity_dictionary
+            .iter_mut()
+            // need to do filter map and things like this so mutability works
+            .filter_map(|(x, entity)| {
+                if let EntityModel::PlayerModel { player_index, .. } = &mut entity.model {
+                    *player_index = None;
+                    Some((x, entity))
+                } else {
+                    None
+                }
+            })
+            .collect();
 
-        self.render_state
-            .camera
-            .set_yaw(Deg(viewinfo.viewangles[1]));
+        // update player third person entities
+        // TODO: a slight issue, if there is no player model entities, camera won't update
+        viewinfos
+            .into_iter()
+            .zip(player_model_entities.into_iter())
+            .enumerate()
+            .for_each(|(viewinfo_idx, (viewinfo, (_, player_model_entity)))| {
+                // if it current player and is not free cam, don't update this entity
+                if viewinfo_idx == current_player_viewinfo_idx && !self.input_state.free_cam {
+                    self.render_state.camera.set_position(viewinfo.vieworg);
 
-        // need this to update view
-        self.render_state.camera.rebuild_orientation();
+                    // our world has correct pitch, the game doesnt
+                    self.render_state
+                        .camera
+                        .set_pitch(Deg(-viewinfo.viewangles[0]));
+
+                    self.render_state
+                        .camera
+                        .set_yaw(Deg(viewinfo.viewangles[1]));
+
+                    // need this to update view
+                    self.render_state.camera.rebuild_orientation();
+
+                    return;
+                }
+
+                let skeletal = player_model_entity.transformation.get_skeletal_mut();
+
+                skeletal.world_transformation.0 = viewinfo.vieworg.into();
+                skeletal.world_transformation.1 = cgmath::Quaternion::one();
+
+                if let EntityModel::PlayerModel { player_index, .. } =
+                    &mut player_model_entity.model
+                {
+                    *player_index = Some(viewinfo_idx);
+                }
+            });
     }
 }

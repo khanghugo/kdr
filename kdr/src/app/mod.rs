@@ -662,6 +662,7 @@ impl ApplicationHandler<AppEvent> for App {
                 let queue = render_context.queue().clone();
 
                 // append some common resources to bsp resource so that everything can be processed
+                // viewmodels
                 self.state
                     .other_resources
                     .common_resource
@@ -671,6 +672,24 @@ impl ApplicationHandler<AppEvent> for App {
                         let file_name = path.file_name().unwrap().to_str().unwrap();
 
                         if file_name.starts_with("v_") && file_name.ends_with(".mdl") {
+                            true
+                        } else {
+                            false
+                        }
+                    })
+                    .for_each(|(file_name, file_bytes)| {
+                        resource
+                            .resources
+                            .insert(file_name.to_string(), file_bytes.to_owned());
+                    });
+
+                // player models
+                self.state
+                    .other_resources
+                    .common_resource
+                    .iter()
+                    .filter(|(file_name, _)| {
+                        if file_name.ends_with(".mdl") && file_name.starts_with("models/player") {
                             true
                         } else {
                             false

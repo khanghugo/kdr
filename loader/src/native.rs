@@ -3,7 +3,10 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use common::{COMMON_GAME_MODS, COMMON_RESOURCE_SOUND, RESOURCE_VIEWMODELS, UNKNOWN_GAME_MOD};
+use common::{
+    COMMON_GAME_MODS, COMMON_RESOURCE_SOUND, RESOURCE_PLAYER_MODELS, RESOURCE_VIEWMODELS,
+    UNKNOWN_GAME_MOD,
+};
 use ghost::get_ghost_blob_from_path;
 use tracing::{info, warn};
 
@@ -132,6 +135,8 @@ impl ResourceProvider for NativeResourceProvider {
         get_other_sound(&mut resource_map, &self.game_dir, &identifier.game_mod);
 
         get_viewmodel(&mut resource_map, &self.game_dir, &identifier.game_mod);
+
+        get_player_models(&mut resource_map, &self.game_dir, &identifier.game_mod);
 
         Ok(super::Resource {
             bsp,
@@ -617,6 +622,20 @@ fn get_viewmodel(resource_map: &mut ResourceMap, game_dir: &Path, game_mod: &str
             resource_map.insert(path.display().to_string(), bytes);
         } else {
             warn!("Cannot find view model {}", path.display());
+        };
+    });
+}
+
+fn get_player_models(resource_map: &mut ResourceMap, game_dir: &Path, game_mod: &str) {
+    RESOURCE_PLAYER_MODELS.iter().for_each(|path| {
+        let path = Path::new(path);
+
+        if let Some(absolute_path) = search_game_resource(game_dir, game_mod, path, true) {
+            let bytes = std::fs::read(absolute_path.as_path()).unwrap();
+
+            resource_map.insert(path.display().to_string(), bytes);
+        } else {
+            warn!("Cannot find player model {}", path.display());
         };
     });
 }

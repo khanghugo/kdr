@@ -1,5 +1,6 @@
 use cgmath::Deg;
 use ghost::{GhostFrameEntityText, GhostInfo};
+use loader::bsp_resource::EntityModel;
 
 use crate::app::state::{
     AppState,
@@ -141,10 +142,8 @@ impl AppState {
                                         .entity_dictionary
                                         .iter_mut()
                                         .for_each(|entity| match &mut entity.1.model {
-                                            loader::bsp_resource::EntityModel::ViewModel {
-                                                model_name,
-                                                active,
-                                                ..
+                                            EntityModel::ViewModel {
+                                                model_name, active, ..
                                             } => {
                                                 if model_name.contains(
                                                     &entity_state.viewmodel_state.active_viewmodel,
@@ -165,12 +164,10 @@ impl AppState {
                                         .entity_dictionary
                                         .iter_mut()
                                         .find(|entity| match &entity.1.model {
-                                            loader::bsp_resource::EntityModel::ViewModel {
-                                                model_name,
-                                                ..
-                                            } => model_name.contains(
-                                                &entity_state.viewmodel_state.active_viewmodel,
-                                            ),
+                                            EntityModel::ViewModel { model_name, .. } => model_name
+                                                .contains(
+                                                    &entity_state.viewmodel_state.active_viewmodel,
+                                                ),
                                             _ => false,
                                         })
                                         .map(|entity| {

@@ -1,5 +1,6 @@
-use cgmath::{EuclideanSpace, Zero};
-use loader::bsp_resource::EntityDictionary;
+use cgmath::{EuclideanSpace, One, Zero};
+use loader::bsp_resource::{EntityDictionary, EntityModel};
+use tracing::info;
 use viewmodel::ViewModelState;
 
 use super::AppState;
@@ -23,21 +24,19 @@ impl AppState {
             .for_each(|(_, entity)| {
                 match &entity.model {
                     // this shouldnt move
-                    loader::bsp_resource::EntityModel::Bsp
-                    | loader::bsp_resource::EntityModel::NoDrawBrush(_) => {}
+                    EntityModel::Bsp | EntityModel::NoDrawBrush(_) => {}
                     // for brush entities
-                    loader::bsp_resource::EntityModel::OpaqueEntityBrush(_)
-                    | loader::bsp_resource::EntityModel::TransparentEntityBrush(_) => {}
+                    EntityModel::OpaqueEntityBrush(_) | EntityModel::TransparentEntityBrush(_) => {}
                     // sprite
-                    loader::bsp_resource::EntityModel::Sprite => todo!(),
+                    EntityModel::Sprite => todo!(),
                     // studio model entites
-                    loader::bsp_resource::EntityModel::Mdl { .. } => {
+                    EntityModel::BspMdlEntity { .. } => {
                         // just update like normal
                         self.render_state.world_buffer[0]
                             .mvp_buffer
                             .update_entity_mvp_buffer(&entity, self.time);
                     }
-                    loader::bsp_resource::EntityModel::ViewModel {
+                    EntityModel::ViewModel {
                         model_name, active, ..
                     } => {
                         // like mdl but here we will update the world offsets for it
@@ -58,6 +57,8 @@ impl AppState {
                             skeletal.world_transformation.1 = cgmath::Quaternion::zero();
                         }
 
+                        skeletal.world_transformation.1 = cgmath::Quaternion::zero();
+
                         self.render_state.world_buffer[0]
                             .mvp_buffer
                             .update_entity_mvp_buffer(&entity, entity_state.viewmodel_state.time);
@@ -66,6 +67,26 @@ impl AppState {
                         if *active {
                             entity_state.viewmodel_state.time += self.frame_time;
                         }
+                    }
+                    EntityModel::PlayerModel {
+                        model_name,
+                        submodel,
+                        player_index,
+                    } => {
+                        // this should only be responsible for updating player mvps
+                        // it is up to either replay or puppet to update the entities
+                        let skeletal = entity.transformation.get_skeletal_mut();
+
+                        if player_index.is_none() {
+                            // if no player, make the model invisible
+                            skeletal.world_transformation.1 = cgmath::Quaternion::one();
+                        };
+
+                        skeletal.world_transformation.1 = cgmath::Quaternion::one();
+
+                        self.render_state.world_buffer[0]
+                            .mvp_buffer
+                            .update_entity_mvp_buffer(&entity, self.time);
                     }
                 }
             });

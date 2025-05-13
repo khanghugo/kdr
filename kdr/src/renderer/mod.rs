@@ -101,7 +101,7 @@ impl RenderContext {
         limits.max_texture_array_layers = 1024;
         // this is for mvp matrices
         limits.max_uniform_buffer_binding_size = (4 * 4 * 4) // 1 matrix4x4f
-            * MAX_MVP; // 1024 entities at 32.8 KB
+            * MAX_MVP; // 1024 entities at 64 KB aka max size
         limits.max_push_constant_size = 128; // TODO may not be working
         // end limits
 
@@ -174,7 +174,7 @@ impl RenderContext {
             .unwrap();
 
         let config = wgpu::SurfaceConfiguration {
-            present_mode: wgpu::PresentMode::Fifo,
+            present_mode: wgpu::PresentMode::Immediate,
             ..config
         };
 

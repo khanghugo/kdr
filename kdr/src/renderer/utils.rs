@@ -63,99 +63,6 @@ pub fn eightbpp_to_rgba8(
     .expect("cannot create rgba8 from 8pp")
 }
 
-pub fn face_vertices(face: &bsp::Face, bsp: &bsp::Bsp) -> Vec<bsp::Vec3> {
-    let mut face_vertices = vec![];
-
-    for edge_idx in (face.first_edge as u32)..(face.first_edge as u32 + face.edge_count as u32) {
-        let surf_edge = bsp.surf_edges[edge_idx as usize];
-
-        let [v1_idx, v2_idx] = bsp.edges[surf_edge.abs() as usize];
-
-        if surf_edge.is_positive() {
-            face_vertices.push(bsp.vertices[v1_idx as usize]);
-        } else {
-            face_vertices.push(bsp.vertices[v2_idx as usize]);
-        }
-    }
-
-    face_vertices
-}
-
-pub fn vertex_uv(pos: &bsp::Vec3, texinfo: &bsp::TexInfo) -> [f32; 2] {
-    [
-        (pos.dot(texinfo.u) + texinfo.u_offset),
-        (pos.dot(texinfo.v) + texinfo.v_offset),
-    ]
-}
-
-pub fn get_bsp_textures(bsp: &bsp::Bsp, external_wads: &[Wad]) -> Vec<RgbaImage> {
-    bsp.textures
-        .iter()
-        .map(|texture| {
-            let texture_name = texture.texture_name.get_string_standard();
-            let override_alpha = if texture_name == "SKY" {
-                // 16.into()
-                None
-            } else {
-                None
-            };
-
-            // offset 0 means it is using external wad
-            if texture.mip_offsets[0] == 0 {
-                external_wads
-                    .iter()
-                    .find_map(|wad| {
-                        wad.entries.iter().find_map(|entry| {
-                            let Some(external_texture) = entry.file_entry.get_mip_tex() else {
-                                return None;
-                            };
-
-                            if external_texture.texture_name.get_string_standard() == texture_name {
-                                return Some(eightbpp_to_rgba8(
-                                    external_texture.mip_images[0].data.get_bytes(),
-                                    external_texture.palette.get_bytes(),
-                                    external_texture.width,
-                                    external_texture.height,
-                                    override_alpha,
-                                ));
-                            }
-
-                            None
-                        })
-                    })
-                    .unwrap_or_else(|| {
-                        warn!("cannot find texture name `{texture_name}`");
-
-                        create_missing_texture_placeholder(texture.width, texture.height)
-                    })
-            } else {
-                eightbpp_to_rgba8(
-                    texture.mip_images[0].data.get_bytes(),
-                    texture.palette.get_bytes(),
-                    texture.width,
-                    texture.height,
-                    override_alpha,
-                )
-            }
-        })
-        .collect()
-}
-
-pub fn get_mdl_textures(mdl: &mdl::Mdl) -> Vec<RgbaImage> {
-    mdl.textures
-        .iter()
-        .map(|texture| {
-            eightbpp_to_rgba8(
-                &texture.image,
-                &texture.palette,
-                texture.dimensions().0,
-                texture.dimensions().1,
-                None,
-            )
-        })
-        .collect()
-}
-
 pub struct FullScrenTriVertexShader {
     pub shader_module: wgpu::ShaderModule,
 }
@@ -184,7 +91,7 @@ impl FullScrenTriVertexShader {
 
 // vibe code
 // Helper function to create a magenta/black checkerboard image
-fn create_missing_texture_placeholder(width: u32, height: u32) -> RgbaImage {
+pub fn create_missing_texture_placeholder(width: u32, height: u32) -> RgbaImage {
     // You can adjust the checker_size for different pattern granularity
     let checker_size = 16; // 16x16 pixels per checker square
     let magenta = Rgba([255, 0, 255, 255]); // RGBA for magenta
@@ -205,4 +112,29 @@ fn create_missing_texture_placeholder(width: u32, height: u32) -> RgbaImage {
     }
 
     img
+}
+
+pub fn face_vertices(face: &bsp::Face, bsp: &bsp::Bsp) -> Vec<bsp::Vec3> {
+    let mut face_vertices = vec![];
+
+    for edge_idx in (face.first_edge as u32)..(face.first_edge as u32 + face.edge_count as u32) {
+        let surf_edge = bsp.surf_edges[edge_idx as usize];
+
+        let [v1_idx, v2_idx] = bsp.edges[surf_edge.abs() as usize];
+
+        if surf_edge.is_positive() {
+            face_vertices.push(bsp.vertices[v1_idx as usize]);
+        } else {
+            face_vertices.push(bsp.vertices[v2_idx as usize]);
+        }
+    }
+
+    face_vertices
+}
+
+pub fn vertex_uv(pos: &bsp::Vec3, texinfo: &bsp::TexInfo) -> [f32; 2] {
+    [
+        (pos.dot(texinfo.u) + texinfo.u_offset),
+        (pos.dot(texinfo.v) + texinfo.v_offset),
+    ]
 }

@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use loader::bsp_resource::WorldEntity;
+use loader::bsp_resource::{BuildMvpResult, EntityModel, WorldEntity};
 use wgpu::util::DeviceExt;
 
 use crate::app::constants::MAX_MVP;
@@ -13,6 +13,12 @@ pub struct MvpBuffer {
     // if a studio model has more than 1 bone, bone #1 is inside entity buffer,
     // but starting from bone #2, they all will be in this buffer
     pub skeletal_buffer: wgpu::Buffer,
+    // two mvp buffers for all player models
+    // 55 bones * 64 bytes (mat4) * 32 players = 112640 bytes
+    // so we need two UBOs maxed out at 64KB each
+    // webgl2 doesnt have SSBO so this is fucked
+    pub player_buffer1: wgpu::Buffer,
+    pub player_buffer2: wgpu::Buffer,
     queue: wgpu::Queue,
     /// Key: World entity index
     ///
@@ -56,6 +62,28 @@ impl MvpBuffer {
                     },
                     count: None,
                 },
+                // player mvp buffer 1
+                wgpu::BindGroupLayoutEntry {
+                    binding: 2,
+                    visibility: wgpu::ShaderStages::VERTEX,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+                // player mvp buffer 2
+                wgpu::BindGroupLayoutEntry {
+                    binding: 3,
+                    visibility: wgpu::ShaderStages::VERTEX,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
             ],
         }
     }
@@ -78,11 +106,24 @@ impl MvpBuffer {
         // make sure that the order of world buffer to match this order as well
         entity_infos
             .iter()
+            .filter(|entity| match &entity.model {
+                // only write into skeletal and entity mvp buffers to all entities
+                // except for plaer modeel
+                // it will be written later on
+                EntityModel::Bsp
+                | EntityModel::OpaqueEntityBrush(_)
+                | EntityModel::TransparentEntityBrush(_)
+                | EntityModel::NoDrawBrush(_)
+                | EntityModel::BspMdlEntity { .. }
+                | EntityModel::Sprite
+                | EntityModel::ViewModel { .. } => true,
+                EntityModel::PlayerModel { .. } => false,
+            })
             .for_each(|entity| match entity.build_mvp(0.) {
-                loader::bsp_resource::BuildMvpResult::Entity(matrix4) => {
+                BuildMvpResult::Entity(matrix4) => {
                     entity_mvps.push(matrix4.into());
                 }
-                loader::bsp_resource::BuildMvpResult::Skeletal(matrix4s) => {
+                BuildMvpResult::Skeletal(matrix4s) => {
                     // first matrix is in the entity mvp
                     entity_mvps.push(matrix4s[0].into());
 
@@ -112,6 +153,21 @@ impl MvpBuffer {
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
 
+        // max 64KB
+        let empty_player_buffer = [0u8; 2 << 15];
+
+        let player_buffer1 = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("model view projection player buffer 1"),
+            contents: bytemuck::cast_slice(&empty_player_buffer),
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        });
+
+        let player_buffer2 = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("model view projection player buffer 2"),
+            contents: bytemuck::cast_slice(&empty_player_buffer),
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        });
+
         let bind_group_layout =
             device.create_bind_group_layout(&MvpBuffer::bind_group_layout_descriptor());
 
@@ -129,6 +185,16 @@ impl MvpBuffer {
                     binding: 1,
                     resource: skeletal_buffer.as_entire_binding(),
                 },
+                // player buffer 1
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: player_buffer1.as_entire_binding(),
+                },
+                // player buffer 2
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: player_buffer2.as_entire_binding(),
+                },
             ],
         });
 
@@ -138,12 +204,14 @@ impl MvpBuffer {
             skeletal_buffer,
             queue: queue.clone(),
             skeletal_lookup,
+            player_buffer1,
+            player_buffer2,
         }
     }
 
     pub fn update_entity_mvp_buffer(&self, entity_info: &WorldEntity, time: f32) {
         match entity_info.build_mvp(time) {
-            loader::bsp_resource::BuildMvpResult::Entity(matrix4) => {
+            BuildMvpResult::Entity(matrix4) => {
                 let offset = entity_info.world_index * 4 * 4 * 4;
 
                 let mvp_cast: &[f32; 16] = matrix4.as_ref();
@@ -151,7 +219,7 @@ impl MvpBuffer {
                 self.queue
                     .write_buffer(&self.entity_buffer, offset as u64, mvp_bytes);
             }
-            loader::bsp_resource::BuildMvpResult::Skeletal(matrix4s) => {
+            BuildMvpResult::Skeletal(matrix4s) => {
                 let entity_skeletal_start = self.skeletal_lookup.get(&entity_info.world_index);
 
                 matrix4s.iter().enumerate().for_each(|(idx, mat)| {

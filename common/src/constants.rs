@@ -59,3 +59,5 @@ pub const RESOURCE_VIEWMODELS: &[&str] = &[
     "models/v_sg552.mdl",
     "models/v_usp.mdl",
 ];
+
+pub const RESOURCE_PLAYER_MODELS: &[&str] = &["models/player/leet/leet.mdl"];

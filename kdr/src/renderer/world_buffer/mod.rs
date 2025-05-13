@@ -1,169 +1,20 @@
-use bitflags::bitflags;
-use bytemuck_derive::{Pod, Zeroable};
-use image::RgbaImage;
 use std::collections::HashMap;
+
+use image::RgbaImage;
+use loader::bsp_resource::{BspResource, EntityModel, WorldEntity};
+
+mod model;
+mod types;
+mod world;
+
+use model::{create_world_vertices, get_mdl_textures, triangulate_triverts};
 use tracing::{info, warn};
-use wgpu::util::DeviceExt;
+pub use types::*;
+pub use world::*;
 
-use loader::bsp_resource::{BspResource, CustomRender, EntityModel, WorldEntity};
+use crate::renderer::texture_buffer::texture_array::{TextureArrayBuffer, create_texture_array};
 
-use super::{
-    bsp_lightmap::LightMapAtlasBuffer,
-    camera::CameraBuffer,
-    mvp_buffer::MvpBuffer,
-    texture_buffer::texture_array::{TextureArrayBuffer, create_texture_array},
-    utils::{face_vertices, get_bsp_textures, get_mdl_textures, vertex_uv},
-};
-
-#[derive(Pod, Zeroable, Clone, Copy)]
-#[repr(C)]
-pub struct PushConstantRenderFlags(u32);
-
-bitflags! {
-    impl PushConstantRenderFlags: u32 {
-        const RenderNoDraw      = (1 << 0);
-        const FullBright        = (1 << 1);
-    }
-}
-
-// TODO, bit packing. maybe that is better?
-#[derive(Pod, Zeroable, Clone, Copy)]
-#[repr(C)]
-pub struct WorldPushConstants {
-    pub render_flags: PushConstantRenderFlags,
-}
-
-/// Key: (World Entity Index, Texture Index)
-///
-/// Value: (Texture Array Index, Texture Index)
-type WorldTextureLookupTable = HashMap<(usize, usize), (usize, usize)>;
-
-/// Key: Batch Index aka Texture Array Index
-///
-/// Value: (World Vertex Array, Index Array)
-type BatchLookup = HashMap<usize, (Vec<WorldVertex>, Vec<u32>)>;
-
-#[repr(C)]
-#[derive(Pod, Zeroable, Clone, Copy)]
-/// Common vertex data structure for both bsp and mdl
-pub struct WorldVertex {
-    pos: [f32; 3],
-    tex_coord: [f32; 2],
-    normal: [f32; 3],
-    layer: u32,
-    model_idx: u32,
-    // type of the vertex, bsp vertex or mdl vertex
-    // 0: bsp, 1: mdl
-    type_: u32,
-    // for bsp: [lightmap_u, lightmap_v, renderamt]
-    // for mdl: unused
-    data_a: [f32; 3],
-    // for bsp: [rendermode, is_sky]
-    // for mdl: [textureflag, bone index]
-    //      if bone index is 0, use mvp, starting from 1, calculate the actual bone index, somehow
-    data_b: [u32; 2],
-}
-
-impl WorldVertex {
-    pub fn buffer_layout() -> wgpu::VertexBufferLayout<'static> {
-        wgpu::VertexBufferLayout {
-            array_stride: std::mem::size_of::<Self>() as u64,
-            step_mode: wgpu::VertexStepMode::Vertex,
-            attributes: &[
-                // pos
-                wgpu::VertexAttribute {
-                    format: wgpu::VertexFormat::Float32x3,
-                    offset: 0,
-                    shader_location: 0,
-                },
-                // texcoord
-                wgpu::VertexAttribute {
-                    format: wgpu::VertexFormat::Float32x2,
-                    offset: 12,
-                    shader_location: 1,
-                },
-                // normal
-                wgpu::VertexAttribute {
-                    format: wgpu::VertexFormat::Float32x3,
-                    offset: 20,
-                    shader_location: 2,
-                },
-                // texture layer
-                wgpu::VertexAttribute {
-                    format: wgpu::VertexFormat::Uint32,
-                    offset: 32,
-                    shader_location: 3,
-                },
-                // model index to get model view projection matrix
-                wgpu::VertexAttribute {
-                    format: wgpu::VertexFormat::Uint32,
-                    offset: 36,
-                    shader_location: 4,
-                },
-                // vertex type
-                wgpu::VertexAttribute {
-                    format: wgpu::VertexFormat::Uint32,
-                    offset: 40,
-                    shader_location: 5,
-                },
-                // data_a
-                wgpu::VertexAttribute {
-                    format: wgpu::VertexFormat::Float32x3,
-                    offset: 44,
-                    shader_location: 6,
-                },
-                // data_b
-                wgpu::VertexAttribute {
-                    format: wgpu::VertexFormat::Uint32x2,
-                    offset: 56,
-                    shader_location: 7,
-                },
-            ],
-        }
-    }
-}
-
-pub struct WorldVertexBuffer {
-    pub vertex_buffer: wgpu::Buffer,
-    pub index_buffer: wgpu::Buffer,
-    pub index_count: usize,
-    pub texture_array_index: usize,
-}
-
-impl Drop for WorldVertexBuffer {
-    fn drop(&mut self) {
-        self.vertex_buffer.destroy();
-        self.index_buffer.destroy();
-    }
-}
-
-pub struct WorldBuffer {
-    pub opaque: Vec<WorldVertexBuffer>,
-    // only 1 buffer because OIT
-    pub transparent: Vec<WorldVertexBuffer>,
-    pub textures: Vec<TextureArrayBuffer>,
-    pub bsp_lightmap: LightMapAtlasBuffer,
-    pub mvp_buffer: MvpBuffer,
-    // seems dumb, but it works. The only downside is that it feeds in a maybe big vertex buffer containing a lot of other vertices
-    // but the fact that we can filter it inside the shader is nice enough
-    // it works and it looks dumb so that is why i have to write a lot here
-    // a map might not have sky texture so this is optional
-    // the index is for opaque buffer vector
-    pub skybrush_batch_index: Option<usize>,
-}
-
-pub enum WorldPipelineType {
-    /// Standard Z Pre Pass
-    ZPrepass,
-    /// Masking SKY texture in the scene with depth value of 1.0 (farthest possible)
-    ///
-    /// With this, it is easier to draw skybox over it while also being able to occlude objects behind it.
-    ///
-    /// This means 3D skybox tricks don't work :()
-    SkyboxMask,
-    Opaque,
-    Transparent,
-}
+use super::{bsp_lightmap::LightMapAtlasBuffer, camera::CameraBuffer, mvp_buffer::MvpBuffer};
 
 pub struct WorldLoader;
 
@@ -226,7 +77,7 @@ impl WorldLoader {
         depth_format: wgpu::TextureFormat,
         pipeline_type: WorldPipelineType,
     ) -> wgpu::RenderPipeline {
-        let world_shader = device.create_shader_module(wgpu::include_wgsl!("./shader/world.wgsl"));
+        let world_shader = device.create_shader_module(wgpu::include_wgsl!("../shader/world.wgsl"));
 
         // common data
         let texture_array_bind_group_layout =
@@ -437,8 +288,9 @@ impl WorldLoader {
                         get_bsp_textures(&resource.bsp, &resource.external_wad_textures),
                     );
                 }
-                EntityModel::Mdl { ref model_name, .. }
-                | EntityModel::ViewModel { ref model_name, .. } => {
+                EntityModel::BspMdlEntity { ref model_name, .. }
+                | EntityModel::ViewModel { ref model_name, .. }
+                | EntityModel::PlayerModel { ref model_name, .. } => {
                     if entity_textures.contains_key(model_name) {
                         return;
                     }
@@ -471,8 +323,9 @@ impl WorldLoader {
             .iter()
             .filter_map(|(_, entity)| match entity.model {
                 EntityModel::Bsp => Some(("worldspawn", entity.world_index)),
-                EntityModel::Mdl { ref model_name, .. }
-                | EntityModel::ViewModel { ref model_name, .. } => {
+                EntityModel::BspMdlEntity { ref model_name, .. }
+                | EntityModel::ViewModel { ref model_name, .. }
+                | EntityModel::PlayerModel { ref model_name, .. } => {
                     Some((model_name, entity.world_index))
                 }
                 EntityModel::Sprite => todo!("not implemented for sprite loading"),
@@ -559,20 +412,6 @@ impl WorldLoader {
     }
 }
 
-struct ProcessBspFaceData<'a> {
-    bsp_face_index: usize,
-    world_entity_index: usize,
-    texture_layer_index: usize,
-    face: &'a bsp::Face,
-    custom_render: Option<&'a CustomRender>,
-    /// 0: Normal bsp face such as opaque and transparent face
-    ///
-    /// 1: Sky
-    ///
-    /// 2: No draw brushes
-    type_: u32,
-}
-
 // Returns (opaque batch lookup, transparent batch lookup)
 fn create_batch_lookups(
     resource: &BspResource,
@@ -588,7 +427,8 @@ fn create_batch_lookups(
     // we don't use index 0 because index 0 in skeletal bone mvp is unambiguous
     // imagine we calculate to get index 0, is that for skeletal or mvp?
     // so, we start from index 1
-    let mut current_model_skeletal_bone_mvp_idx = 1;
+    let mut current_bsp_model_skeletal_bone_mvp_idx = 1;
+    let mut current_player_model_skeletal_bone_mvp_idx = 0;
 
     sorted_entity_infos.iter().for_each(|entity| {
         let world_entity_index = entity.world_index;
@@ -686,12 +526,17 @@ fn create_batch_lookups(
                 // create_bsp_batch_lookup(bsp)
             }
             // for some reasons this is inline but the bsp face is not
-            EntityModel::Mdl {
+            EntityModel::BspMdlEntity {
                 model_name,
                 submodel,
                 ..
             }
             | EntityModel::ViewModel {
+                model_name,
+                submodel,
+                ..
+            }
+            | EntityModel::PlayerModel {
                 model_name,
                 submodel,
                 ..
@@ -703,296 +548,37 @@ fn create_batch_lookups(
                     return;
                 };
 
-                mdl.bodyparts.iter().for_each(|bodypart| {
-                    bodypart.models.get(*submodel).map(|model| {
-                        model.meshes.iter().for_each(|mesh| {
-                            // one mesh has the same texture everything
-                            let texture_idx = mesh.header.skin_ref as usize;
-                            let texture = &mdl.textures[texture_idx];
-                            let texture_flags = &texture.header.flags;
-                            let (width, height) = texture.dimensions();
+                let vertex_type = match &entity.model {
+                    EntityModel::Bsp
+                    | EntityModel::OpaqueEntityBrush(_)
+                    | EntityModel::TransparentEntityBrush(_)
+                    | EntityModel::NoDrawBrush(_)
+                    | EntityModel::Sprite => unreachable!(),
 
-                            // let triangle_list = triangle_strip_to_triangle_list(&mesh.vertices);
-
-                            mesh.triangles.iter().for_each(|triangles| {
-                                // it is possible for a mesh to have both fan and strip run
-                                let (is_strip, triverts) = match triangles {
-                                    mdl::MeshTriangles::Strip(triverts) => (true, triverts),
-                                    mdl::MeshTriangles::Fan(triverts) => (false, triverts),
-                                };
-
-                                // now just convert triverts into mdl vertex data
-                                // then do some clever stuff with index buffer to make it triangle list
-                                let (array_idx, layer_idx) = world_texture_lookup
-                                    .get(&(world_entity_index, texture_idx))
-                                    .expect("cannot get world texture");
-                                let batch = assigned_lookup
-                                    .entry(*array_idx)
-                                    .or_insert((vec![], vec![]));
-
-                                let new_vertices_offset = batch.0.len();
-
-                                // create vertex buffer here
-                                let vertices = triverts.iter().map(|trivert| {
-                                    let [u, v] = [
-                                        trivert.header.s as f32 / width as f32,
-                                        trivert.header.t as f32 / height as f32,
-                                    ];
-
-                                    let bone_index = model.vertex_info
-                                        [trivert.header.vert_index as usize]
-                                        as usize;
-
-                                    // now this is some stuffs that seems dumb
-                                    // in skeletal mvp, we just don't use index 0
-                                    // with this, if bone index is 0, it means model uses entity mvp
-                                    // so, skeletal mvp 0 is empty
-                                    let buffer_bone_idx = if bone_index == 0 {
-                                        0
-                                    } else {
-                                        // assign_skeletal_bone_idx()
-                                        // need to subtract 1 because bone idx 1 will have idx 0 in skeletal
-                                        current_model_skeletal_bone_mvp_idx + bone_index - 1
-                                    };
-
-                                    WorldVertex {
-                                        pos: trivert.vertex.to_array(),
-                                        tex_coord: [u, v],
-                                        normal: trivert.normal.to_array(),
-                                        layer: *layer_idx as u32,
-                                        // actual model index is different
-                                        // because 0 is worldspawn
-                                        model_idx: world_entity_index as u32,
-                                        type_: 1,
-                                        data_a: [0f32; 3],
-                                        data_b: [
-                                            texture_flags.bits() as u32,
-                                            buffer_bone_idx as u32,
-                                        ],
-                                    }
-                                });
-
-                                batch.0.extend(vertices);
-
-                                let mut index_buffer: Vec<u32> = vec![];
-
-                                // create index buffer here
-                                // here we will create triangle list
-                                // deepseek v3 zero shot this one
-                                if is_strip {
-                                    for i in 0..triverts.len().saturating_sub(2) {
-                                        if i % 2 == 0 {
-                                            // Even-indexed triangles
-                                            index_buffer
-                                                .push(new_vertices_offset as u32 + i as u32);
-                                            index_buffer
-                                                .push(new_vertices_offset as u32 + (i + 1) as u32);
-                                            index_buffer
-                                                .push(new_vertices_offset as u32 + (i + 2) as u32);
-                                        } else {
-                                            // Odd-indexed triangles (flip winding order)
-                                            index_buffer
-                                                .push(new_vertices_offset as u32 + (i + 1) as u32);
-                                            index_buffer
-                                                .push(new_vertices_offset as u32 + i as u32);
-                                            index_buffer
-                                                .push(new_vertices_offset as u32 + (i + 2) as u32);
-                                        }
-                                    }
-                                } else {
-                                    let first_index = new_vertices_offset as u32;
-                                    for i in 1..triverts.len().saturating_sub(1) {
-                                        index_buffer.push(first_index);
-                                        index_buffer.push(new_vertices_offset as u32 + i as u32);
-                                        index_buffer
-                                            .push(new_vertices_offset as u32 + (i + 1) as u32);
-                                    }
-                                }
-
-                                batch.1.extend(index_buffer);
-                            });
-                        });
-                    });
-                });
+                    EntityModel::BspMdlEntity { .. } | EntityModel::ViewModel { .. } => 1,
+                    EntityModel::PlayerModel { .. } => 2,
+                };
+                create_world_vertices(
+                    mdl,
+                    *submodel,
+                    world_entity_index,
+                    world_texture_lookup,
+                    assigned_lookup,
+                    1,
+                    |bone_idx| {
+                        (current_bsp_model_skeletal_bone_mvp_idx + bone_idx as usize - 1) as u32
+                    },
+                );
 
                 // REMINDER: add the bone idx for the current model
                 // need to sub 1 because one bone is in another buffer
                 // make sure it is saturating sub just in case someone made a model with 0 bone
-                current_model_skeletal_bone_mvp_idx += mdl.bones.len().saturating_sub(1);
+                current_bsp_model_skeletal_bone_mvp_idx += mdl.bones.len().saturating_sub(1);
+                current_player_model_skeletal_bone_mvp_idx += mdl.bones.len().saturating_sub(1);
             }
             EntityModel::Sprite => todo!("sprite world vertex is not supported"),
         };
     });
 
     (opaque_lookup, transparent_lookup)
-}
-
-fn process_bsp_face(
-    face_data: ProcessBspFaceData,
-    bsp: &bsp::Bsp,
-    lightmap: &LightMapAtlasBuffer,
-) -> (Vec<WorldVertex>, Vec<u32>) {
-    let ProcessBspFaceData {
-        bsp_face_index: face_index,
-        face,
-        custom_render,
-        world_entity_index,
-        texture_layer_index,
-        type_,
-    } = face_data;
-
-    let face_vertices = face_vertices(face, bsp);
-
-    let indices = triangulate_convex_polygon(&face_vertices);
-
-    let normal = bsp.planes[face.plane as usize].normal;
-    let texinfo = &bsp.texinfo[face.texinfo as usize];
-
-    // uv
-    let miptex = &bsp.textures[texinfo.texture_index as usize];
-
-    let vertices_texcoords: Vec<[f32; 2]> = face_vertices
-        .iter()
-        .map(|pos| vertex_uv(pos, &texinfo))
-        .collect();
-
-    let vertices_normalized_texcoords: Vec<[f32; 2]> = vertices_texcoords
-        .iter()
-        .map(|uv| [uv[0] / miptex.width as f32, uv[1] / miptex.height as f32])
-        .collect();
-
-    // lightmap
-    let what = lightmap.allocations.get(&face_index);
-
-    // https://github.com/magcius/noclip.website/blob/66595465295720f8078a53d700988241b0adc2b0/src/GoldSrc/BSPFile.ts#L285
-    let (face_min_u, _face_max_u, face_min_v, _face_max_v) = get_face_uv_box(&vertices_texcoords);
-
-    let lightmap_texcoords: Vec<[f32; 2]> = if let Some(allocation) = what {
-        let lightmap_texcoords = vertices_texcoords.iter().map(|&[u, v, ..]| {
-            let lightmap_u =
-                ((u / 16.0) - (face_min_u / 16.0).floor() + 0.5) / allocation.lightmap_width;
-            let lightmap_v =
-                ((v / 16.0) - (face_min_v / 16.0).floor() + 0.5) / allocation.lightmap_height;
-
-            [
-                allocation.atlas_x + lightmap_u * allocation.atlas_width,
-                allocation.atlas_y + lightmap_v * allocation.atlas_height,
-            ]
-        });
-
-        lightmap_texcoords.collect()
-    } else {
-        vertices_normalized_texcoords
-            .iter()
-            .map(|_| [0., 0.])
-            .collect()
-    };
-
-    let rendermode = custom_render
-        .as_ref()
-        .map(|v| v.rendermode)
-        // amount 1 = 255 = full aka opaque
-        // transparent objects have their own default so this won't be a problem
-        .unwrap_or(0);
-
-    let renderamt = custom_render
-        .as_ref()
-        .map(|v| v.renderamt / 255.0)
-        // amount 1 = 255 = full aka opaque
-        // transparent objects have their own default so this won't be a problem
-        .unwrap_or(1.0);
-
-    // collect to buffer
-    let vertices: Vec<WorldVertex> = face_vertices
-        .into_iter()
-        .zip(vertices_normalized_texcoords.into_iter())
-        .zip(lightmap_texcoords.into_iter())
-        .map(|((pos, texcoord), lightmap_coord)| WorldVertex {
-            pos: pos.to_array().into(),
-            tex_coord: texcoord.into(),
-            normal: normal.to_array().into(),
-            layer: texture_layer_index as u32,
-            model_idx: world_entity_index as u32,
-            type_: 0,
-            data_a: [lightmap_coord[0], lightmap_coord[1], renderamt],
-            data_b: [rendermode as u32, type_],
-        })
-        .collect();
-
-    (vertices, indices)
-}
-
-// the dimension of the face on texture coordinate
-fn get_face_uv_box(uvs: &[[f32; 2]]) -> (f32, f32, f32, f32) {
-    let mut min_u = uvs[0][0];
-    let mut min_v = uvs[0][1];
-    let mut max_u = uvs[0][0];
-    let mut max_v = uvs[0][1];
-
-    for i in 1..uvs.len() {
-        let u = uvs[i][0];
-        let v = uvs[i][1];
-
-        if u < min_u {
-            min_u = u;
-        }
-        if v < min_v {
-            min_v = v;
-        }
-        if u > max_u {
-            max_u = u;
-        }
-        if v > max_v {
-            max_v = v;
-        }
-    }
-
-    return (min_u, max_u, min_v, max_v);
-}
-
-// deepseek wrote this
-// input is a winding order polygon
-// the output is the vertex index
-// so there is no need to do anythign to the vertex buffer, only play around with the index buffer
-fn triangulate_convex_polygon(vertices: &[bsp::Vec3]) -> Vec<u32> {
-    // For convex polygons, we can simply fan-triangulate from the first vertex
-    // This creates triangle indices: 0-1-2, 0-2-3, 0-3-4, etc.
-    assert!(vertices.len() >= 3, "Polygon needs at least 3 vertices");
-
-    let mut indices = Vec::with_capacity((vertices.len() - 2) * 3);
-    for i in 1..vertices.len() - 1 {
-        indices.push(0);
-        indices.push(i as u32);
-        indices.push((i + 1) as u32);
-    }
-    indices
-}
-
-fn create_world_vertex_buffer(
-    device: &wgpu::Device,
-    batch_lookup: BatchLookup,
-) -> Vec<WorldVertexBuffer> {
-    batch_lookup
-        .into_iter()
-        .map(|(texture_array_index, (vertices, indices))| {
-            let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("world vertex buffer"),
-                contents: bytemuck::cast_slice(&vertices),
-                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
-            });
-
-            let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("world index buffer"),
-                contents: bytemuck::cast_slice(&indices),
-                usage: wgpu::BufferUsages::INDEX | wgpu::BufferUsages::COPY_DST,
-            });
-
-            WorldVertexBuffer {
-                vertex_buffer,
-                index_buffer,
-                index_count: indices.len(),
-                texture_array_index,
-            }
-        })
-        .collect()
 }

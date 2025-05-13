@@ -43,7 +43,7 @@ pub enum EntityModel {
     /// In addition, they will have renderamt 0. This causes hall of mirror effect on GLES.
     NoDrawBrush(i32),
     // Data stored inside is the model name to get it from the `models` hash map inside [`BspResource`].
-    Mdl {
+    BspMdlEntity {
         model_name: String,
         /// submodel
         submodel: usize,
@@ -55,6 +55,12 @@ pub enum EntityModel {
         model_name: String,
         active: bool,
         submodel: usize,
+    },
+    /// Player model
+    PlayerModel {
+        model_name: String,
+        submodel: usize,
+        player_index: Option<usize>,
     },
 }
 
@@ -253,7 +259,9 @@ impl BspResource {
         let mut sound_lookup = HashMap::new();
 
         load_world_entities(&resource, &mut entity_dictionary, &mut model_lookup);
-        load_viewmodels(&resource, &mut entity_dictionary, &mut model_lookup);
+        // load_viewmodels(&resource, &mut entity_dictionary, &mut model_lookup);
+        // load_player_models(&resource, &mut entity_dictionary, &mut model_lookup);
+
         load_skybox(&resource, &mut skybox);
 
         // find external wad files
@@ -467,7 +475,7 @@ fn load_world_entities(
                     bsp_entity_index,
                     WorldEntity {
                         world_index: assign_world_index(),
-                        model: EntityModel::Mdl {
+                        model: EntityModel::BspMdlEntity {
                             model_name: model_path.to_string(),
                             submodel: submodel as usize,
                         },
@@ -552,6 +560,79 @@ fn load_viewmodels(
                         model_name: model_path.to_string(),
                         submodel: 0,
                         active: false,
+                    },
+                    transformation: WorldTransformation::Skeletal(WorldTransformationSkeletal {
+                        current_sequence_index: 0,
+                        world_transformation: origin_posrot(),
+                        model_transformations,
+                        model_transformation_infos,
+                    }),
+                },
+            );
+        });
+}
+
+// similar code to `load_viewmodels` with some slight differences
+// at the moment, there is only one instance of each model
+// the reason is that the player model is included in the world buffer, very sad time
+fn load_player_models(
+    resource: &Resource,
+    entity_dictionary: &mut EntityDictionary,
+    model_lookup: &mut HashMap<String, mdl::Mdl>,
+) {
+    let available_world_index = entity_dictionary
+        .values()
+        .fold(0, |acc, e| e.world_index.max(acc))
+        + 1;
+
+    resource
+        .resources
+        .iter()
+        .filter(|(file_name, _)| {
+            if file_name.ends_with(".mdl") && file_name.starts_with("models/player") {
+                true
+            } else {
+                false
+            }
+        })
+        // loop over the models endlessly
+        .cycle()
+        .take(32)
+        .enumerate()
+        .for_each(|(model_index, (model_path, model_bytes))| {
+            // check that model is not loaded
+            let mdl = model_lookup
+                .entry(model_path.to_string())
+                .or_insert_with(|| {
+                    // insert model
+                    match Mdl::open_from_bytes(&model_bytes) {
+                        Ok(x) => x,
+                        Err(err) => {
+                            panic!("cannot parse model {}: {}", model_path, err);
+                        }
+                    }
+                });
+
+            let model_transformations = setup_studio_model_transformations(&mdl);
+            let model_transformation_infos: Vec<ModelTransformationInfo> = mdl
+                .sequences
+                .iter()
+                .map(|sequence| ModelTransformationInfo {
+                    frame_per_second: sequence.header.fps,
+                    looping: sequence.header.flags.contains(SequenceFlag::LOOPING),
+                })
+                .collect();
+
+            entity_dictionary.insert(
+                // this doesn't do anything
+                5000 + model_index,
+                WorldEntity {
+                    world_index: available_world_index + model_index,
+                    model: EntityModel::PlayerModel {
+                        model_name: model_path.to_string(),
+                        submodel: 0,
+                        // no player to start with
+                        player_index: None,
                     },
                     transformation: WorldTransformation::Skeletal(WorldTransformationSkeletal {
                         current_sequence_index: 0,
