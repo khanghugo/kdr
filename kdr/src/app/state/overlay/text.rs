@@ -34,6 +34,23 @@ impl TextState {
     }
 }
 
+const COLOR_BLUE: [u8; 3] = [153, 204, 255];
+const COLOR_RED: [u8; 3] = [255, 64, 64];
+const COLOR_YELLOW: [u8; 3] = [255, 179, 0];
+const COLOR_GREEN: [u8; 3] = [153, 255, 153];
+const COLOR_GREY: [u8; 3] = [204, 204, 204];
+
+const fn color_lookup(i: u8) -> [u8; 3] {
+    match i {
+        1 => COLOR_BLUE,
+        2 => COLOR_RED,
+        3 => COLOR_YELLOW,
+        4 => COLOR_GREEN,
+        0 => COLOR_YELLOW,
+        _ => COLOR_GREY,
+    }
+}
+
 impl AppState {
     pub(super) fn draw_entity_text(&mut self, ctx: &egui::Context) {
         let Some((width, height)) = self.egui_window_dimensions(ctx) else {
@@ -101,17 +118,26 @@ impl AppState {
                     ui.set_width(content_width);
 
                     self.text_state.say_text.iter().for_each(|(_, say_text)| {
-                        let rich_text = egui::RichText::new(&say_text.text)
-                            .strong()
-                            .color(egui::Color32::WHITE)
-                            .font(egui::FontId::new(
-                                18.,
-                                egui::FontFamily::Name("tahoma".into()),
-                            ));
+                        // need to be on one line
+                        ui.horizontal(|ui| {
+                            ui.spacing_mut().item_spacing = egui::Vec2::ZERO;
 
-                        let say_text_label = egui::Label::new(rich_text).selectable(false);
+                            say_text.text.iter().for_each(|(header, text)| {
+                                let [r, g, b] = color_lookup(*header);
 
-                        ui.add(say_text_label);
+                                let rich_text = egui::RichText::new(text)
+                                    .strong()
+                                    .color(egui::Color32::from_rgb(r, g, b))
+                                    .font(egui::FontId::new(
+                                        18.,
+                                        egui::FontFamily::Name("tahoma".into()),
+                                    ));
+
+                                let say_text_label = egui::Label::new(rich_text).selectable(false);
+
+                                ui.add(say_text_label);
+                            });
+                        });
                     });
                 });
             });

@@ -4,6 +4,10 @@ use dem::{
     bit::BitSliceCast,
     types::{EngineMessage, FrameData, MessageData, NetMessage, TempEntity},
 };
+use nom::{
+    IResult,
+    bytes::complete::{tag, take_till},
+};
 
 use super::*;
 
@@ -170,10 +174,13 @@ pub fn demo_ghost_parse(filename: &str, demo: &Demo) -> eyre::Result<GhostInfo> 
                                 let player_idx = user_message.data[0] - 1;
                                 let player_name = player_names.get(&player_idx).unwrap();
 
-                                let saytext = String::from_utf8_lossy(&user_message.data[1..]);
-                                let saytext = processing_saytext(&saytext, player_name);
+                                // println!("{:?}", user_message.data);
 
-                                say_text.push(GhostFrameSayText { text: saytext });
+                                let (_, saytext) =
+                                    processing_saytext2(&user_message.data[1..], player_name)
+                                        .unwrap();
+
+                                say_text.push(saytext);
                             }
 
                             if message_name == "CurWeapon" {
@@ -357,43 +364,67 @@ pub fn demo_ghost_parse(filename: &str, demo: &Demo) -> eyre::Result<GhostInfo> 
     })
 }
 
-// should put in raw utf8 text
-fn processing_saytext(s: &str, player_name: &str) -> String {
-    let mut res = s.to_string();
+fn processing_saytext2<'a>(
+    byte_string: &'a [u8],
+    player_name: &'a str,
+) -> IResult<&'a [u8], GhostFrameSayText> {
+    let is_header = |i: u8| i <= 4;
 
-    const ALL_CHAT_PTRN: &str = "#Cstrike_Chat_All";
-    const SPEC_CHAT_PTRN: &str = "#Cstrike_Chat_AllSpec";
-    const SPEC_TEAM_CHAT_PTRN: &str = "#Cstrike_Chat_Spec";
+    let (mut remaining, initial_chunk) = take_till(is_header)(byte_string)?;
+    let mut chunks = Vec::new();
 
-    let is_all_chat = s.contains(ALL_CHAT_PTRN);
-    let is_spec_chat = s.contains(SPEC_CHAT_PTRN);
-    let is_spec_team_chat = s.contains(SPEC_TEAM_CHAT_PTRN);
-
-    // so, it can be all chat and spec chat at the same time becuase of common prefix
-    if is_spec_chat {
-        res = res.replace(SPEC_CHAT_PTRN, "");
-
-        res = format!("*SPEC* {player_name}: {res}");
-    } else if is_all_chat {
-        res = res.replace(ALL_CHAT_PTRN, "");
-
-        res = format!("{player_name}: {res}");
-    } else if is_spec_team_chat {
-        res = res.replace(SPEC_TEAM_CHAT_PTRN, "");
-
-        res = format!("(Spectator) {player_name}: {res}");
+    // beginning chunk with no header, eg spectator text
+    if !initial_chunk.is_empty() {
+        chunks.push((1, initial_chunk)); // 1 = system text
     }
 
-    // fast cleaning up some stuffs in the text
-    res = res
-        .replace("%s", "")
-        .replace("\n", "")
-        // replace this last
-        .replace(std::char::REPLACEMENT_CHARACTER, "");
+    while !remaining.is_empty() {
+        let (rest, header) =
+            nom::branch::alt((tag(&[0]), tag(&[1]), tag(&[2]), tag(&[3]), tag(&[4])))(remaining)?;
 
-    // cleaning up unprintable characters, which are colors
-    // take characters above 0x7E becuase we might have some chinse characters
-    res.retain(|s| s >= 0x20.into());
+        let (rest, content) = take_till(is_header)(rest)?;
 
-    res
+        if !content.is_empty() {
+            chunks.push((header[0], content));
+        }
+
+        remaining = rest;
+    }
+
+    Ok((
+        remaining,
+        GhostFrameSayText {
+            text: chunks
+                .into_iter()
+                .map(|(header, text)| {
+                    let mut text =
+                        String::from_utf8_lossy(text).replace(std::char::REPLACEMENT_CHARACTER, "");
+
+                    const ALL_CHAT_PTRN: &str = "#Cstrike_Chat_All";
+                    const SPEC_CHAT_PTRN: &str = "#Cstrike_Chat_AllSpec";
+                    const SPEC_TEAM_CHAT_PTRN: &str = "#Cstrike_Chat_Spec";
+
+                    let is_all_chat = text.contains(ALL_CHAT_PTRN);
+                    let is_spec_chat = text.contains(SPEC_CHAT_PTRN);
+                    let is_spec_team_chat = text.contains(SPEC_TEAM_CHAT_PTRN);
+
+                    if is_spec_chat {
+                        text = text.replace(SPEC_CHAT_PTRN, "");
+
+                        text = format!("*SPEC* {player_name}: {text}");
+                    } else if is_all_chat {
+                        text = text.replace(ALL_CHAT_PTRN, "");
+
+                        text = format!("{player_name}: {text}");
+                    } else if is_spec_team_chat {
+                        text = text.replace(SPEC_TEAM_CHAT_PTRN, "");
+
+                        text = format!("(Spectator) {player_name}: {text}");
+                    }
+
+                    (header, text)
+                })
+                .collect(),
+        },
+    ))
 }
