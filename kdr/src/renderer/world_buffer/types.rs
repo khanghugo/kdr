@@ -1,13 +1,5 @@
 use bitflags::bitflags;
-use loader::bsp_resource::CustomRender;
-use std::collections::HashMap;
-
 use bytemuck::{Pod, Zeroable};
-
-use crate::renderer::{
-    bsp_lightmap::LightMapAtlasBuffer, mvp_buffer::MvpBuffer,
-    texture_buffer::texture_array::TextureArrayBuffer,
-};
 
 #[derive(Pod, Zeroable, Clone, Copy)]
 #[repr(C)]
@@ -26,16 +18,6 @@ bitflags! {
 pub struct WorldPushConstants {
     pub render_flags: PushConstantRenderFlags,
 }
-
-/// Key: (World Entity Index, Texture Index)
-///
-/// Value: (Texture Array Index, Texture Index)
-pub(super) type WorldTextureLookupTable = HashMap<(usize, usize), (usize, usize)>;
-
-/// Key: Batch Index aka Texture Array Index
-///
-/// Value: (World Vertex Array, Index Array)
-pub(super) type BatchLookup = HashMap<usize, (Vec<WorldVertex>, Vec<u32>)>;
 
 #[repr(C)]
 #[derive(Pod, Zeroable, Clone, Copy)]
@@ -59,35 +41,6 @@ pub struct WorldVertex {
     // for p mdl: [textureflag, bone index]
     //      This bone index will index from the player mvp ubo instead of the typical mvp ubo
     pub data_b: [u32; 2],
-}
-
-pub(super) struct ProcessBspFaceData<'a> {
-    pub bsp_face_index: usize,
-    pub world_entity_index: usize,
-    pub texture_layer_index: usize,
-    pub face: &'a bsp::Face,
-    pub custom_render: Option<&'a CustomRender>,
-    /// 0: Normal bsp face such as opaque and transparent face
-    ///
-    /// 1: Sky
-    ///
-    /// 2: No draw brushes
-    pub type_: u32,
-}
-
-pub struct WorldBuffer {
-    pub opaque: Vec<WorldVertexBuffer>,
-    // only 1 buffer because OIT
-    pub transparent: Vec<WorldVertexBuffer>,
-    pub textures: Vec<TextureArrayBuffer>,
-    pub bsp_lightmap: LightMapAtlasBuffer,
-    pub mvp_buffer: MvpBuffer,
-    // seems dumb, but it works. The only downside is that it feeds in a maybe big vertex buffer containing a lot of other vertices
-    // but the fact that we can filter it inside the shader is nice enough
-    // it works and it looks dumb so that is why i have to write a lot here
-    // a map might not have sky texture so this is optional
-    // the index is for opaque buffer vector
-    pub skybrush_batch_index: Option<usize>,
 }
 
 impl WorldVertex {

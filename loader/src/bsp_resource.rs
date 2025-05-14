@@ -50,18 +50,6 @@ pub enum EntityModel {
     },
     // TODO: implement sprite loading, sprite will likely be inside transparent buffer
     Sprite,
-    /// View model
-    ViewModel {
-        model_name: String,
-        active: bool,
-        submodel: usize,
-    },
-    /// Player model
-    PlayerModel {
-        model_name: String,
-        submodel: usize,
-        player_index: Option<usize>,
-    },
 }
 
 pub struct CustomRender {
@@ -501,149 +489,149 @@ fn load_world_entities(
         });
 }
 
-fn load_viewmodels(
-    resource: &Resource,
-    entity_dictionary: &mut EntityDictionary,
-    model_lookup: &mut HashMap<String, mdl::Mdl>,
-) {
-    let available_world_index = entity_dictionary
-        .values()
-        .fold(0, |acc, e| e.world_index.max(acc))
-        + 1;
+// fn load_viewmodels(
+//     resource: &Resource,
+//     entity_dictionary: &mut EntityDictionary,
+//     model_lookup: &mut HashMap<String, mdl::Mdl>,
+// ) {
+//     let available_world_index = entity_dictionary
+//         .values()
+//         .fold(0, |acc, e| e.world_index.max(acc))
+//         + 1;
 
-    resource
-        .resources
-        .iter()
-        // only concerned about view models
-        .filter(|(k, _)| {
-            let file_path = Path::new(k);
-            let file_name = file_path.file_name().unwrap().to_str().unwrap();
+//     resource
+//         .resources
+//         .iter()
+//         // only concerned about view models
+//         .filter(|(k, _)| {
+//             let file_path = Path::new(k);
+//             let file_name = file_path.file_name().unwrap().to_str().unwrap();
 
-            if file_name.starts_with("v_") && file_name.ends_with(".mdl") {
-                true
-            } else {
-                false
-            }
-        })
-        .enumerate()
-        .for_each(|(viewmodel_index, (model_path, model_bytes))| {
-            // check that model is not loaded
-            let mdl = model_lookup
-                .entry(model_path.to_string())
-                .or_insert_with(|| {
-                    // insert model
-                    match Mdl::open_from_bytes(&model_bytes) {
-                        Ok(x) => x,
-                        Err(err) => {
-                            panic!("cannot parse model {}: {}", model_path, err);
-                        }
-                    }
-                });
+//             if file_name.starts_with("v_") && file_name.ends_with(".mdl") {
+//                 true
+//             } else {
+//                 false
+//             }
+//         })
+//         .enumerate()
+//         .for_each(|(viewmodel_index, (model_path, model_bytes))| {
+//             // check that model is not loaded
+//             let mdl = model_lookup
+//                 .entry(model_path.to_string())
+//                 .or_insert_with(|| {
+//                     // insert model
+//                     match Mdl::open_from_bytes(&model_bytes) {
+//                         Ok(x) => x,
+//                         Err(err) => {
+//                             panic!("cannot parse model {}: {}", model_path, err);
+//                         }
+//                     }
+//                 });
 
-            let model_transformations = setup_studio_model_transformations(&mdl);
-            let model_transformation_infos: Vec<ModelTransformationInfo> = mdl
-                .sequences
-                .iter()
-                .map(|sequence| ModelTransformationInfo {
-                    frame_per_second: sequence.header.fps,
-                    // explicit no loop for all view models
-                    looping: false,
-                })
-                .collect();
+//             let model_transformations = setup_studio_model_transformations(&mdl);
+//             let model_transformation_infos: Vec<ModelTransformationInfo> = mdl
+//                 .sequences
+//                 .iter()
+//                 .map(|sequence| ModelTransformationInfo {
+//                     frame_per_second: sequence.header.fps,
+//                     // explicit no loop for all view models
+//                     looping: false,
+//                 })
+//                 .collect();
 
-            entity_dictionary.insert(
-                // this doesn't do anything
-                3000 + viewmodel_index,
-                WorldEntity {
-                    world_index: available_world_index + viewmodel_index,
-                    model: EntityModel::ViewModel {
-                        model_name: model_path.to_string(),
-                        submodel: 0,
-                        active: false,
-                    },
-                    transformation: WorldTransformation::Skeletal(WorldTransformationSkeletal {
-                        current_sequence_index: 0,
-                        world_transformation: origin_posrot(),
-                        model_transformations,
-                        model_transformation_infos,
-                    }),
-                },
-            );
-        });
-}
+//             entity_dictionary.insert(
+//                 // this doesn't do anything
+//                 3000 + viewmodel_index,
+//                 WorldEntity {
+//                     world_index: available_world_index + viewmodel_index,
+//                     model: EntityModel::ViewModel {
+//                         model_name: model_path.to_string(),
+//                         submodel: 0,
+//                         active: false,
+//                     },
+//                     transformation: WorldTransformation::Skeletal(WorldTransformationSkeletal {
+//                         current_sequence_index: 0,
+//                         world_transformation: origin_posrot(),
+//                         model_transformations,
+//                         model_transformation_infos,
+//                     }),
+//                 },
+//             );
+//         });
+// }
 
 // similar code to `load_viewmodels` with some slight differences
 // at the moment, there is only one instance of each model
 // the reason is that the player model is included in the world buffer, very sad time
-fn load_player_models(
-    resource: &Resource,
-    entity_dictionary: &mut EntityDictionary,
-    model_lookup: &mut HashMap<String, mdl::Mdl>,
-) {
-    let available_world_index = entity_dictionary
-        .values()
-        .fold(0, |acc, e| e.world_index.max(acc))
-        + 1;
+// fn load_player_models(
+//     resource: &Resource,
+//     entity_dictionary: &mut EntityDictionary,
+//     model_lookup: &mut HashMap<String, mdl::Mdl>,
+// ) {
+//     let available_world_index = entity_dictionary
+//         .values()
+//         .fold(0, |acc, e| e.world_index.max(acc))
+//         + 1;
 
-    resource
-        .resources
-        .iter()
-        .filter(|(file_name, _)| {
-            if file_name.ends_with(".mdl") && file_name.starts_with("models/player") {
-                true
-            } else {
-                false
-            }
-        })
-        // loop over the models endlessly
-        .cycle()
-        .take(32)
-        .enumerate()
-        .for_each(|(model_index, (model_path, model_bytes))| {
-            // check that model is not loaded
-            let mdl = model_lookup
-                .entry(model_path.to_string())
-                .or_insert_with(|| {
-                    // insert model
-                    match Mdl::open_from_bytes(&model_bytes) {
-                        Ok(x) => x,
-                        Err(err) => {
-                            panic!("cannot parse model {}: {}", model_path, err);
-                        }
-                    }
-                });
+//     resource
+//         .resources
+//         .iter()
+//         .filter(|(file_name, _)| {
+//             if file_name.ends_with(".mdl") && file_name.starts_with("models/player") {
+//                 true
+//             } else {
+//                 false
+//             }
+//         })
+//         // loop over the models endlessly
+//         .cycle()
+//         .take(32)
+//         .enumerate()
+//         .for_each(|(model_index, (model_path, model_bytes))| {
+//             // check that model is not loaded
+//             let mdl = model_lookup
+//                 .entry(model_path.to_string())
+//                 .or_insert_with(|| {
+//                     // insert model
+//                     match Mdl::open_from_bytes(&model_bytes) {
+//                         Ok(x) => x,
+//                         Err(err) => {
+//                             panic!("cannot parse model {}: {}", model_path, err);
+//                         }
+//                     }
+//                 });
 
-            let model_transformations = setup_studio_model_transformations(&mdl);
-            let model_transformation_infos: Vec<ModelTransformationInfo> = mdl
-                .sequences
-                .iter()
-                .map(|sequence| ModelTransformationInfo {
-                    frame_per_second: sequence.header.fps,
-                    looping: sequence.header.flags.contains(SequenceFlag::LOOPING),
-                })
-                .collect();
+//             let model_transformations = setup_studio_model_transformations(&mdl);
+//             let model_transformation_infos: Vec<ModelTransformationInfo> = mdl
+//                 .sequences
+//                 .iter()
+//                 .map(|sequence| ModelTransformationInfo {
+//                     frame_per_second: sequence.header.fps,
+//                     looping: sequence.header.flags.contains(SequenceFlag::LOOPING),
+//                 })
+//                 .collect();
 
-            entity_dictionary.insert(
-                // this doesn't do anything
-                5000 + model_index,
-                WorldEntity {
-                    world_index: available_world_index + model_index,
-                    model: EntityModel::PlayerModel {
-                        model_name: model_path.to_string(),
-                        submodel: 0,
-                        // no player to start with
-                        player_index: None,
-                    },
-                    transformation: WorldTransformation::Skeletal(WorldTransformationSkeletal {
-                        current_sequence_index: 0,
-                        world_transformation: origin_posrot(),
-                        model_transformations,
-                        model_transformation_infos,
-                    }),
-                },
-            );
-        });
-}
+//             entity_dictionary.insert(
+//                 // this doesn't do anything
+//                 5000 + model_index,
+//                 WorldEntity {
+//                     world_index: available_world_index + model_index,
+//                     model: EntityModel::PlayerModel {
+//                         model_name: model_path.to_string(),
+//                         submodel: 0,
+//                         // no player to start with
+//                         player_index: None,
+//                     },
+//                     transformation: WorldTransformation::Skeletal(WorldTransformationSkeletal {
+//                         current_sequence_index: 0,
+//                         world_transformation: origin_posrot(),
+//                         model_transformations,
+//                         model_transformation_infos,
+//                     }),
+//                 },
+//             );
+//         });
+// }
 
 fn load_skybox(resource: &Resource, skybox: &mut Vec<RgbaImage>) {
     // TODO find the skybox from the resources instead of deducing stuffs here

@@ -6,9 +6,10 @@ use wgpu::util::DeviceExt;
 use crate::renderer::{
     bsp_lightmap::LightMapAtlasBuffer,
     utils::{create_missing_texture_placeholder, eightbpp_to_rgba8, face_vertices, vertex_uv},
+    world_buffer::{WorldVertex, WorldVertexBuffer},
 };
 
-use super::{BatchLookup, ProcessBspFaceData, WorldVertex, WorldVertexBuffer};
+use super::{BatchLookup, ProcessBspFaceData};
 
 pub(super) fn process_bsp_face(
     face_data: ProcessBspFaceData,

@@ -2,11 +2,11 @@ use crate::renderer::{
     RenderContext,
     camera::Camera,
     skybox::SkyboxBuffer,
-    world_buffer::{PushConstantRenderFlags, WorldBuffer, WorldPushConstants},
+    world_buffer::{PushConstantRenderFlags, WorldPushConstants, WorldStaticBuffer},
 };
 
 pub struct RenderState {
-    pub world_buffer: Vec<WorldBuffer>,
+    pub world_buffer: Vec<WorldStaticBuffer>,
     pub skybox: Option<SkyboxBuffer>,
 
     pub camera: Camera,

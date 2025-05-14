@@ -55,7 +55,7 @@ use crate::{
         camera::Camera,
         egui_renderer::EguiRenderer,
         skybox::{SkyboxBuffer, SkyboxLoader},
-        world_buffer::{WorldBuffer, WorldLoader},
+        world_buffer::{WorldLoader, WorldStaticBuffer},
     },
     utils::spawn_async,
 };
@@ -113,7 +113,7 @@ pub enum AppEvent {
     ReceivedMapList(MapList),
     RequestReplayList,
     ReceiveReplayList(ReplayList),
-    FinishCreateWorld(BspResource, WorldBuffer, Option<SkyboxBuffer>),
+    FinishCreateWorld(BspResource, WorldStaticBuffer, Option<SkyboxBuffer>),
     UpdateFetchProgress(f32),
     #[cfg(target_arch = "wasm32")]
     ParseLocationSearch,
@@ -710,7 +710,7 @@ impl ApplicationHandler<AppEvent> for App {
                 // spawn_async(async move {
                 let bsp_resource = resource.to_bsp_resource();
 
-                let world_buffer = WorldLoader::load_world(&device, &queue, &bsp_resource);
+                let world_buffer = WorldLoader::load_static_world(&device, &queue, &bsp_resource);
 
                 let skybox_buffer =
                     SkyboxLoader::load_skybox(&device, &queue, &bsp_resource.skybox);

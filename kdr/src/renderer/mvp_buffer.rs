@@ -106,19 +106,6 @@ impl MvpBuffer {
         // make sure that the order of world buffer to match this order as well
         entity_infos
             .iter()
-            .filter(|entity| match &entity.model {
-                // only write into skeletal and entity mvp buffers to all entities
-                // except for plaer modeel
-                // it will be written later on
-                EntityModel::Bsp
-                | EntityModel::OpaqueEntityBrush(_)
-                | EntityModel::TransparentEntityBrush(_)
-                | EntityModel::NoDrawBrush(_)
-                | EntityModel::BspMdlEntity { .. }
-                | EntityModel::Sprite
-                | EntityModel::ViewModel { .. } => true,
-                EntityModel::PlayerModel { .. } => false,
-            })
             .for_each(|entity| match entity.build_mvp(0.) {
                 BuildMvpResult::Entity(matrix4) => {
                     entity_mvps.push(matrix4.into());

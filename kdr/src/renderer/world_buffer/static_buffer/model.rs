@@ -5,7 +5,7 @@ use crate::renderer::utils::eightbpp_to_rgba8;
 
 use super::{BatchLookup, WorldTextureLookupTable, WorldVertex};
 
-pub(super) fn create_world_vertices(
+pub(super) fn create_world_model_vertices(
     mdl: &Mdl,
     submodel: usize,
     world_entity_index: usize,

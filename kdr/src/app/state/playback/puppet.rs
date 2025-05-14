@@ -242,57 +242,57 @@ impl AppState {
             // ehhhh
             .unwrap_or(9999);
 
-        // reset all viewmodel entites
-        let player_model_entities: Vec<_> = entity_state
-            .entity_dictionary
-            .iter_mut()
-            // need to do filter map and things like this so mutability works
-            .filter_map(|(x, entity)| {
-                if let EntityModel::PlayerModel { player_index, .. } = &mut entity.model {
-                    *player_index = None;
-                    Some((x, entity))
-                } else {
-                    None
-                }
-            })
-            .collect();
+        // // reset all viewmodel entites
+        // let player_model_entities: Vec<_> = entity_state
+        //     .entity_dictionary
+        //     .iter_mut()
+        //     // need to do filter map and things like this so mutability works
+        //     .filter_map(|(x, entity)| {
+        //         if let EntityModel::PlayerModel { player_index, .. } = &mut entity.model {
+        //             *player_index = None;
+        //             Some((x, entity))
+        //         } else {
+        //             None
+        //         }
+        //     })
+        //     .collect();
 
-        // update player third person entities
-        // TODO: a slight issue, if there is no player model entities, camera won't update
-        viewinfos
-            .into_iter()
-            .zip(player_model_entities.into_iter())
-            .enumerate()
-            .for_each(|(viewinfo_idx, (viewinfo, (_, player_model_entity)))| {
-                // if it current player and is not free cam, don't update this entity
-                if viewinfo_idx == current_player_viewinfo_idx && !self.input_state.free_cam {
-                    self.render_state.camera.set_position(viewinfo.vieworg);
+        // // update player third person entities
+        // // TODO: a slight issue, if there is no player model entities, camera won't update
+        // viewinfos
+        //     .into_iter()
+        //     .zip(player_model_entities.into_iter())
+        //     .enumerate()
+        //     .for_each(|(viewinfo_idx, (viewinfo, (_, player_model_entity)))| {
+        //         // if it current player and is not free cam, don't update this entity
+        //         if viewinfo_idx == current_player_viewinfo_idx && !self.input_state.free_cam {
+        //             self.render_state.camera.set_position(viewinfo.vieworg);
 
-                    // our world has correct pitch, the game doesnt
-                    self.render_state
-                        .camera
-                        .set_pitch(Deg(-viewinfo.viewangles[0]));
+        //             // our world has correct pitch, the game doesnt
+        //             self.render_state
+        //                 .camera
+        //                 .set_pitch(Deg(-viewinfo.viewangles[0]));
 
-                    self.render_state
-                        .camera
-                        .set_yaw(Deg(viewinfo.viewangles[1]));
+        //             self.render_state
+        //                 .camera
+        //                 .set_yaw(Deg(viewinfo.viewangles[1]));
 
-                    // need this to update view
-                    self.render_state.camera.rebuild_orientation();
+        //             // need this to update view
+        //             self.render_state.camera.rebuild_orientation();
 
-                    return;
-                }
+        //             return;
+        //         }
 
-                let skeletal = player_model_entity.transformation.get_skeletal_mut();
+        //         let skeletal = player_model_entity.transformation.get_skeletal_mut();
 
-                skeletal.world_transformation.0 = viewinfo.vieworg.into();
-                skeletal.world_transformation.1 = cgmath::Quaternion::one();
+        //         skeletal.world_transformation.0 = viewinfo.vieworg.into();
+        //         skeletal.world_transformation.1 = cgmath::Quaternion::one();
 
-                if let EntityModel::PlayerModel { player_index, .. } =
-                    &mut player_model_entity.model
-                {
-                    *player_index = Some(viewinfo_idx);
-                }
-            });
+        //         if let EntityModel::PlayerModel { player_index, .. } =
+        //             &mut player_model_entity.model
+        //         {
+        //             *player_index = Some(viewinfo_idx);
+        //         }
+        //     });
     }
 }
