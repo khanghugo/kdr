@@ -6,7 +6,7 @@ use crate::renderer::{
 };
 
 pub struct RenderState {
-    pub world_buffer: Vec<WorldStaticBuffer>,
+    pub world_buffer: Option<WorldStaticBuffer>,
     pub skybox: Option<SkyboxBuffer>,
 
     pub camera: Camera,
@@ -22,7 +22,7 @@ impl Default for RenderState {
             camera: Default::default(),
             skybox: None,
             draw_call: 0,
-            world_buffer: vec![],
+            world_buffer: None,
             render_options: RenderOptions::default(),
         }
     }

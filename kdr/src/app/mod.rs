@@ -719,7 +719,7 @@ impl ApplicationHandler<AppEvent> for App {
                 // });
             }
             AppEvent::FinishCreateWorld(bsp_resource, world_buffer, skybox_buffer) => {
-                self.state.render_state.world_buffer = vec![world_buffer];
+                self.state.render_state.world_buffer = world_buffer.into();
 
                 self.state.render_state.skybox = skybox_buffer;
 
