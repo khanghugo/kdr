@@ -1,6 +1,4 @@
-use cgmath::{EuclideanSpace, One, Zero};
 use loader::bsp_resource::{EntityDictionary, EntityModel};
-use tracing::info;
 use viewmodel::ViewModelState;
 
 use super::AppState;
@@ -31,10 +29,33 @@ impl AppState {
                     EntityModel::Sprite => todo!(),
                     // studio model entites
                     EntityModel::BspMdlEntity { .. } => {
-                        // just update like normal
-                        // self.render_state.world_buffer[0]
-                        //     .mvp_buffer
-                        //     .update_entity_mvp_buffer(&entity, self.time);
+                        let skeletal_transformation = entity.transformation.get_skeletal_mut();
+
+                        // only update when we have more than 1 frames
+                        if skeletal_transformation.model_transformations
+                            [skeletal_transformation.current_sequence_index] // sequence
+                            [0] // blend 1
+                        // now we have all frames
+                        .len()
+                            > 1
+                        {
+                            let mvps = skeletal_transformation.build_mvp(self.time);
+
+                            // bone 0
+                            self.render_state.world_buffer[0]
+                                .mvp_buffer
+                                .update_mvp_buffer(mvps[0], entity.world_index);
+
+                            // bone rest
+                            if let Some(mvp_index_start) = self.render_state.world_buffer[0]
+                                .mvp_lookup
+                                .get(&entity.world_index)
+                            {
+                                self.render_state.world_buffer[0]
+                                    .mvp_buffer
+                                    .update_mvp_buffer_many(mvps[1..].to_vec(), *mvp_index_start);
+                            }
+                        }
                     } // EntityModel::ViewModel {
                       //     model_name, active, ..
                       // } => {

@@ -32,6 +32,8 @@ use super::{
 /// Value: (Texture Array Index, Texture Index)
 pub(super) type WorldTextureLookupTable = HashMap<(usize, usize), (usize, usize)>;
 
+pub(super) type MvpLookup = HashMap<usize, usize>;
+
 pub(super) struct ProcessBspFaceData<'a> {
     pub bsp_face_index: usize,
     pub world_entity_index: usize,
@@ -53,6 +55,8 @@ pub struct WorldStaticBuffer {
     pub textures: Vec<TextureArrayBuffer>,
     pub bsp_lightmap: LightMapAtlasBuffer,
     pub mvp_buffer: MvpBuffer,
+    /// Returns the start MVP buffer index offset of bones #1+ of skeletal models
+    pub mvp_lookup: MvpLookup,
     // seems dumb, but it works. The only downside is that it feeds in a maybe big vertex buffer containing a lot of other vertices
     // but the fact that we can filter it inside the shader is nice enough
     // it works and it looks dumb so that is why i have to write a lot here
@@ -79,7 +83,7 @@ impl WorldLoader {
 
         let (lookup_table, texture_arrays) =
             Self::load_static_world_textures(device, queue, resource);
-        let (opaque_batch, transparent_batch) =
+        let (opaque_batch, transparent_batch, mvp_lookup) =
             create_batch_lookups(resource, &entity_infos, &lookup_table, &lightmap);
 
         let opaque_vertex_buffer = create_world_vertex_buffer(device, opaque_batch);
@@ -131,6 +135,7 @@ impl WorldLoader {
             bsp_lightmap: lightmap,
             mvp_buffer,
             skybrush_batch_index,
+            mvp_lookup,
         }
     }
 
@@ -284,9 +289,11 @@ fn create_batch_lookups(
     sorted_entity_infos: &[&WorldEntity],
     world_texture_lookup: &WorldTextureLookupTable,
     lightmap: &LightMapAtlasBuffer,
-) -> (BatchLookup, BatchLookup) {
+) -> (BatchLookup, BatchLookup, MvpLookup) {
     let mut opaque_lookup = BatchLookup::new();
     let mut transparent_lookup = BatchLookup::new();
+    let mut mvp_lookup: HashMap<usize, usize> = HashMap::new();
+
     let bsp = &resource.bsp;
 
     // the indices for the skeletal bones start right after all entities
@@ -419,6 +426,13 @@ fn create_batch_lookups(
                     },
                 );
 
+                // only add if bone length is greater than 1
+                // otherwise it is jsut a single bone
+                // this make the data cleaner
+                if mdl.bones.len() > 1 {
+                    mvp_lookup.insert(world_entity_index, current_bsp_model_skeletal_bone_mvp_idx);
+                }
+
                 // REMINDER: add the bone idx for the current model
                 // need to sub 1 because one bone is in another buffer
                 // make sure it is saturating sub just in case someone made a model with 0 bone
@@ -428,5 +442,5 @@ fn create_batch_lookups(
         };
     });
 
-    (opaque_lookup, transparent_lookup)
+    (opaque_lookup, transparent_lookup, mvp_lookup)
 }

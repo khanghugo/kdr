@@ -81,6 +81,23 @@ impl MvpBuffer {
         }
     }
 
+    /// mvp_index is the index of the mvp, no need to calculate offset from the caller
+    pub fn update_mvp_buffer(&self, mvp: cgmath::Matrix4<f32>, mvp_index: usize) {
+        let mvp_cast: [[f32; 4]; 4] = mvp.into();
+        let offset = mvp_index as u64 * 64;
+
+        self.queue
+            .write_buffer(&self.buffer, offset, bytemuck::cast_slice(&mvp_cast));
+    }
+
+    pub fn update_mvp_buffer_many(&self, mvps: Vec<cgmath::Matrix4<f32>>, mvp_index_start: usize) {
+        let mvps_cast: Vec<[[f32; 4]; 4]> = mvps.into_iter().map(|x| x.into()).collect();
+        let offset = mvp_index_start as u64 * 64;
+
+        self.queue
+            .write_buffer(&self.buffer, offset, bytemuck::cast_slice(&mvps_cast));
+    }
+
     // pub fn update_entity_mvp_buffer(&self, entity_info: &WorldEntity, time: f32) {
     //     match entity_info.build_mvp(time) {
     //         BuildMvpResult::Entity(matrix4) => {
