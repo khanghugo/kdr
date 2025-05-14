@@ -2,20 +2,16 @@
 //!
 //! Now, they process all of them and feed that into the renderer context.
 
-use std::{
-    collections::HashMap,
-    io::Cursor,
-    path::{Path, PathBuf},
-};
+use std::{collections::HashMap, io::Cursor, path::PathBuf};
 
-use cgmath::{Rad, Rotation3, VectorSpace};
+use cgmath::{Rad, Rotation3};
 use common::{
-    BspAngles, MdlPosRot, NO_DRAW_FUNC_BRUSHES, PosRot, build_mvp_from_pos_and_rot,
-    model_to_world_transformation, origin_posrot, setup_studio_model_transformations, vec3,
+    BspAngles, ModelTransformationInfo, NO_DRAW_FUNC_BRUSHES, WorldTransformation,
+    WorldTransformationSkeletal, origin_posrot, setup_studio_model_transformations, vec3,
 };
 use image::RgbaImage;
 use kira::sound::static_sound::StaticSoundData;
-use mdl::{Mdl, SequenceFlag};
+use mdl::SequenceFlag;
 use tracing::warn;
 use wad::types::Wad;
 
@@ -58,54 +54,6 @@ pub struct CustomRender {
     pub renderfx: i32,
 }
 
-pub struct WorldTransformationSkeletal {
-    pub current_sequence_index: usize,
-    // storing base world transformation
-    pub world_transformation: PosRot,
-    // storing model transformation on top of that
-    pub model_transformations: MdlPosRot,
-    // data related to each model transformation
-    pub model_transformation_infos: Vec<ModelTransformationInfo>,
-}
-
-pub type WorldTransformationEntity = PosRot;
-
-pub enum WorldTransformation {
-    /// For entity brushes, they only have one transformation, so that is good.
-    Entity(PosRot),
-    /// For skeletal system, multiple transformations means there are multiple bones.
-    ///
-    /// So, we store all bones transformation and then put it back in shader when possible.
-    ///
-    /// And we also store all information related to the model. Basically a lite mdl format
-    Skeletal(WorldTransformationSkeletal),
-}
-
-impl WorldTransformation {
-    fn worldspawn() -> Self {
-        Self::Entity(origin_posrot())
-    }
-
-    pub fn get_entity(&self) -> &WorldTransformationEntity {
-        match self {
-            WorldTransformation::Entity(x) => x,
-            WorldTransformation::Skeletal(_) => unreachable!(),
-        }
-    }
-
-    pub fn get_skeletal_mut(&mut self) -> &mut WorldTransformationSkeletal {
-        match self {
-            WorldTransformation::Entity(_) => unreachable!(),
-            WorldTransformation::Skeletal(x) => x,
-        }
-    }
-}
-
-pub struct ModelTransformationInfo {
-    pub frame_per_second: f32,
-    pub looping: bool,
-}
-
 pub struct WorldEntity {
     /// World index based on the world aka current render context, not BSP.
     ///
@@ -118,99 +66,12 @@ pub struct WorldEntity {
     pub transformation: WorldTransformation,
 }
 
-pub enum BuildMvpResult {
-    Entity(cgmath::Matrix4<f32>),
-    Skeletal(Vec<cgmath::Matrix4<f32>>),
-}
-
 impl WorldEntity {
     fn worldspawn() -> Self {
         Self {
             world_index: 0,
             model: EntityModel::Bsp,
             transformation: WorldTransformation::worldspawn(),
-        }
-    }
-
-    pub fn build_mvp(&self, time: f32) -> BuildMvpResult {
-        match &self.transformation {
-            WorldTransformation::Entity((position, rotation)) => {
-                BuildMvpResult::Entity(build_mvp_from_pos_and_rot(*position, *rotation))
-            }
-            WorldTransformation::Skeletal(WorldTransformationSkeletal {
-                current_sequence_index,
-                world_transformation: (world_pos, world_rot),
-                model_transformations,
-                model_transformation_infos,
-            }) => {
-                // quick hack to avoid some weird timing issue,
-                // TODO: reset the sequence on timeline scrub
-                let current_sequence_index =
-                    (*current_sequence_index).min(model_transformations.len() - 1);
-
-                let current_sequence = &model_transformations[current_sequence_index];
-                let current_sequence_info = &model_transformation_infos[current_sequence_index];
-
-                // TODO blending
-                let current_blend = &current_sequence[0];
-                let frame_count = current_blend.len();
-
-                // TODO start time
-                let anim_total_time = frame_count as f32 / current_sequence_info.frame_per_second;
-                let anim_time = if current_sequence_info.looping {
-                    time % anim_total_time
-                } else {
-                    time
-                };
-                let anim_frame_from_idx =
-                    ((anim_time * current_sequence_info.frame_per_second as f32).floor() as usize)
-                        .min(frame_count - 1);
-
-                // usually, the first condition will never hit, but whatever
-                if anim_frame_from_idx == frame_count - 1 {
-                    let anim_frame = &current_blend[anim_frame_from_idx];
-
-                    let transformations = anim_frame
-                        .iter()
-                        .map(|&posrot| {
-                            let (pos, rot) =
-                                model_to_world_transformation(posrot, *world_pos, *world_rot);
-
-                            build_mvp_from_pos_and_rot(pos, rot)
-                        })
-                        .collect();
-
-                    BuildMvpResult::Skeletal(transformations)
-                } else {
-                    let anim_frame_to_idx = anim_frame_from_idx + 1;
-
-                    let from_frame = &current_blend[anim_frame_from_idx];
-                    let to_frame = &current_blend[anim_frame_to_idx];
-
-                    let target = (anim_time * current_sequence_info.frame_per_second).fract();
-
-                    let transformations = from_frame
-                        .iter()
-                        .zip(to_frame.iter())
-                        .map(|((from_pos, from_rot), (to_pos, to_rot))| {
-                            let lerped_posrot = (
-                                from_pos.lerp(*to_pos, target),
-                                from_rot.nlerp(*to_rot, target),
-                            );
-
-                            let (pos, rot) = model_to_world_transformation(
-                                lerped_posrot,
-                                *world_pos,
-                                *world_rot,
-                            );
-
-                            build_mvp_from_pos_and_rot(pos, rot)
-                        })
-                        .collect();
-
-                    BuildMvpResult::Skeletal(transformations)
-                }
-            }
         }
     }
 }

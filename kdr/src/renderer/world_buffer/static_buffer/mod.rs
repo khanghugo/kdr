@@ -5,32 +5,32 @@
 
 use std::collections::HashMap;
 
+use common::BuildMvpResult;
 use image::RgbaImage;
 use loader::bsp_resource::{BspResource, CustomRender, EntityModel, WorldEntity};
-use model::{create_world_model_vertices, get_mdl_textures};
+use model::create_world_model_vertices;
 use tracing::{info, warn};
-use world::{create_world_vertex_buffer, get_bsp_textures, process_bsp_face};
+use world::{get_bsp_textures, process_bsp_face};
 
 use crate::renderer::{
     bsp_lightmap::LightMapAtlasBuffer,
     mvp_buffer::MvpBuffer,
     texture_buffer::texture_array::{TextureArrayBuffer, create_texture_array},
+    world_buffer::utils::get_mdl_textures,
 };
 
 mod model;
 mod world;
 
-use super::{WorldLoader, WorldVertex, WorldVertexBuffer};
+use super::{
+    WorldLoader, WorldVertex, WorldVertexBuffer,
+    utils::{BatchLookup, create_world_vertex_buffer},
+};
 
 /// Key: (World Entity Index, Texture Index)
 ///
 /// Value: (Texture Array Index, Texture Index)
 pub(super) type WorldTextureLookupTable = HashMap<(usize, usize), (usize, usize)>;
-
-/// Key: Batch Index aka Texture Array Index
-///
-/// Value: (World Vertex Array, Index Array)
-pub(super) type BatchLookup = HashMap<usize, (Vec<WorldVertex>, Vec<u32>)>;
 
 pub(super) struct ProcessBspFaceData<'a> {
     pub bsp_face_index: usize,
@@ -85,7 +85,27 @@ impl WorldLoader {
         let opaque_vertex_buffer = create_world_vertex_buffer(device, opaque_batch);
         let transparent_vertex_buffer = create_world_vertex_buffer(device, transparent_batch);
 
-        let mvp_buffer = MvpBuffer::create_mvp(device, queue, &entity_infos);
+        // creating transformations
+        // we have an array of 1024 mat4s
+        // the index i is the transformation of entity index i
+        // however, for skeletal models, the indices are appended later and they won't take the indices of actual world entities
+        let mut entity_transformations = vec![];
+        let mut skeletal_transformations = vec![];
+
+        entity_infos
+            .iter()
+            .for_each(|entity| match entity.transformation.build_mvp(0.) {
+                BuildMvpResult::Entity(matrix4) => {
+                    entity_transformations.push(matrix4);
+                }
+                BuildMvpResult::Skeletal(matrix4s) => {
+                    entity_transformations.push(matrix4s[0]);
+                    skeletal_transformations.extend(&matrix4s[1..]);
+                }
+            });
+
+        let transformations = [entity_transformations, skeletal_transformations].concat();
+        let mvp_buffer = MvpBuffer::create_mvp(device, queue, transformations);
 
         // need to find which buffer sky brushes are in
         let skybrush_batch_index = resource
@@ -269,11 +289,11 @@ fn create_batch_lookups(
     let mut transparent_lookup = BatchLookup::new();
     let bsp = &resource.bsp;
 
-    // we don't use index 0 because index 0 in skeletal bone mvp is unambiguous
-    // imagine we calculate to get index 0, is that for skeletal or mvp?
-    // so, we start from index 1
-    let mut current_bsp_model_skeletal_bone_mvp_idx = 1;
-    let mut current_player_model_skeletal_bone_mvp_idx = 0;
+    // the indices for the skeletal bones start right after all entities
+    // for bone index 0, it uses the entity index
+    // for bone index 1 and so on, it uses `current_bsp_model_skeletal_bone_mvp_idx`
+    // this makes the shader less complicated
+    let mut current_bsp_model_skeletal_bone_mvp_idx = sorted_entity_infos.len();
 
     sorted_entity_infos.iter().for_each(|entity| {
         let world_entity_index = entity.world_index;
@@ -391,7 +411,11 @@ fn create_batch_lookups(
                     assigned_lookup,
                     1,
                     |bone_idx| {
-                        (current_bsp_model_skeletal_bone_mvp_idx + bone_idx as usize - 1) as u32
+                        if bone_idx == 0 {
+                            world_entity_index as u32
+                        } else {
+                            (current_bsp_model_skeletal_bone_mvp_idx + bone_idx as usize - 1) as u32
+                        }
                     },
                 );
 
@@ -399,7 +423,6 @@ fn create_batch_lookups(
                 // need to sub 1 because one bone is in another buffer
                 // make sure it is saturating sub just in case someone made a model with 0 bone
                 current_bsp_model_skeletal_bone_mvp_idx += mdl.bones.len().saturating_sub(1);
-                current_player_model_skeletal_bone_mvp_idx += mdl.bones.len().saturating_sub(1);
             }
             EntityModel::Sprite => todo!("sprite world vertex is not supported"),
         };

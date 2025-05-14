@@ -1,6 +1,6 @@
 use std::array::from_fn;
 
-use cgmath::{One, Rotation, Rotation3, Zero};
+use cgmath::{One, Rotation, Rotation3, VectorSpace, Zero};
 use mdl::{BlendBone, Bone, Mdl};
 
 /// `[[[[(position, rotation); bone count]; frame count]; blend count]; sequence count]`
@@ -25,6 +25,152 @@ pub type PosRot = (
     // rotation
     cgmath::Quaternion<f32>,
 );
+
+pub struct WorldTransformationSkeletal {
+    pub current_sequence_index: usize,
+    // storing base world transformation
+    pub world_transformation: PosRot,
+    // storing model transformation on top of that
+    pub model_transformations: MdlPosRot,
+    // data related to each model transformation
+    pub model_transformation_infos: Vec<ModelTransformationInfo>,
+}
+
+impl WorldTransformationSkeletal {
+    pub fn build_mvp(&self, time: f32) -> Vec<cgmath::Matrix4<f32>> {
+        // quick hack to avoid some weird timing issue,
+        // TODO: reset the sequence on timeline scrub
+        let current_sequence_index =
+            (self.current_sequence_index).min(self.model_transformations.len() - 1);
+
+        let current_sequence = &self.model_transformations[current_sequence_index];
+        let current_sequence_info = &self.model_transformation_infos[current_sequence_index];
+
+        // TODO blending
+        let current_blend = &current_sequence[0];
+        let frame_count = current_blend.len();
+
+        // TODO start time
+        let anim_total_time = frame_count as f32 / current_sequence_info.frame_per_second;
+        let anim_time = if current_sequence_info.looping {
+            time % anim_total_time
+        } else {
+            time
+        };
+        let anim_frame_from_idx = ((anim_time * current_sequence_info.frame_per_second as f32)
+            .floor() as usize)
+            .min(frame_count - 1);
+
+        // usually, the first condition will never hit, but whatever
+        if anim_frame_from_idx == frame_count - 1 {
+            let anim_frame = &current_blend[anim_frame_from_idx];
+
+            let transformations = anim_frame
+                .iter()
+                .map(|&posrot| {
+                    let (pos, rot) = model_to_world_transformation(
+                        posrot,
+                        self.world_transformation.0,
+                        self.world_transformation.1,
+                    );
+
+                    build_mvp_from_pos_and_rot(pos, rot)
+                })
+                .collect();
+
+            transformations
+        } else {
+            let anim_frame_to_idx = anim_frame_from_idx + 1;
+
+            let from_frame = &current_blend[anim_frame_from_idx];
+            let to_frame = &current_blend[anim_frame_to_idx];
+
+            let target = (anim_time * current_sequence_info.frame_per_second).fract();
+
+            let transformations = from_frame
+                .iter()
+                .zip(to_frame.iter())
+                .map(|((from_pos, from_rot), (to_pos, to_rot))| {
+                    let lerped_posrot = (
+                        from_pos.lerp(*to_pos, target),
+                        from_rot.nlerp(*to_rot, target),
+                    );
+
+                    let (pos, rot) = model_to_world_transformation(
+                        lerped_posrot,
+                        self.world_transformation.0,
+                        self.world_transformation.1,
+                    );
+
+                    build_mvp_from_pos_and_rot(pos, rot)
+                })
+                .collect();
+
+            transformations
+        }
+    }
+}
+
+pub type WorldTransformationEntity = PosRot;
+
+pub enum BuildMvpResult {
+    Entity(cgmath::Matrix4<f32>),
+    Skeletal(Vec<cgmath::Matrix4<f32>>),
+}
+
+pub fn build_mvp_from_pos_and_rot(
+    position: cgmath::Vector3<f32>,
+    rotation: cgmath::Quaternion<f32>,
+) -> cgmath::Matrix4<f32> {
+    let rotation: cgmath::Matrix4<f32> = rotation.into();
+
+    cgmath::Matrix4::from_translation(position.into()) * rotation
+}
+
+pub enum WorldTransformation {
+    /// For entity brushes, they only have one transformation, so that is good.
+    Entity(PosRot),
+    /// For skeletal system, multiple transformations means there are multiple bones.
+    ///
+    /// So, we store all bones transformation and then put it back in shader when possible.
+    ///
+    /// And we also store all information related to the model. Basically a lite mdl format
+    Skeletal(WorldTransformationSkeletal),
+}
+
+impl WorldTransformation {
+    pub fn worldspawn() -> Self {
+        Self::Entity(origin_posrot())
+    }
+
+    pub fn get_entity(&self) -> &WorldTransformationEntity {
+        match self {
+            WorldTransformation::Entity(x) => x,
+            WorldTransformation::Skeletal(_) => unreachable!(),
+        }
+    }
+
+    pub fn get_skeletal_mut(&mut self) -> &mut WorldTransformationSkeletal {
+        match self {
+            WorldTransformation::Entity(_) => unreachable!(),
+            WorldTransformation::Skeletal(x) => x,
+        }
+    }
+
+    pub fn build_mvp(&self, time: f32) -> BuildMvpResult {
+        match &self {
+            Self::Entity((position, rotation)) => {
+                BuildMvpResult::Entity(build_mvp_from_pos_and_rot(*position, *rotation))
+            }
+            Self::Skeletal(x) => BuildMvpResult::Skeletal(x.build_mvp(time)),
+        }
+    }
+}
+
+pub struct ModelTransformationInfo {
+    pub frame_per_second: f32,
+    pub looping: bool,
+}
 
 pub fn setup_studio_model_transformations(mdl: &Mdl) -> MdlPosRot {
     let bone_order = get_traversal_order(mdl);

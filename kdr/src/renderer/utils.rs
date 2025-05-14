@@ -1,8 +1,6 @@
 use std::collections::HashMap;
 
 use image::{Rgba, RgbaImage};
-use tracing::warn;
-use wad::types::Wad;
 
 fn most_repeating_number<T>(a: &[T]) -> T
 where

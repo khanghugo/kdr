@@ -1,6 +1,7 @@
 mod dynamic_buffer;
 mod static_buffer;
 mod types;
+pub mod utils;
 
 pub use static_buffer::WorldStaticBuffer;
 pub use types::*;

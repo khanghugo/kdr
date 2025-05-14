@@ -32,9 +32,9 @@ impl AppState {
                     // studio model entites
                     EntityModel::BspMdlEntity { .. } => {
                         // just update like normal
-                        self.render_state.world_buffer[0]
-                            .mvp_buffer
-                            .update_entity_mvp_buffer(&entity, self.time);
+                        // self.render_state.world_buffer[0]
+                        //     .mvp_buffer
+                        //     .update_entity_mvp_buffer(&entity, self.time);
                     } // EntityModel::ViewModel {
                       //     model_name, active, ..
                       // } => {

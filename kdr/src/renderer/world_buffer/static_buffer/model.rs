@@ -1,7 +1,6 @@
-use image::RgbaImage;
-use mdl::{Mdl, Trivert};
+use mdl::Mdl;
 
-use crate::renderer::utils::eightbpp_to_rgba8;
+use crate::renderer::world_buffer::utils::triangulate_mdl_triverts;
 
 use super::{BatchLookup, WorldTextureLookupTable, WorldVertex};
 
@@ -76,7 +75,7 @@ pub(super) fn create_world_model_vertices(
 
                     // create index buffer here
                     // here we will create triangle list
-                    triangulate_triverts(
+                    triangulate_mdl_triverts(
                         &mut index_buffer,
                         triverts,
                         is_strip,
@@ -88,53 +87,4 @@ pub(super) fn create_world_model_vertices(
             });
         });
     });
-}
-
-pub(super) fn triangulate_triverts(
-    index_buffer: &mut Vec<u32>,
-    triverts: &Vec<Trivert>,
-    is_strip: bool,
-    offset: usize,
-) {
-    if is_strip {
-        for i in 0..triverts.len().saturating_sub(2) {
-            let v1 = offset + i;
-            let v2 = offset + i + 1;
-            let v3 = offset + i + 2;
-
-            if i % 2 == 0 {
-                // Even-indexed triangles
-                index_buffer.push(v1 as u32);
-                index_buffer.push(v2 as u32);
-                index_buffer.push(v3 as u32);
-            } else {
-                // Odd-indexed triangles (flip winding order)
-                index_buffer.push(v2 as u32);
-                index_buffer.push(v1 as u32);
-                index_buffer.push(v3 as u32);
-            }
-        }
-    } else {
-        let first_index = offset as u32;
-        for i in 1..triverts.len().saturating_sub(1) {
-            index_buffer.push(first_index);
-            index_buffer.push((offset + i) as u32);
-            index_buffer.push((offset + i + 1) as u32);
-        }
-    }
-}
-
-pub(super) fn get_mdl_textures(mdl: &mdl::Mdl) -> Vec<RgbaImage> {
-    mdl.textures
-        .iter()
-        .map(|texture| {
-            eightbpp_to_rgba8(
-                &texture.image,
-                &texture.palette,
-                texture.dimensions().0,
-                texture.dimensions().1,
-                None,
-            )
-        })
-        .collect()
 }

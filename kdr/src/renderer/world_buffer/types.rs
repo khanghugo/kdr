@@ -29,7 +29,7 @@ pub struct WorldVertex {
     pub layer: u32,
     pub model_idx: u32,
     // type of the vertex, bsp vertex or mdl vertex
-    // 0: bsp, 1: mdl, 2: player model aka p mdl
+    // 0: bsp, 1: mdl, 2: player model aka p mdl, 3: viewmodel aka v mdl
     pub type_: u32,
     // for bsp: [lightmap_u, lightmap_v, renderamt]
     // for mdl: unused

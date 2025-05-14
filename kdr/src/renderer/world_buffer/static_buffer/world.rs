@@ -1,15 +1,14 @@
 use image::RgbaImage;
 use tracing::warn;
 use wad::types::Wad;
-use wgpu::util::DeviceExt;
 
 use crate::renderer::{
     bsp_lightmap::LightMapAtlasBuffer,
     utils::{create_missing_texture_placeholder, eightbpp_to_rgba8, face_vertices, vertex_uv},
-    world_buffer::{WorldVertex, WorldVertexBuffer},
+    world_buffer::WorldVertex,
 };
 
-use super::{BatchLookup, ProcessBspFaceData};
+use super::ProcessBspFaceData;
 
 pub(super) fn process_bsp_face(
     face_data: ProcessBspFaceData,
@@ -150,35 +149,6 @@ pub(super) fn triangulate_convex_polygon(vertices: &[bsp::Vec3]) -> Vec<u32> {
         indices.push((i + 1) as u32);
     }
     indices
-}
-
-pub(super) fn create_world_vertex_buffer(
-    device: &wgpu::Device,
-    batch_lookup: BatchLookup,
-) -> Vec<WorldVertexBuffer> {
-    batch_lookup
-        .into_iter()
-        .map(|(texture_array_index, (vertices, indices))| {
-            let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("world vertex buffer"),
-                contents: bytemuck::cast_slice(&vertices),
-                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
-            });
-
-            let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("world index buffer"),
-                contents: bytemuck::cast_slice(&indices),
-                usage: wgpu::BufferUsages::INDEX | wgpu::BufferUsages::COPY_DST,
-            });
-
-            WorldVertexBuffer {
-                vertex_buffer,
-                index_buffer,
-                index_count: indices.len(),
-                texture_array_index,
-            }
-        })
-        .collect()
 }
 
 pub(super) fn get_bsp_textures(bsp: &bsp::Bsp, external_wads: &[Wad]) -> Vec<RgbaImage> {

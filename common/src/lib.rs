@@ -70,15 +70,6 @@ pub fn take_until_unbalanced(
 
 use std::array::from_fn;
 
-pub fn build_mvp_from_pos_and_rot(
-    position: cgmath::Vector3<f32>,
-    rotation: cgmath::Quaternion<f32>,
-) -> cgmath::Matrix4<f32> {
-    let rotation: cgmath::Matrix4<f32> = rotation.into();
-
-    cgmath::Matrix4::from_translation(position.into()) * rotation
-}
-
 /// "The Half-Life engine uses a left handed coordinate system, where X is forward, Y is left and Z is up."
 pub struct MdlAngles(pub [f32; 3]);
 
