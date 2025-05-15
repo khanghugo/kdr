@@ -30,7 +30,7 @@ pub struct WorldDynamicBuffer {
     pub transformations: WorldTransformationSkeletal,
 }
 
-pub enum DynamicBufferMdlType {
+pub enum WorldDynamicBufferMdlType {
     PlayerModel,
     ViewModel,
 }
@@ -45,7 +45,7 @@ impl WorldLoader {
         queue: &wgpu::Queue,
         name: &str,
         mdl: &Mdl,
-        mdl_type: DynamicBufferMdlType,
+        mdl_type: WorldDynamicBufferMdlType,
         submodel_index: usize,
     ) -> WorldDynamicBuffer {
         let mdl_textures = get_mdl_textures(mdl);
@@ -56,8 +56,8 @@ impl WorldLoader {
         let mut batch_lookup = BatchLookup::new();
 
         let vertex_type_data = match mdl_type {
-            DynamicBufferMdlType::PlayerModel => 2,
-            DynamicBufferMdlType::ViewModel => 3,
+            WorldDynamicBufferMdlType::PlayerModel => 2,
+            WorldDynamicBufferMdlType::ViewModel => 3,
         };
 
         // TODO some mdl transparency stuffs

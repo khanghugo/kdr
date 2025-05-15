@@ -2,12 +2,18 @@ use crate::renderer::{
     RenderContext,
     camera::Camera,
     skybox::SkyboxBuffer,
-    world_buffer::{PushConstantRenderFlags, WorldPushConstants, WorldStaticBuffer},
+    world_buffer::{
+        PushConstantRenderFlags, WorldDynamicBuffer, WorldPushConstants, WorldStaticBuffer,
+    },
 };
+
+use super::AppState;
 
 pub struct RenderState {
     pub world_buffer: Option<WorldStaticBuffer>,
     pub skybox: Option<SkyboxBuffer>,
+
+    pub viewmodel_buffers: Vec<WorldDynamicBuffer>,
 
     pub camera: Camera,
     pub render_options: RenderOptions,
@@ -24,6 +30,7 @@ impl Default for RenderState {
             draw_call: 0,
             world_buffer: None,
             render_options: RenderOptions::default(),
+            viewmodel_buffers: vec![],
         }
     }
 }
@@ -50,7 +57,7 @@ impl Default for RenderOptions {
     }
 }
 
-impl RenderState {
+impl AppState {
     pub fn render(
         &mut self,
         render_context: &RenderContext,
@@ -59,15 +66,15 @@ impl RenderState {
     ) {
         // update camera buffer
         {
-            let view = self.camera.view();
+            let view = self.render_state.camera.view();
             let view_cast: &[f32; 16] = view.as_ref();
             let view_bytes: &[u8] = bytemuck::cast_slice(view_cast);
 
-            let proj = self.camera.proj();
+            let proj = self.render_state.camera.proj();
             let proj_cast: &[f32; 16] = proj.as_ref();
             let proj_bytes: &[u8] = bytemuck::cast_slice(proj_cast);
 
-            let pos = self.camera.pos;
+            let pos = self.render_state.camera.pos;
             let pos_cast: &[f32; 3] = pos.as_ref();
             let pos_bytes: &[u8] = bytemuck::cast_slice(pos_cast);
 
@@ -86,7 +93,7 @@ impl RenderState {
             );
         }
 
-        self.draw_call = 0;
+        self.render_state.draw_call = 0;
 
         // UPDATE: no more z pre pass, it is more troubling than it is worth it
         // the game doesn't have enough polygon to worry about overdrawing
@@ -142,12 +149,12 @@ impl RenderState {
 
             res.set(
                 PushConstantRenderFlags::RenderNoDraw,
-                self.render_options.render_nodraw,
+                self.render_state.render_options.render_nodraw,
             );
 
             res.set(
                 PushConstantRenderFlags::FullBright,
-                self.render_options.full_bright,
+                self.render_state.render_options.full_bright,
             );
 
             res
@@ -192,86 +199,138 @@ impl RenderState {
 
             // there are two set_push_constants method. WTF?
             opaque_pass.set_push_constants(wgpu::ShaderStages::FRAGMENT, 0, push_data);
+            opaque_pass.set_bind_group(0, &render_context.camera_buffer.bind_group, &[]);
 
-            self.world_buffer.iter().for_each(|world_buffer| {
-                opaque_pass.set_bind_group(1, &world_buffer.mvp_buffer.bind_group, &[]);
-                opaque_pass.set_bind_group(3, &world_buffer.bsp_lightmap.bind_group, &[]);
+            // only draws when there is world
+            self.render_state
+                .world_buffer
+                .iter()
+                .for_each(|world_buffer| {
+                    // need these bind groups here so that the binding slots are occupied
+                    opaque_pass.set_bind_group(1, &world_buffer.mvp_buffer.bind_group, &[]);
+                    opaque_pass.set_bind_group(3, &world_buffer.bsp_lightmap.bind_group, &[]);
 
-                world_buffer.opaque.iter().for_each(|batch| {
-                    self.draw_call += 1;
+                    // static world
+                    world_buffer.opaque.iter().for_each(|batch| {
+                        self.render_state.draw_call += 1;
 
-                    opaque_pass.set_bind_group(0, &render_context.camera_buffer.bind_group, &[]);
+                        // texture array
+                        opaque_pass.set_bind_group(
+                            2,
+                            &world_buffer.textures[batch.texture_array_index].bind_group,
+                            &[],
+                        );
 
-                    // texture array
-                    opaque_pass.set_bind_group(
+                        opaque_pass.set_vertex_buffer(0, batch.vertex_buffer.slice(..));
+                        opaque_pass.set_index_buffer(
+                            batch.index_buffer.slice(..),
+                            wgpu::IndexFormat::Uint32,
+                        );
+
+                        opaque_pass.draw_indexed(0..batch.index_count as u32, 0, 0..1);
+                    });
+
+                    // viewmodels
+                    self.render_state
+                        .viewmodel_buffers
+                        .iter()
+                        .find(|buffer| {
+                            // entity_state should be available at this point
+                            buffer.name.contains(
+                                &self
+                                    .entity_state
+                                    .as_ref()
+                                    .unwrap()
+                                    .viewmodel_state
+                                    .active_viewmodel,
+                            )
+                        })
+                        .map(|dynamic_buffer| {
+                            opaque_pass.set_bind_group(
+                                1,
+                                &dynamic_buffer.mvp_buffer.bind_group,
+                                &[],
+                            );
+
+                            dynamic_buffer.opaque.iter().for_each(|batch| {
+                                self.render_state.draw_call += 1;
+
+                                // only change texture array
+                                opaque_pass.set_bind_group(
+                                    2,
+                                    &dynamic_buffer.textures[batch.texture_array_index].bind_group,
+                                    &[],
+                                );
+
+                                opaque_pass.set_vertex_buffer(0, batch.vertex_buffer.slice(..));
+                                opaque_pass.set_index_buffer(
+                                    batch.index_buffer.slice(..),
+                                    wgpu::IndexFormat::Uint32,
+                                );
+
+                                opaque_pass.draw_indexed(0..batch.index_count as u32, 0, 0..1);
+                            });
+                        });
+                });
+        }
+
+        // skybox mask
+        if self.render_state.render_options.render_skybox {
+            self.render_state
+                .world_buffer
+                .iter()
+                .for_each(|world_buffer| {
+                    let Some(batch_idx) = world_buffer.skybrush_batch_index else {
+                        return;
+                    };
+                    let batch = &world_buffer.opaque[batch_idx];
+
+                    let skybox_mask_pass_descriptor = wgpu::RenderPassDescriptor {
+                        label: Some("world skybox mask pass descriptor"),
+                        color_attachments: &[],
+                        depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                            view: &render_context.render_targets.depth_view,
+                            depth_ops: Some(wgpu::Operations {
+                                load: wgpu::LoadOp::Load,
+                                store: wgpu::StoreOp::Store,
+                            }),
+                            stencil_ops: Some(wgpu::Operations {
+                                // even though this step has "Clear", it can't clear stencil
+                                // need to clear stencil in skybox pass step
+                                load: wgpu::LoadOp::Clear(0),
+                                store: wgpu::StoreOp::Store,
+                            }),
+                        }),
+                        timestamp_writes: None,
+                        occlusion_query_set: None,
+                    };
+
+                    let mut rpass = encoder.begin_render_pass(&skybox_mask_pass_descriptor);
+
+                    // VERY IMPORTANT
+                    rpass.set_stencil_reference(1);
+
+                    rpass.set_bind_group(3, &world_buffer.bsp_lightmap.bind_group, &[]);
+                    rpass.set_bind_group(1, &world_buffer.mvp_buffer.bind_group, &[]);
+
+                    rpass.set_pipeline(&render_context.world_skybox_mask_render_pipeline);
+                    rpass.set_bind_group(0, &render_context.camera_buffer.bind_group, &[]);
+
+                    rpass.set_bind_group(
                         2,
                         &world_buffer.textures[batch.texture_array_index].bind_group,
                         &[],
                     );
 
-                    opaque_pass.set_vertex_buffer(0, batch.vertex_buffer.slice(..));
-                    opaque_pass
-                        .set_index_buffer(batch.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
-
-                    opaque_pass.draw_indexed(0..batch.index_count as u32, 0, 0..1);
+                    rpass.set_vertex_buffer(0, batch.vertex_buffer.slice(..));
+                    rpass.set_index_buffer(batch.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
+                    rpass.draw_indexed(0..batch.index_count as u32, 0, 0..1);
                 });
-            });
-        }
-
-        // skybox mask
-        if self.render_options.render_skybox {
-            self.world_buffer.iter().for_each(|world_buffer| {
-                let Some(batch_idx) = world_buffer.skybrush_batch_index else {
-                    return;
-                };
-                let batch = &world_buffer.opaque[batch_idx];
-
-                let skybox_mask_pass_descriptor = wgpu::RenderPassDescriptor {
-                    label: Some("world skybox mask pass descriptor"),
-                    color_attachments: &[],
-                    depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                        view: &render_context.render_targets.depth_view,
-                        depth_ops: Some(wgpu::Operations {
-                            load: wgpu::LoadOp::Load,
-                            store: wgpu::StoreOp::Store,
-                        }),
-                        stencil_ops: Some(wgpu::Operations {
-                            // even though this step has "Clear", it can't clear stencil
-                            // need to clear stencil in skybox pass step
-                            load: wgpu::LoadOp::Clear(0),
-                            store: wgpu::StoreOp::Store,
-                        }),
-                    }),
-                    timestamp_writes: None,
-                    occlusion_query_set: None,
-                };
-
-                let mut rpass = encoder.begin_render_pass(&skybox_mask_pass_descriptor);
-
-                // VERY IMPORTANT
-                rpass.set_stencil_reference(1);
-
-                rpass.set_bind_group(3, &world_buffer.bsp_lightmap.bind_group, &[]);
-                rpass.set_bind_group(1, &world_buffer.mvp_buffer.bind_group, &[]);
-
-                rpass.set_pipeline(&render_context.world_skybox_mask_render_pipeline);
-                rpass.set_bind_group(0, &render_context.camera_buffer.bind_group, &[]);
-
-                rpass.set_bind_group(
-                    2,
-                    &world_buffer.textures[batch.texture_array_index].bind_group,
-                    &[],
-                );
-
-                rpass.set_vertex_buffer(0, batch.vertex_buffer.slice(..));
-                rpass.set_index_buffer(batch.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
-                rpass.draw_indexed(0..batch.index_count as u32, 0, 0..1);
-            });
         }
 
         // skybox pass
-        if self.render_options.render_skybox {
-            if let Some(ref skybox_buffer) = self.skybox {
+        if self.render_state.render_options.render_skybox {
+            if let Some(ref skybox_buffer) = self.render_state.skybox {
                 let skybox_pass_descriptor = wgpu::RenderPassDescriptor {
                     label: Some("skybox pass descriptor"),
                     color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -316,7 +375,7 @@ impl RenderState {
         // world transparent pass
         // if resolve pass runs but this pass does not, the result image is black
         // UPDATE, fake news, can skip this and resolve
-        if self.render_options.render_transparent {
+        if self.render_state.render_options.render_transparent {
             let transparent_pass_descriptor = wgpu::RenderPassDescriptor {
                 label: Some("world transparent pass descriptor"),
                 color_attachments: &render_context.oit_resolver.render_pass_color_attachments(),
@@ -337,31 +396,36 @@ impl RenderState {
 
             transparent_pass.set_bind_group(0, &render_context.camera_buffer.bind_group, &[]);
 
-            self.world_buffer.iter().for_each(|world_buffer| {
-                transparent_pass.set_bind_group(1, &world_buffer.mvp_buffer.bind_group, &[]);
-                transparent_pass.set_bind_group(3, &world_buffer.bsp_lightmap.bind_group, &[]);
+            self.render_state
+                .world_buffer
+                .iter()
+                .for_each(|world_buffer| {
+                    transparent_pass.set_bind_group(1, &world_buffer.mvp_buffer.bind_group, &[]);
+                    transparent_pass.set_bind_group(3, &world_buffer.bsp_lightmap.bind_group, &[]);
 
-                world_buffer.transparent.iter().for_each(|batch| {
-                    self.draw_call += 1;
+                    world_buffer.transparent.iter().for_each(|batch| {
+                        self.render_state.draw_call += 1;
 
-                    // texture array
-                    transparent_pass.set_bind_group(
-                        2,
-                        &world_buffer.textures[batch.texture_array_index].bind_group,
-                        &[],
-                    );
+                        // texture array
+                        transparent_pass.set_bind_group(
+                            2,
+                            &world_buffer.textures[batch.texture_array_index].bind_group,
+                            &[],
+                        );
 
-                    transparent_pass.set_vertex_buffer(0, batch.vertex_buffer.slice(..));
-                    transparent_pass
-                        .set_index_buffer(batch.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
+                        transparent_pass.set_vertex_buffer(0, batch.vertex_buffer.slice(..));
+                        transparent_pass.set_index_buffer(
+                            batch.index_buffer.slice(..),
+                            wgpu::IndexFormat::Uint32,
+                        );
 
-                    transparent_pass.draw_indexed(0..batch.index_count as u32, 0, 0..1);
+                        transparent_pass.draw_indexed(0..batch.index_count as u32, 0, 0..1);
+                    });
                 });
-            });
         }
 
         // oit resolve
-        if self.render_options.render_transparent {
+        if self.render_state.render_options.render_transparent {
             let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("oit resolve pass"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {

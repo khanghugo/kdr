@@ -8,6 +8,7 @@ use ::tracing::{info, warn};
 #[cfg(target_arch = "wasm32")]
 use common::KDR_CANVAS_ID;
 use common::{UNKNOWN_GAME_MOD, vec3};
+use mdl::Mdl;
 use puppeteer::Puppeteer;
 
 #[cfg(target_arch = "wasm32")]
@@ -55,7 +56,7 @@ use crate::{
         camera::Camera,
         egui_renderer::EguiRenderer,
         skybox::{SkyboxBuffer, SkyboxLoader},
-        world_buffer::{WorldLoader, WorldStaticBuffer},
+        world_buffer::{WorldDynamicBufferMdlType, WorldLoader, WorldStaticBuffer},
     },
     utils::spawn_async,
 };
@@ -357,7 +358,6 @@ impl ApplicationHandler<AppEvent> for App {
 
                 {
                     self.state
-                        .render_state
                         .render(&render_context, &mut encoder, &swapchain_view);
 
                     if let Some(ref mut egui_renderer) = self.egui_renderer {
@@ -1070,6 +1070,44 @@ impl ApplicationHandler<AppEvent> for App {
                     };
 
                     self.state.audio_resource.insert(k.to_string(), sound_data);
+                });
+
+                // create view model buffer
+                common_resource.iter().for_each(|(file_path, file_bytes)| {
+                    let is_viewmodel =
+                        file_path.starts_with("models/v_") && file_path.ends_with(".mdl");
+
+                    if !is_viewmodel {
+                        return;
+                    }
+
+                    let Ok(mdl) = Mdl::open_from_bytes(file_bytes) else {
+                        warn!("Cannot parse model {}", file_path);
+                        return;
+                    };
+
+                    let actual_file_name =
+                        Path::new(file_path).file_stem().unwrap().to_str().unwrap();
+
+                    // we should already have render context by this point
+                    let Some(render_context) = self.render_context.as_ref() else {
+                        warn!("Trying to create dynamic buffer without render context");
+                        return;
+                    };
+
+                    let dynamic_buffer = WorldLoader::load_dynamic_world(
+                        render_context.device(),
+                        render_context.queue(),
+                        actual_file_name,
+                        &mdl,
+                        WorldDynamicBufferMdlType::ViewModel,
+                        0,
+                    );
+
+                    self.state
+                        .render_state
+                        .viewmodel_buffers
+                        .push(dynamic_buffer);
                 });
 
                 self.state.other_resources.common_resource = common_resource;

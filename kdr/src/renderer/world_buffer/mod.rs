@@ -3,6 +3,7 @@ mod static_buffer;
 mod types;
 pub mod utils;
 
+pub use dynamic_buffer::{WorldDynamicBuffer, WorldDynamicBufferMdlType};
 pub use static_buffer::WorldStaticBuffer;
 pub use types::*;
 

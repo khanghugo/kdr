@@ -14,6 +14,7 @@ use world_buffer::WorldLoader;
 #[cfg(target_arch = "wasm32")]
 use winit::platform::web::WindowExtWebSys;
 
+#[allow(unused_imports)]
 use crate::app::constants::{DEFAULT_HEIGHT, DEFAULT_WIDTH, MAX_MVP};
 
 pub mod bsp_lightmap;
@@ -43,7 +44,6 @@ pub struct RenderContext {
     pub camera_buffer: CameraBuffer,
     pub render_targets: RenderTargets,
     pub finalize_render_pipeline: FinalizeRenderPipeline,
-    pub fullscreen_tri_vertex_shader: FullScrenTriVertexShader,
     pub post_processing: Arc<RwLock<PostProcessing>>,
     pub skybox_loader: SkyboxLoader,
 }
@@ -228,7 +228,6 @@ impl RenderContext {
             camera_buffer,
             render_targets,
             finalize_render_pipeline,
-            fullscreen_tri_vertex_shader,
             post_processing,
             skybox_loader: skybox_render_pipeline,
         }
