@@ -422,6 +422,9 @@ fn processing_saytext2<'a>(
                         text = format!("(Spectator) {player_name}: {text}");
                     }
 
+                    // clean up the text
+                    let text = text.replace("\n", "");
+
                     (header, text)
                 })
                 .collect(),
