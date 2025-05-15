@@ -8,7 +8,6 @@ use ::tracing::{info, warn};
 #[cfg(target_arch = "wasm32")]
 use common::KDR_CANVAS_ID;
 use common::{UNKNOWN_GAME_MOD, vec3};
-use mdl::Mdl;
 use puppeteer::Puppeteer;
 
 #[cfg(target_arch = "wasm32")]
@@ -20,7 +19,7 @@ use kira::sound::static_sound::StaticSoundData;
 use state::{
     AppState,
     audio::{AudioBackend, AudioStateError},
-    entities::{EntityState, viewmodel::ViewModelState},
+    entities::{EntityState, playermodel::PlayerModelState, viewmodel::ViewModelState},
     file::{LoadingState, SelectedFileType},
     overlay::control_panel::PostProcessingControlState,
     playback::{
@@ -782,6 +781,7 @@ impl ApplicationHandler<AppEvent> for App {
                 self.state.entity_state = Some(EntityState {
                     entity_dictionary: bsp_resource.entity_dictionary,
                     viewmodel_state: ViewModelState::default(),
+                    playermodel_state: PlayerModelState::default(),
                 });
             }
             AppEvent::NewFileSelected => {
@@ -1073,41 +1073,10 @@ impl ApplicationHandler<AppEvent> for App {
                 });
 
                 // create view model buffer
-                common_resource.iter().for_each(|(file_path, file_bytes)| {
-                    let is_viewmodel =
-                        file_path.starts_with("models/v_") && file_path.ends_with(".mdl");
+                self.load_viewmodels(&common_resource);
 
-                    if !is_viewmodel {
-                        return;
-                    }
-
-                    let Ok(mdl) = Mdl::open_from_bytes(file_bytes) else {
-                        warn!("Cannot parse model {}", file_path);
-                        return;
-                    };
-
-                    let actual_file_name =
-                        Path::new(file_path).file_stem().unwrap().to_str().unwrap();
-
-                    // we should already have render context by this point
-                    let Some(render_context) = self.render_context.as_ref() else {
-                        warn!("Trying to create dynamic buffer without render context");
-                        return;
-                    };
-
-                    let dynamic_buffer = WorldLoader::load_dynamic_world(
-                        render_context.device(),
-                        render_context.queue(),
-                        actual_file_name,
-                        &mdl,
-                        0,
-                    );
-
-                    self.state
-                        .render_state
-                        .viewmodel_buffers
-                        .push(dynamic_buffer);
-                });
+                // create player model buffer
+                self.load_player_models(&common_resource);
 
                 self.state.other_resources.common_resource = common_resource;
             }

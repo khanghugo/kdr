@@ -1,6 +1,5 @@
 use cgmath::Deg;
 use ghost::{GhostFrameEntityText, GhostInfo};
-use loader::bsp_resource::EntityModel;
 
 use crate::app::state::{
     AppState,
@@ -151,18 +150,31 @@ impl AppState {
                         }
                     });
 
-                // negative pitch
-                self.render_state
-                    .camera
-                    .set_pitch(-Deg(frame.viewangles[0]));
-                self.render_state.camera.set_yaw(Deg(frame.viewangles[1]));
+                // if free cam, we update the entity instead
+                // replay mode should guarantee to have 1 player model
+                self.entity_state.as_mut().map(|x| {
+                    x.playermodel_state.players.get_mut(0).map(|player| {
+                        player.should_draw = self.input_state.free_cam;
+                        player.origin = frame.origin.to_array().into();
+                        player.yaw = frame.viewangles[1];
+                    })
+                });
 
-                self.render_state
-                    .camera
-                    .set_position(frame.origin.to_array());
+                // only update the actual view when we're not in free cam
+                if !self.input_state.free_cam {
+                    // negative pitch
+                    self.render_state
+                        .camera
+                        .set_pitch(-Deg(frame.viewangles[0]));
+                    self.render_state.camera.set_yaw(Deg(frame.viewangles[1]));
 
-                // important
-                self.render_state.camera.rebuild_orientation();
+                    self.render_state
+                        .camera
+                        .set_position(frame.origin.to_array());
+
+                    // important
+                    self.render_state.camera.rebuild_orientation();
+                }
 
                 replay.last_frame = frame_idx;
             }

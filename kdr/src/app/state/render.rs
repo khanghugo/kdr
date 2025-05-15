@@ -14,6 +14,7 @@ pub struct RenderState {
     pub skybox: Option<SkyboxBuffer>,
 
     pub viewmodel_buffers: Vec<WorldDynamicBuffer>,
+    pub playermodel_buffers: Vec<WorldDynamicBuffer>,
 
     pub camera: Camera,
     pub render_options: RenderOptions,
@@ -31,6 +32,7 @@ impl Default for RenderState {
             world_buffer: None,
             render_options: RenderOptions::default(),
             viewmodel_buffers: vec![],
+            playermodel_buffers: vec![],
         }
     }
 }
@@ -236,14 +238,11 @@ impl AppState {
                         .iter()
                         .find(|buffer| {
                             // entity_state should be available at this point
-                            buffer.name.contains(
-                                &self
-                                    .entity_state
-                                    .as_ref()
-                                    .unwrap()
-                                    .viewmodel_state
-                                    .active_viewmodel,
-                            )
+                            let viewmodel_state =
+                                &self.entity_state.as_ref().unwrap().viewmodel_state;
+
+                            buffer.name.contains(&viewmodel_state.active_viewmodel)
+                                && viewmodel_state.should_draw
                         })
                         .map(|dynamic_buffer| {
                             opaque_pass.set_bind_group(
@@ -271,6 +270,66 @@ impl AppState {
                                 opaque_pass.draw_indexed(0..batch.index_count as u32, 0, 0..1);
                             });
                         });
+
+                    // player models
+                    // TODO proper instanced drawing instead of this shit
+                    self.entity_state.as_mut().map(|entity_state| {
+                        entity_state
+                            .playermodel_state
+                            .players
+                            .iter_mut()
+                            // only draw active players
+                            .filter(|player| player.should_draw)
+                            .for_each(|player| {
+                                self.render_state
+                                    .playermodel_buffers
+                                    .iter_mut()
+                                    .find(|buffer| buffer.name.contains(&player.model_name))
+                                    .map(|dynamic_buffer| {
+                                        // build mvp for every instances
+                                        // becuse we don't have instanced drawing, so this is done like that
+                                        // haha
+                                        // TODO dont do this
+                                        dynamic_buffer.mvp_buffer.update_mvp_buffer_many(
+                                            player.build_mvp(&mut dynamic_buffer.transformations),
+                                            0,
+                                        );
+
+                                        opaque_pass.set_bind_group(
+                                            1,
+                                            &dynamic_buffer.mvp_buffer.bind_group,
+                                            &[],
+                                        );
+
+                                        dynamic_buffer.opaque.iter().for_each(|batch| {
+                                            self.render_state.draw_call += 1;
+
+                                            // only change texture array
+                                            opaque_pass.set_bind_group(
+                                                2,
+                                                &dynamic_buffer.textures[batch.texture_array_index]
+                                                    .bind_group,
+                                                &[],
+                                            );
+
+                                            opaque_pass.set_vertex_buffer(
+                                                0,
+                                                batch.vertex_buffer.slice(..),
+                                            );
+                                            opaque_pass.set_index_buffer(
+                                                batch.index_buffer.slice(..),
+                                                wgpu::IndexFormat::Uint32,
+                                            );
+
+                                            opaque_pass.draw_indexed(
+                                                0..batch.index_count as u32,
+                                                0,
+                                                0..1,
+                                            );
+                                        });
+                                    });
+                            })
+                    });
                 });
         }
 

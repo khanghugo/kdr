@@ -1,8 +1,17 @@
-use std::f32::{self, consts::PI};
+use std::{
+    f32::{self, consts::PI},
+    path::Path,
+};
 
 use cgmath::EuclideanSpace;
+use loader::ResourceMap;
+use mdl::Mdl;
+use tracing::warn;
 
-use crate::app::state::AppState;
+use crate::{
+    app::{App, state::AppState},
+    renderer::world_buffer::WorldLoader,
+};
 
 pub struct ViewModelState {
     // settings
@@ -16,6 +25,7 @@ pub struct ViewModelState {
     pub active_viewmodel: String,
     pub current_sequence: usize,
     pub time: f32,
+    pub should_draw: bool,
 }
 
 impl Default for ViewModelState {
@@ -30,6 +40,7 @@ impl Default for ViewModelState {
             active_viewmodel: "usp".to_string(),
             time: 0.,
             current_sequence: 0,
+            should_draw: false,
         }
     }
 }
@@ -62,6 +73,13 @@ impl AppState {
             return;
         };
 
+        // only draw if we are not in free cam
+        entity_state.viewmodel_state.should_draw = !self.input_state.free_cam;
+
+        if !entity_state.viewmodel_state.should_draw {
+            return;
+        }
+
         let skeletal = &mut viewmodel_buffer.transformations;
 
         // move vieworigin z down 1, this seems pretty smart
@@ -79,5 +97,43 @@ impl AppState {
 
         // update sequence time
         entity_state.viewmodel_state.time += self.frame_time;
+    }
+}
+
+impl App {
+    pub fn load_viewmodels(&mut self, resource_map: &ResourceMap) {
+        resource_map.iter().for_each(|(file_path, file_bytes)| {
+            let is_viewmodel = file_path.starts_with("models/v_") && file_path.ends_with(".mdl");
+
+            if !is_viewmodel {
+                return;
+            }
+
+            let Ok(mdl) = Mdl::open_from_bytes(file_bytes) else {
+                warn!("Cannot parse model {}", file_path);
+                return;
+            };
+
+            let actual_file_name = Path::new(file_path).file_stem().unwrap().to_str().unwrap();
+
+            // we should already have render context by this point
+            let Some(render_context) = self.render_context.as_ref() else {
+                warn!("Trying to create dynamic buffer without render context");
+                return;
+            };
+
+            let dynamic_buffer = WorldLoader::load_dynamic_world(
+                render_context.device(),
+                render_context.queue(),
+                actual_file_name,
+                &mdl,
+                0,
+            );
+
+            self.state
+                .render_state
+                .viewmodel_buffers
+                .push(dynamic_buffer);
+        });
     }
 }

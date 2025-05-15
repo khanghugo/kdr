@@ -1,10 +1,12 @@
 use std::collections::VecDeque;
 
-use cgmath::{Deg, One};
+use cgmath::Deg;
 use common::{lerp_arr3, lerp_viewangles};
-use loader::{MapIdentifier, bsp_resource::EntityModel};
+use loader::MapIdentifier;
 use puppeteer::{PuppetEvent, PuppetFrame, Puppeteer};
 use tracing::warn;
+
+use crate::app::state::entities::playermodel::PlayerModel;
 
 use super::AppState;
 
@@ -242,57 +244,43 @@ impl AppState {
             // ehhhh
             .unwrap_or(9999);
 
-        // // reset all viewmodel entites
-        // let player_model_entities: Vec<_> = entity_state
-        //     .entity_dictionary
-        //     .iter_mut()
-        //     // need to do filter map and things like this so mutability works
-        //     .filter_map(|(x, entity)| {
-        //         if let EntityModel::PlayerModel { player_index, .. } = &mut entity.model {
-        //             *player_index = None;
-        //             Some((x, entity))
-        //         } else {
-        //             None
-        //         }
-        //     })
-        //     .collect();
+        // change this every tick, i guess that's fine
+        entity_state
+            .playermodel_state
+            .players
+            .resize_with(viewinfos.len(), PlayerModel::default);
 
-        // // update player third person entities
-        // // TODO: a slight issue, if there is no player model entities, camera won't update
-        // viewinfos
-        //     .into_iter()
-        //     .zip(player_model_entities.into_iter())
-        //     .enumerate()
-        //     .for_each(|(viewinfo_idx, (viewinfo, (_, player_model_entity)))| {
-        //         // if it current player and is not free cam, don't update this entity
-        //         if viewinfo_idx == current_player_viewinfo_idx && !self.input_state.free_cam {
-        //             self.render_state.camera.set_position(viewinfo.vieworg);
+        viewinfos
+            .into_iter()
+            .zip(entity_state.playermodel_state.players.iter_mut())
+            .enumerate()
+            .for_each(|(viewinfo_idx, (viewinfo, player))| {
+                // special case when in free cam
+                if viewinfo_idx == current_player_viewinfo_idx && !self.input_state.free_cam {
+                    self.render_state.camera.set_position(viewinfo.vieworg);
 
-        //             // our world has correct pitch, the game doesnt
-        //             self.render_state
-        //                 .camera
-        //                 .set_pitch(Deg(-viewinfo.viewangles[0]));
+                    // our world has correct pitch, the game doesnt
+                    self.render_state
+                        .camera
+                        .set_pitch(Deg(-viewinfo.viewangles[0]));
 
-        //             self.render_state
-        //                 .camera
-        //                 .set_yaw(Deg(viewinfo.viewangles[1]));
+                    self.render_state
+                        .camera
+                        .set_yaw(Deg(viewinfo.viewangles[1]));
 
-        //             // need this to update view
-        //             self.render_state.camera.rebuild_orientation();
+                    // need this to update view
+                    self.render_state.camera.rebuild_orientation();
 
-        //             return;
-        //         }
+                    // explicitly set the viewmodel not to draw
+                    player.should_draw = false;
 
-        //         let skeletal = player_model_entity.transformation.get_skeletal_mut();
+                    return;
+                }
 
-        //         skeletal.world_transformation.0 = viewinfo.vieworg.into();
-        //         skeletal.world_transformation.1 = cgmath::Quaternion::one();
-
-        //         if let EntityModel::PlayerModel { player_index, .. } =
-        //             &mut player_model_entity.model
-        //         {
-        //             *player_index = Some(viewinfo_idx);
-        //         }
-        //     });
+                // otherwise, just update everything, including the selected viewinfo
+                player.origin = viewinfo.vieworg.into();
+                player.yaw = viewinfo.viewangles[1];
+                player.should_draw = true;
+            });
     }
 }
