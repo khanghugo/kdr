@@ -121,6 +121,7 @@ impl AppState {
                                 }
                             });
 
+                            // say text
                             extra.say_text.iter().for_each(|saytext| {
                                 self.text_state
                                     .say_text
@@ -131,6 +132,7 @@ impl AppState {
                                 }
                             });
 
+                            // player model and viewmodel
                             if let Some(entity_state) = self.entity_state.as_mut() {
                                 if let Some(weapon_change) = &extra.weapon_change {
                                     entity_state.viewmodel_state.active_viewmodel =
@@ -145,6 +147,18 @@ impl AppState {
                                     entity_state.viewmodel_state.time = 0.;
                                     entity_state.viewmodel_state.current_sequence =
                                         *weapon_sequence as usize;
+                                }
+
+                                if let Some(anim) = &extra.anim {
+                                    if let Some(sequence) = anim.sequence {
+                                        entity_state.playermodel_state.players[0].sequence =
+                                            sequence as usize;
+                                    }
+
+                                    if let Some(gaitsequence) = anim.gaitsequence {
+                                        entity_state.playermodel_state.players[0].gaitsequence =
+                                            gaitsequence as usize;
+                                    }
                                 }
                             }
                         }

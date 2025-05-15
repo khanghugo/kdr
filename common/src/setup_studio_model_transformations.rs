@@ -1,4 +1,4 @@
-use std::array::from_fn;
+use std::{array::from_fn, collections::HashSet};
 
 use cgmath::{One, Rotation, Rotation3, VectorSpace, Zero};
 use mdl::{BlendBone, Bone, Mdl};
@@ -37,8 +37,11 @@ pub struct WorldTransformationSkeletal {
 }
 
 impl WorldTransformationSkeletal {
-    pub fn build_mvp(&self, time: f32) -> Vec<cgmath::Matrix4<f32>> {
-        // quick hack to avoid some weird timing issue,
+    pub fn build_mvp_with_gait_sequence(
+        &self,
+        time: f32,
+        gaitsequence: usize,
+    ) -> Vec<cgmath::Matrix4<f32>> {
         // TODO: reset the sequence on timeline scrub
         let current_sequence_index =
             (self.current_sequence_index).min(self.model_transformations.len() - 1);
@@ -46,54 +49,54 @@ impl WorldTransformationSkeletal {
         let current_sequence = &self.model_transformations[current_sequence_index];
         let current_sequence_info = &self.model_transformation_infos[current_sequence_index];
 
-        // TODO blending
-        let current_blend = &current_sequence[0];
-        let frame_count = current_blend.len();
+        let current_gait = &self.model_transformations[gaitsequence];
+        let current_gait_info = &self.model_transformation_infos[gaitsequence];
 
-        // TODO start time
-        let anim_total_time = frame_count as f32 / current_sequence_info.frame_per_second;
+        // TODO blending
+        let current_anim_blend = &current_sequence[0];
+        let current_gait_blend = &current_gait[0];
+
+        let anim_frame_count = current_anim_blend.len();
+        let gait_frame_count = current_gait_blend.len();
+
+        let anim_total_time = anim_frame_count as f32 / current_sequence_info.frame_per_second;
+        let gait_total_time = gait_frame_count as f32 / current_gait_info.frame_per_second;
+
         let anim_time = if current_sequence_info.looping {
             time % anim_total_time
         } else {
             time
         };
+        let gait_time = if true { time % gait_total_time } else { time };
+
         let anim_frame_from_idx = ((anim_time * current_sequence_info.frame_per_second as f32)
             .floor() as usize)
-            .min(frame_count - 1);
+            .min(anim_frame_count - 1);
+        let gait_frame_from_idx = ((gait_time * current_gait_info.frame_per_second as f32).floor()
+            as usize)
+            .min(gait_frame_count - 1);
 
         // usually, the first condition will never hit, but whatever
-        if anim_frame_from_idx == frame_count - 1 {
-            let anim_frame = &current_blend[anim_frame_from_idx];
+        // gaits usually have more frames than our normal sequence
+        let anim_from_frame = &current_anim_blend[anim_frame_from_idx];
+        let anim_to_frame =
+            &current_anim_blend[(anim_frame_from_idx + 1).min(anim_frame_count - 1)];
 
-            let transformations = anim_frame
+        let gait_from_frame = &current_gait_blend[gait_frame_from_idx];
+        let gait_to_frame =
+            &current_gait_blend[(gait_frame_from_idx + 1).min(gait_frame_count - 1)];
+
+        let anim_target = (anim_time * current_sequence_info.frame_per_second).fract();
+        let gait_target = (gait_time * current_gait_info.frame_per_second).fract();
+
+        if gaitsequence == 0 {
+            anim_from_frame
                 .iter()
-                .map(|&posrot| {
-                    let (pos, rot) = model_to_world_transformation(
-                        posrot,
-                        self.world_transformation.0,
-                        self.world_transformation.1,
-                    );
-
-                    build_mvp_from_pos_and_rot(pos, rot)
-                })
-                .collect();
-
-            transformations
-        } else {
-            let anim_frame_to_idx = anim_frame_from_idx + 1;
-
-            let from_frame = &current_blend[anim_frame_from_idx];
-            let to_frame = &current_blend[anim_frame_to_idx];
-
-            let target = (anim_time * current_sequence_info.frame_per_second).fract();
-
-            let transformations = from_frame
-                .iter()
-                .zip(to_frame.iter())
+                .zip(anim_to_frame.iter())
                 .map(|((from_pos, from_rot), (to_pos, to_rot))| {
                     let lerped_posrot = (
-                        from_pos.lerp(*to_pos, target),
-                        from_rot.nlerp(*to_rot, target),
+                        from_pos.lerp(*to_pos, anim_target),
+                        from_rot.nlerp(*to_rot, anim_target),
                     );
 
                     let (pos, rot) = model_to_world_transformation(
@@ -104,10 +107,49 @@ impl WorldTransformationSkeletal {
 
                     build_mvp_from_pos_and_rot(pos, rot)
                 })
-                .collect();
+                .collect()
+        } else {
+            let gait_bones: HashSet<usize> = (40..56).into_iter().chain(0..=1).collect();
 
-            transformations
+            (0..anim_from_frame.len())
+                .map(|bone_idx| {
+                    if gait_bones.contains(&bone_idx) {
+                        let ((from_pos, from_rot), (to_pos, to_rot)) =
+                            (&gait_from_frame[bone_idx], &gait_to_frame[bone_idx]);
+
+                        let lerped_posrot = (
+                            from_pos.lerp(*to_pos, gait_target),
+                            from_rot.nlerp(*to_rot, gait_target),
+                        );
+
+                        model_to_world_transformation(
+                            lerped_posrot,
+                            self.world_transformation.0,
+                            self.world_transformation.1,
+                        )
+                    } else {
+                        let ((from_pos, from_rot), (to_pos, to_rot)) =
+                            (&anim_from_frame[bone_idx], &anim_to_frame[bone_idx]);
+
+                        let lerped_posrot = (
+                            from_pos.lerp(*to_pos, anim_target),
+                            from_rot.nlerp(*to_rot, anim_target),
+                        );
+
+                        model_to_world_transformation(
+                            lerped_posrot,
+                            self.world_transformation.0,
+                            self.world_transformation.1,
+                        )
+                    }
+                })
+                .map(|(pos, rot)| build_mvp_from_pos_and_rot(pos, rot))
+                .collect()
         }
+    }
+
+    pub fn build_mvp(&self, time: f32) -> Vec<cgmath::Matrix4<f32>> {
+        self.build_mvp_with_gait_sequence(time, 0)
     }
 }
 

@@ -17,6 +17,7 @@ pub struct PlayerModel {
     pub origin: cgmath::Vector3<f32>,
     pub yaw: f32,
     pub sequence: usize,
+    pub gaitsequence: usize,
     pub sequence_time: f32,
 
     // player might be available but just don't draw them
@@ -38,6 +39,7 @@ impl PlayerModel {
             origin: cgmath::Vector3::zero(),
             yaw: 0.,
             sequence: 0,
+            gaitsequence: 0,
             sequence_time: 0.,
             should_draw: false,
             // stupid
@@ -74,7 +76,7 @@ impl PlayerModel {
         skeletal.world_transformation.0 = self.origin;
         skeletal.world_transformation.1 = cgmath::Quaternion::from_angle_z(Deg(self.yaw));
 
-        skeletal.build_mvp(self.sequence_time)
+        skeletal.build_mvp_with_gait_sequence(self.sequence_time, self.gaitsequence)
     }
 }
 

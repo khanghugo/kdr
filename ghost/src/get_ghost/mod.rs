@@ -94,8 +94,6 @@ pub struct GhostFrameAnim {
     pub frame: Option<f32>,
     pub animtime: Option<f32>,
     pub gaitsequence: Option<i32>,
-    // 0 is the same as no blending so there is no need to do optional type.
-    pub blending: [u8; 2],
 }
 
 #[derive(Debug)]

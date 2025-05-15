@@ -19,9 +19,6 @@ pub fn demo_ghost_parse(filename: &str, demo: &Demo) -> eyre::Result<GhostInfo> 
     let mut anim_frame: Option<f32> = None;
     let mut animtime: Option<f32> = None;
     let mut gaitsequence: Option<i32> = None;
-    // No need to do optional type for this.
-    // Just make sure that blending is persistent across frames.
-    let mut blending = [0u8; 2];
 
     let mut origin = [0f32; 3];
     let mut viewangles = [0f32; 3];
@@ -304,6 +301,39 @@ pub fn demo_ghost_parse(filename: &str, demo: &Demo) -> eyre::Result<GhostInfo> 
                                     );
                                 }
                             }
+                            // animations
+                            EngineMessage::SvcDeltaPacketEntities(delta_packet_entities) => {
+                                let Some(player_delta) = delta_packet_entities.entity_states.get(0)
+                                else {
+                                    return;
+                                };
+
+                                let Some(delta) = player_delta.delta.as_ref() else {
+                                    return;
+                                };
+
+                                if let Some(sequence_bytes) = delta.get("sequence\0") {
+                                    let sequence_bytes: [u8; 4] = from_fn(|i| sequence_bytes[i]);
+                                    sequence = Some(i32::from_le_bytes(sequence_bytes));
+                                }
+
+                                if let Some(anim_frame_bytes) = delta.get("frame\0") {
+                                    let anim_frame_bytes: [u8; 4] =
+                                        from_fn(|i: usize| anim_frame_bytes[i]);
+                                    anim_frame = Some(f32::from_le_bytes(anim_frame_bytes));
+                                }
+
+                                if let Some(animtime_bytes) = delta.get("animtime\0") {
+                                    let animtime_bytes: [u8; 4] = from_fn(|i| animtime_bytes[i]);
+                                    animtime = Some(f32::from_le_bytes(animtime_bytes));
+                                }
+
+                                if let Some(gaitsequence_bytes) = delta.get("gaitsequence\0") {
+                                    let gaitsequence_bytes: [u8; 4] =
+                                        from_fn(|i| gaitsequence_bytes[i]);
+                                    gaitsequence = Some(i32::from_le_bytes(gaitsequence_bytes));
+                                }
+                            }
                             _ => (),
                         },
                     }
@@ -312,13 +342,20 @@ pub fn demo_ghost_parse(filename: &str, demo: &Demo) -> eyre::Result<GhostInfo> 
                 let frame_extra = GhostFrameExtra {
                     sound: sound_vec.to_owned(),
                     entity_text,
-                    anim: Some(GhostFrameAnim {
-                        sequence,
-                        frame: anim_frame,
-                        animtime,
-                        gaitsequence,
-                        blending,
-                    }),
+                    anim: if sequence.is_some()
+                        || anim_frame.is_some()
+                        || animtime.is_some()
+                        || gaitsequence.is_some()
+                    {
+                        Some(GhostFrameAnim {
+                            sequence,
+                            frame: anim_frame,
+                            animtime,
+                            gaitsequence,
+                        })
+                    } else {
+                        None
+                    },
                     say_text,
                     weapon_change,
                     weapon_sequence,
