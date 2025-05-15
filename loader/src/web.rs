@@ -238,10 +238,8 @@ impl ResourceProvider for WebResourceProvider {
         self.request_replay_with_progress(replay_name, dummy_callback)
             .await
     }
-}
 
-impl WebResourceProvider {
-    pub async fn request_common_resource(&self) -> Result<ResourceMap, ResourceProviderError> {
+    async fn request_common_resource(&self) -> Result<ResourceMap, ResourceProviderError> {
         let url = format!("{}/{}", self.base_url, REQUEST_COMMON_RESOURCE_ENDPOINT);
 
         let response = reqwest::get(url)

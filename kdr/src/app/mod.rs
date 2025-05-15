@@ -661,45 +661,45 @@ impl ApplicationHandler<AppEvent> for App {
                 let device = render_context.device().clone();
                 let queue = render_context.queue().clone();
 
-                // append some common resources to bsp resource so that everything can be processed
-                // viewmodels
-                self.state
-                    .other_resources
-                    .common_resource
-                    .iter()
-                    .filter(|(file_name, _)| {
-                        let path = Path::new(file_name);
-                        let file_name = path.file_name().unwrap().to_str().unwrap();
+                // // append some common resources to bsp resource so that everything can be processed
+                // // viewmodels
+                // self.state
+                //     .other_resources
+                //     .common_resource
+                //     .iter()
+                //     .filter(|(file_name, _)| {
+                //         let path = Path::new(file_name);
+                //         let file_name = path.file_name().unwrap().to_str().unwrap();
 
-                        if file_name.starts_with("v_") && file_name.ends_with(".mdl") {
-                            true
-                        } else {
-                            false
-                        }
-                    })
-                    .for_each(|(file_name, file_bytes)| {
-                        resource
-                            .resources
-                            .insert(file_name.to_string(), file_bytes.to_owned());
-                    });
+                //         if file_name.starts_with("v_") && file_name.ends_with(".mdl") {
+                //             true
+                //         } else {
+                //             false
+                //         }
+                //     })
+                //     .for_each(|(file_name, file_bytes)| {
+                //         resource
+                //             .resources
+                //             .insert(file_name.to_string(), file_bytes.to_owned());
+                //     });
 
-                // player models
-                self.state
-                    .other_resources
-                    .common_resource
-                    .iter()
-                    .filter(|(file_name, _)| {
-                        if file_name.ends_with(".mdl") && file_name.starts_with("models/player") {
-                            true
-                        } else {
-                            false
-                        }
-                    })
-                    .for_each(|(file_name, file_bytes)| {
-                        resource
-                            .resources
-                            .insert(file_name.to_string(), file_bytes.to_owned());
-                    });
+                // // player models
+                // self.state
+                //     .other_resources
+                //     .common_resource
+                //     .iter()
+                //     .filter(|(file_name, _)| {
+                //         if file_name.ends_with(".mdl") && file_name.starts_with("models/player") {
+                //             true
+                //         } else {
+                //             false
+                //         }
+                //     })
+                //     .for_each(|(file_name, file_bytes)| {
+                //         resource
+                //             .resources
+                //             .insert(file_name.to_string(), file_bytes.to_owned());
+                //     });
 
                 // TODO: load resources correctly
                 // map assets can be loaded in another thread then we can send an event
@@ -1014,39 +1014,36 @@ impl ApplicationHandler<AppEvent> for App {
                 info!("Requesting common resource");
 
                 #[cfg(target_arch = "wasm32")]
-                {
-                    let Some(resource_provider) = &self.web_resource_provider else {
-                        warn!("Attempting to request common resource without provider");
-                        self.event_loop_proxy
-                            .send_event(AppEvent::ErrorEvent(AppError::NoProvider))
-                            .unwrap_or_else(|_| warn!("Cannot send ErrorEvent"));
+                let Some(resource_provider) = &self.web_resource_provider else {
+                    return;
+                };
 
-                        return;
-                    };
+                #[cfg(not(target_arch = "wasm32"))]
+                let Some(resource_provider) = &self.native_resource_provider else {
+                    return;
+                };
 
-                    let resource_provider = resource_provider.clone();
-                    let event_loop_proxy = self.event_loop_proxy.clone();
+                let resource_provider = resource_provider.to_owned();
+                let event_loop_proxy = self.event_loop_proxy.clone();
 
-                    wasm_bindgen_futures::spawn_local(async move {
-                        // can clone this however much we want
+                spawn_async(async move {
+                    let common_resource_future = resource_provider.request_common_resource();
 
-                        let common_resource_future = resource_provider.request_common_resource();
-                        match common_resource_future.await {
-                            Ok(common_res) => event_loop_proxy
-                                .send_event(AppEvent::ReceiveCommonResource(common_res))
-                                .unwrap_or_else(|_| warn!("Cannot send ReceivedCommonResource")),
-                            Err(err) => {
-                                warn!("Failed to get common resource");
+                    match common_resource_future.await {
+                        Ok(common_res) => event_loop_proxy
+                            .send_event(AppEvent::ReceiveCommonResource(common_res))
+                            .unwrap_or_else(|_| warn!("Cannot send ReceivedCommonResource")),
+                        Err(err) => {
+                            warn!("Failed to get common resource");
 
-                                event_loop_proxy
-                                    .send_event(AppEvent::ErrorEvent(AppError::ProviderError {
-                                        source: err,
-                                    }))
-                                    .unwrap_or_else(|_| warn!("Failed to send ErrorEvent"))
-                            }
+                            event_loop_proxy
+                                .send_event(AppEvent::ErrorEvent(AppError::ProviderError {
+                                    source: err,
+                                }))
+                                .unwrap_or_else(|_| warn!("Failed to send ErrorEvent"))
                         }
-                    });
-                }
+                    }
+                });
             }
             // this event isnt very necessary but whatever
             AppEvent::ReceiveCommonResource(common_resource) => {

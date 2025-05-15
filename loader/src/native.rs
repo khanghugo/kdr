@@ -132,12 +132,6 @@ impl ResourceProvider for NativeResourceProvider {
             &identifier.game_mod,
         );
 
-        get_other_sound(&mut resource_map, &self.game_dir, &identifier.game_mod);
-
-        get_viewmodel(&mut resource_map, &self.game_dir, &identifier.game_mod);
-
-        get_player_models(&mut resource_map, &self.game_dir, &identifier.game_mod);
-
         Ok(super::Resource {
             bsp,
             resources: resource_map,
@@ -199,6 +193,16 @@ impl ResourceProvider for NativeResourceProvider {
 
         get_ghost_blob_from_path(&replay_path, None)
             .map_err(|op| ResourceProviderError::Ghost { source: op })
+    }
+
+    async fn request_common_resource(&self) -> Result<ResourceMap, ResourceProviderError> {
+        let mut resource_map = ResourceMap::new();
+
+        get_other_sound(&mut resource_map, &self.game_dir, "unknown");
+        get_viewmodel(&mut resource_map, &self.game_dir, "unknown");
+        get_player_models(&mut resource_map, &self.game_dir, "unknown");
+
+        Ok(resource_map)
     }
 }
 

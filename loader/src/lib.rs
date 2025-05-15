@@ -131,6 +131,7 @@ pub trait ResourceProvider {
 
     /// Gets map list from the game directory
     async fn request_map_list(&self) -> Result<MapList, ResourceProviderError>;
+
     /// Gets replay list
     ///
     /// On native, replay list is retrieved from game directory and strictly concerned about demo .dem format.
@@ -139,6 +140,13 @@ pub trait ResourceProvider {
     /// On web, replay list is retrieved from an API from the server.
     /// The server implementation is to scan specified folders for ghosts.
     async fn request_replay_list(&self) -> Result<ReplayList, ResourceProviderError>;
+
+    /// Gets resources not related to the map.
+    ///
+    /// This includes player models, weapon sounds, view models, blah blah blah.
+    ///
+    /// The resources are re-used for every map and replay.
+    async fn request_common_resource(&self) -> Result<ResourceMap, ResourceProviderError>;
 }
 
 /// A different trait that most likely only the web will use. Whatever
