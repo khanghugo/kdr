@@ -1,3 +1,5 @@
+use cgmath::Deg;
+
 use crate::app::state::AppState;
 
 impl AppState {
@@ -30,6 +32,17 @@ impl AppState {
 
                             if ui.selectable_label(false, player_name).clicked() {
                                 puppet.selected_player = player_name.to_string();
+
+                                // update the camera to point there
+                                self.render_state.camera.pos =
+                                    current_frame.frame[row].vieworg.into();
+                                self.render_state
+                                    .camera
+                                    .set_pitch(Deg(current_frame.frame[row].viewangles[0]));
+                                self.render_state
+                                    .camera
+                                    .set_yaw(Deg(current_frame.frame[row].viewangles[1]));
+                                self.render_state.camera.rebuild_orientation();
                             }
                         }
                     },
