@@ -14,6 +14,7 @@ pub struct ViewModelState {
     pub bob: f32,
     pub bob_time: f32,
     pub active_viewmodel: String,
+    pub current_sequence: usize,
     pub time: f32,
 }
 
@@ -28,6 +29,7 @@ impl Default for ViewModelState {
             bob_time: 0.,
             active_viewmodel: "usp".to_string(),
             time: 0.,
+            current_sequence: 0,
         }
     }
 }
@@ -69,9 +71,13 @@ impl AppState {
         let view_origin = self.render_state.camera.pos.to_vec() - cgmath::Vector3::unit_z();
 
         skeletal.world_transformation = (view_origin, self.render_state.camera.orientation);
+        skeletal.current_sequence_index = entity_state.viewmodel_state.current_sequence;
 
         let mvps = skeletal.build_mvp(entity_state.viewmodel_state.time);
 
         viewmodel_buffer.mvp_buffer.update_mvp_buffer_many(mvps, 0);
+
+        // update sequence time
+        entity_state.viewmodel_state.time += self.frame_time;
     }
 }

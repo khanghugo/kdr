@@ -132,53 +132,22 @@ impl AppState {
                                 }
                             });
 
-                            // if let Some(entity_state) = self.entity_state.as_mut() {
-                            //     if let Some(weapon_change) = &extra.weapon_change {
-                            //         entity_state.viewmodel_state.active_viewmodel =
-                            //             weapon_change.to_string();
+                            if let Some(entity_state) = self.entity_state.as_mut() {
+                                if let Some(weapon_change) = &extra.weapon_change {
+                                    entity_state.viewmodel_state.active_viewmodel =
+                                        weapon_change.to_string();
 
-                            //         // set that one model active and others inactive
-                            //         entity_state
-                            //             .entity_dictionary
-                            //             .iter_mut()
-                            //             .for_each(|entity| match &mut entity.1.model {
-                            //                 EntityModel::ViewModel {
-                            //                     model_name, active, ..
-                            //                 } => {
-                            //                     if model_name.contains(
-                            //                         &entity_state.viewmodel_state.active_viewmodel,
-                            //                     ) {
-                            //                         *active = true;
-                            //                     } else {
-                            //                         *active = false;
-                            //                     }
-                            //                 }
-                            //                 _ => {}
-                            //             });
-                            //     }
+                                    entity_state.viewmodel_state.current_sequence = 0;
+                                    entity_state.viewmodel_state.time = 0.;
+                                }
 
-                            //     if let Some(weapon_sequence) = &extra.weapon_sequence {
-                            //         // reset time for new sequence
-                            //         entity_state.viewmodel_state.time = 0.;
-                            //         entity_state
-                            //             .entity_dictionary
-                            //             .iter_mut()
-                            //             .find(|entity| match &entity.1.model {
-                            //                 EntityModel::ViewModel { model_name, .. } => model_name
-                            //                     .contains(
-                            //                         &entity_state.viewmodel_state.active_viewmodel,
-                            //                     ),
-                            //                 _ => false,
-                            //             })
-                            //             .map(|entity| {
-                            //                 entity
-                            //                     .1
-                            //                     .transformation
-                            //                     .get_skeletal_mut()
-                            //                     .current_sequence_index = *weapon_sequence as usize;
-                            //             });
-                            //     }
-                            // }
+                                if let Some(weapon_sequence) = &extra.weapon_sequence {
+                                    // reset time for new sequence
+                                    entity_state.viewmodel_state.time = 0.;
+                                    entity_state.viewmodel_state.current_sequence =
+                                        *weapon_sequence as usize;
+                                }
+                            }
                         }
                     });
 

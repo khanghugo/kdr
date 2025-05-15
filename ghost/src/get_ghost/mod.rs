@@ -71,6 +71,9 @@ pub struct GhostFrameExtra {
     pub entity_text: Vec<GhostFrameEntityText>,
     pub anim: Option<GhostFrameAnim>,
     pub say_text: Vec<GhostFrameSayText>,
+    /// The string is the simplified name of it, eg "v_usp" or "weapon_usp" is all reduced to "usp".
+    ///
+    /// With that, it is easier to check for weapon.
     pub weapon_change: Option<String>,
     pub weapon_sequence: Option<i32>,
 }
