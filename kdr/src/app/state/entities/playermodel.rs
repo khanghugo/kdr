@@ -7,8 +7,8 @@ use mdl::Mdl;
 use tracing::warn;
 
 use crate::{
-    app::{App, state::AppState},
-    renderer::world_buffer::WorldLoader,
+    app::{App, constants::MAX_MVP, state::AppState},
+    renderer::{mvp_buffer::MvpBuffer, world_buffer::WorldLoader},
 };
 
 pub struct PlayerModel {
@@ -21,14 +21,17 @@ pub struct PlayerModel {
 
     // player might be available but just don't draw them
     pub should_draw: bool,
+
+    // kind of instance data without instance drawing
+    pub mvp_buffer: MvpBuffer,
 }
 
 pub struct PlayerModelState {
     pub players: Vec<PlayerModel>,
 }
 
-impl Default for PlayerModel {
-    fn default() -> Self {
+impl PlayerModel {
+    pub fn new(device: &wgpu::Device, queue: &wgpu::Queue) -> Self {
         Self {
             model_name: "leet".into(),
             player_name: "arte".into(),
@@ -37,15 +40,28 @@ impl Default for PlayerModel {
             sequence: 0,
             sequence_time: 0.,
             should_draw: false,
+            // stupid
+            // TODO not stupid
+            mvp_buffer: MvpBuffer::create_mvp(
+                device,
+                queue,
+                vec![cgmath::Matrix4::zero(); MAX_MVP],
+            ),
         }
     }
 }
 
-impl Default for PlayerModelState {
-    fn default() -> Self {
+impl PlayerModelState {
+    pub fn new(device: &wgpu::Device, queue: &wgpu::Queue) -> Self {
         Self {
-            players: vec![PlayerModel::default()],
+            players: vec![PlayerModel::new(device, queue)],
         }
+    }
+
+    pub fn toggle_off_draw(&mut self) {
+        self.players
+            .iter_mut()
+            .for_each(|player| player.should_draw = false);
     }
 }
 

@@ -777,11 +777,18 @@ impl ApplicationHandler<AppEvent> for App {
                 // stop spinner
                 self.state.file_state.stop_spinner();
 
+                let Some(render_context) = self.render_context.as_ref() else {
+                    return;
+                };
+
                 // entity dictionary
                 self.state.entity_state = Some(EntityState {
                     entity_dictionary: bsp_resource.entity_dictionary,
                     viewmodel_state: ViewModelState::default(),
-                    playermodel_state: PlayerModelState::default(),
+                    playermodel_state: PlayerModelState::new(
+                        render_context.device(),
+                        render_context.queue(),
+                    ),
                 });
             }
             AppEvent::NewFileSelected => {

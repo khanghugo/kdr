@@ -97,41 +97,4 @@ impl MvpBuffer {
         self.queue
             .write_buffer(&self.buffer, offset, bytemuck::cast_slice(&mvps_cast));
     }
-
-    // pub fn update_entity_mvp_buffer(&self, entity_info: &WorldEntity, time: f32) {
-    //     match entity_info.build_mvp(time) {
-    //         BuildMvpResult::Entity(matrix4) => {
-    //             let offset = entity_info.world_index * 4 * 4 * 4;
-
-    //             let mvp_cast: &[f32; 16] = matrix4.as_ref();
-    //             let mvp_bytes: &[u8] = bytemuck::cast_slice(mvp_cast);
-    //             self.queue
-    //                 .write_buffer(&self.buffer, offset as u64, mvp_bytes);
-    //         }
-    //         BuildMvpResult::Skeletal(matrix4s) => {
-    //             let entity_skeletal_start = self.skeletal_lookup.get(&entity_info.world_index);
-
-    //             matrix4s.iter().enumerate().for_each(|(idx, mat)| {
-    //                 let mvp_cast: &[f32; 16] = mat.as_ref();
-    //                 let mvp_bytes: &[u8] = bytemuck::cast_slice(mvp_cast);
-
-    //                 if idx == 0 {
-    //                     let offset = entity_info.world_index * 4 * 4 * 4;
-    //                     self.queue
-    //                         .write_buffer(&self.buffer, offset as u64, mvp_bytes);
-    //                 } else {
-    //                     let Some(entity_skeletal_start) = entity_skeletal_start else {
-    //                         return;
-    //                     };
-
-    //                     let mvp_idx = entity_skeletal_start + idx - 1;
-    //                     let offset = mvp_idx * 4 * 4 * 4;
-
-    //                     self.queue
-    //                         .write_buffer(&self.skeletal_buffer, offset as u64, mvp_bytes);
-    //                 }
-    //             });
-    //         }
-    //     };
-    // }
 }

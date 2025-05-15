@@ -290,14 +290,15 @@ impl AppState {
                                         // becuse we don't have instanced drawing, so this is done like that
                                         // haha
                                         // TODO dont do this
-                                        dynamic_buffer.mvp_buffer.update_mvp_buffer_many(
+                                        player.mvp_buffer.update_mvp_buffer_many(
                                             player.build_mvp(&mut dynamic_buffer.transformations),
                                             0,
                                         );
 
+                                        // use the player instance mvp buffer
                                         opaque_pass.set_bind_group(
                                             1,
-                                            &dynamic_buffer.mvp_buffer.bind_group,
+                                            &player.mvp_buffer.bind_group,
                                             &[],
                                         );
 

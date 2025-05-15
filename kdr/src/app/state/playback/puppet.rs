@@ -245,10 +245,7 @@ impl AppState {
             .unwrap_or(9999);
 
         // change this every tick, i guess that's fine
-        entity_state
-            .playermodel_state
-            .players
-            .resize_with(viewinfos.len(), PlayerModel::default);
+        entity_state.playermodel_state.toggle_off_draw();
 
         viewinfos
             .into_iter()
