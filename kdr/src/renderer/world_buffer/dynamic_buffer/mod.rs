@@ -30,11 +30,6 @@ pub struct WorldDynamicBuffer {
     pub transformations: WorldTransformationSkeletal,
 }
 
-pub enum WorldDynamicBufferMdlType {
-    PlayerModel,
-    ViewModel,
-}
-
 type TextureTableLookup = HashMap<usize, (usize, usize)>;
 
 // TODO somehow loads sprite
@@ -45,7 +40,6 @@ impl WorldLoader {
         queue: &wgpu::Queue,
         name: &str,
         mdl: &Mdl,
-        mdl_type: WorldDynamicBufferMdlType,
         submodel_index: usize,
     ) -> WorldDynamicBuffer {
         let mdl_textures = get_mdl_textures(mdl);
@@ -54,11 +48,6 @@ impl WorldLoader {
             Self::load_dynamic_world_textures(device, queue, mdl_textures);
 
         let mut batch_lookup = BatchLookup::new();
-
-        let vertex_type_data = match mdl_type {
-            WorldDynamicBufferMdlType::PlayerModel => 2,
-            WorldDynamicBufferMdlType::ViewModel => 3,
-        };
 
         // TODO some mdl transparency stuffs
         mdl.bodyparts.iter().for_each(|bodypart| {
@@ -102,7 +91,7 @@ impl WorldLoader {
                                 // actual model index is different
                                 // because 0 is worldspawn
                                 model_idx: 0 as u32,
-                                type_: vertex_type_data,
+                                type_: 1,
                                 data_a: [0f32; 3],
                                 data_b: [texture_flags.bits() as u32, bone_index as u32],
                             }

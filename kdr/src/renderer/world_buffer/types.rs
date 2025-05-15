@@ -29,17 +29,13 @@ pub struct WorldVertex {
     pub layer: u32,
     pub model_idx: u32,
     // type of the vertex, bsp vertex or mdl vertex
-    // 0: bsp, 1: mdl, 2: player model aka p mdl, 3: viewmodel aka v mdl
+    // 0: bsp, 1: mdl, 2: player model aka p mdl
     pub type_: u32,
     // for bsp: [lightmap_u, lightmap_v, renderamt]
     // for mdl: unused
-    // for p mdl: unused
     pub data_a: [f32; 3],
     // for bsp: [rendermode, is_sky]
     // for mdl: [textureflag, bone index]
-    //      if bone index is 0, use mvp, starting from 1, calculate the actual bone index, somehow
-    // for p mdl: [textureflag, bone index]
-    //      This bone index will index from the player mvp ubo instead of the typical mvp ubo
     pub data_b: [u32; 2],
 }
 

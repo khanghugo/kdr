@@ -56,7 +56,7 @@ use crate::{
         camera::Camera,
         egui_renderer::EguiRenderer,
         skybox::{SkyboxBuffer, SkyboxLoader},
-        world_buffer::{WorldDynamicBufferMdlType, WorldLoader, WorldStaticBuffer},
+        world_buffer::{WorldLoader, WorldStaticBuffer},
     },
     utils::spawn_async,
 };
@@ -1100,7 +1100,6 @@ impl ApplicationHandler<AppEvent> for App {
                         render_context.queue(),
                         actual_file_name,
                         &mdl,
-                        WorldDynamicBufferMdlType::ViewModel,
                         0,
                     );
 

@@ -281,7 +281,7 @@ fn calculate_base_color(
         }
 
         return vec4(final_color, alpha);
-    } else if type_ == 1 || type_ == 2 {
+    } else if type_ == 1 {
         // this is mdl vertex
 
         let alpha = albedo.a;
