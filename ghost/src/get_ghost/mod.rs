@@ -82,6 +82,7 @@ pub struct GhostFrameExtra {
 pub struct GhostFrame {
     pub origin: Vec3,
     pub viewangles: Vec3,
+    pub viewoffset_z: f32,
     pub frametime: Option<f32>,
     pub buttons: Option<u32>,
     pub fov: Option<f32>,
@@ -186,6 +187,7 @@ impl GhostInfo {
             GhostFrame {
                 origin: new_origin,
                 viewangles: new_viewangles,
+                viewoffset_z: from_frame.viewoffset_z.lerp(to_frame.viewoffset_z, target),
                 frametime: from_frame.frametime,
                 buttons: from_frame.buttons,
                 fov: new_fov,

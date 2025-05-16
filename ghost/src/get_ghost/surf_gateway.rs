@@ -39,6 +39,7 @@ pub fn surf_gateway_ghost_parse(filename: &str, file: &str) -> eyre::Result<Ghos
                 frametime: None,
                 origin: Vec3::from_array(ghost.origin),
                 viewangles: Vec3::from_array(ghost.viewangles),
+                viewoffset_z: 0.,
                 buttons: ghost.buttons.into(),
                 fov: None,
                 extras: None,

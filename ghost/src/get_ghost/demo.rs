@@ -23,6 +23,7 @@ pub fn demo_ghost_parse(filename: &str, demo: &Demo) -> eyre::Result<GhostInfo> 
 
     let mut origin = [0f32; 3];
     let mut viewangles = [0f32; 3];
+    let mut viewoffset_z = 0.;
 
     let mut fov: Option<f32> = None;
 
@@ -155,8 +156,8 @@ pub fn demo_ghost_parse(filename: &str, demo: &Demo) -> eyre::Result<GhostInfo> 
 
                 let sim_org = &netmessage.info.refparams.sim_org;
                 let view_height = &netmessage.info.refparams.view_height;
-                // origin = [sim_org[0] + vie, sim_org[1], sim_org[2]];
-                origin = from_fn(|i| sim_org[i] + view_height[i]);
+                origin = from_fn(|i| sim_org[i]);
+                viewoffset_z = view_height[2];
 
                 let mut entity_text = vec![];
                 let mut say_text = vec![];
@@ -372,6 +373,7 @@ pub fn demo_ghost_parse(filename: &str, demo: &Demo) -> eyre::Result<GhostInfo> 
                 Some(GhostFrame {
                     origin: Vec3::from_array(origin),
                     viewangles: Vec3::from_array(viewangles),
+                    viewoffset_z,
                     frametime: Some(frame.time), /* time here is accummulative, will fix
                                                   * after */
                     buttons: None,

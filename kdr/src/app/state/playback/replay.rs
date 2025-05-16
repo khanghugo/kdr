@@ -185,9 +185,11 @@ impl AppState {
                         .set_pitch(-Deg(frame.viewangles[0]));
                     self.render_state.camera.set_yaw(Deg(frame.viewangles[1]));
 
-                    self.render_state
-                        .camera
-                        .set_position(frame.origin.to_array());
+                    // TODO add our my viewoffset calculation
+                    let mut vieworigin = frame.origin;
+                    vieworigin.z += frame.viewoffset_z;
+
+                    self.render_state.camera.set_position(vieworigin.to_array());
 
                     // important
                     self.render_state.camera.rebuild_orientation();

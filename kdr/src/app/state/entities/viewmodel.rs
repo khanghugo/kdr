@@ -96,7 +96,7 @@ impl AppState {
         viewmodel_buffer.mvp_buffer.update_mvp_buffer_many(mvps, 0);
 
         // update sequence time
-        entity_state.viewmodel_state.time += self.frame_time;
+        entity_state.viewmodel_state.time += self.frame_time * self.playback_speed;
     }
 }
 

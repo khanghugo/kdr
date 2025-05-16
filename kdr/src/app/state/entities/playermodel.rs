@@ -90,11 +90,12 @@ impl AppState {
 
         // just update time here, nothing else
         // the rest is done inside the render function, LOL, fucking stupid
+        let added_time = self.frame_time * self.playback_speed;
         entity_state
             .playermodel_state
             .players
             .iter_mut()
-            .for_each(|player| player.sequence_time += self.frame_time);
+            .for_each(|player| player.sequence_time += added_time);
     }
 }
 

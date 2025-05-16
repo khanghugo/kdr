@@ -74,6 +74,7 @@ pub fn srhlkz_ghost_parse(file_name: &str, file: &[u8]) -> eyre::Result<GhostInf
                 let res = GhostFrame {
                     origin: frame.origin.into(),
                     viewangles: frame.angles.into(),
+                    viewoffset_z: 0.,
                     frametime: (frame.time - prev_time).into(),
                     buttons: (frame.buttons as u32).into(),
                     fov: None,
