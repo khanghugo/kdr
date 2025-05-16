@@ -48,7 +48,7 @@ impl WorldTransformationSkeletal {
             &self.model_transformation_infos,
             self.world_transformation,
             self.current_sequence_index,
-            [0, 0],
+            blending,
             time,
         );
 
@@ -65,7 +65,7 @@ impl WorldTransformationSkeletal {
             time,
         );
 
-        let gait_bones: HashSet<usize> = (40..55).into_iter().chain(0..=1).collect();
+        let gait_bones: HashSet<usize> = (40..54).into_iter().chain([1]).collect();
 
         let bone_count = sequence.len();
 
@@ -289,7 +289,6 @@ fn get_sequence_transformations(
     time: f32,
 ) -> Vec<cgmath::Matrix4<f32>> {
     let blends = &model_transformations[sequence_idx];
-    let [blend_x, blend_y] = blending_factor;
     let current_info = &model_transformation_infos[sequence_idx];
 
     let blend_count = blends.len();
@@ -317,6 +316,8 @@ fn get_sequence_transformations(
             lerp_target,
         )
     };
+
+    let [blend_x, blend_y] = blending_factor;
 
     if blend_count == 9 {
         let mut blend_res = vec![];
