@@ -19,6 +19,7 @@ pub struct PlayerModel {
     pub sequence: usize,
     pub gaitsequence: usize,
     pub sequence_time: f32,
+    pub blending: [u8; 2],
 
     // player might be available but just don't draw them
     pub should_draw: bool,
@@ -41,6 +42,7 @@ impl PlayerModel {
             sequence: 0,
             gaitsequence: 0,
             sequence_time: 0.,
+            blending: [0u8; 2],
             should_draw: false,
             // stupid
             // TODO not stupid
@@ -76,7 +78,7 @@ impl PlayerModel {
         skeletal.world_transformation.0 = self.origin;
         skeletal.world_transformation.1 = cgmath::Quaternion::from_angle_z(Deg(self.yaw));
 
-        skeletal.build_mvp_with_gait_sequence(self.sequence_time, self.gaitsequence)
+        skeletal.build_playermodel_mvp(self.sequence_time, self.gaitsequence, self.blending)
     }
 }
 

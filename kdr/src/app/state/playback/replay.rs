@@ -159,6 +159,9 @@ impl AppState {
                                         entity_state.playermodel_state.players[0].gaitsequence =
                                             gaitsequence as usize;
                                     }
+
+                                    entity_state.playermodel_state.players[0].blending =
+                                        anim.blending;
                                 }
                             }
                         }

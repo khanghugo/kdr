@@ -37,119 +37,51 @@ pub struct WorldTransformationSkeletal {
 }
 
 impl WorldTransformationSkeletal {
-    pub fn build_mvp_with_gait_sequence(
+    pub fn build_playermodel_mvp(
         &self,
         time: f32,
         gaitsequence: usize,
+        blending: [u8; 2],
     ) -> Vec<cgmath::Matrix4<f32>> {
-        // TODO: reset the sequence on timeline scrub
-        let current_sequence_index =
-            (self.current_sequence_index).min(self.model_transformations.len() - 1);
-
-        let current_sequence = &self.model_transformations[current_sequence_index];
-        let current_sequence_info = &self.model_transformation_infos[current_sequence_index];
-
-        let current_gait = &self.model_transformations[gaitsequence];
-        let current_gait_info = &self.model_transformation_infos[gaitsequence];
-
-        // TODO blending
-        let current_anim_blend = &current_sequence[0];
-        let current_gait_blend = &current_gait[0];
-
-        let anim_frame_count = current_anim_blend.len();
-        let gait_frame_count = current_gait_blend.len();
-
-        let anim_total_time = anim_frame_count as f32 / current_sequence_info.frame_per_second;
-        let gait_total_time = gait_frame_count as f32 / current_gait_info.frame_per_second;
-
-        let anim_time = if current_sequence_info.looping {
-            time % anim_total_time
-        } else {
-            time
-        };
-        let gait_time = if true { time % gait_total_time } else { time };
-
-        let anim_frame_from_idx = ((anim_time * current_sequence_info.frame_per_second as f32)
-            .floor() as usize)
-            .min(anim_frame_count - 1);
-        let gait_frame_from_idx = ((gait_time * current_gait_info.frame_per_second as f32).floor()
-            as usize)
-            .min(gait_frame_count - 1);
-
-        // usually, the first condition will never hit, but whatever
-        // gaits usually have more frames than our normal sequence
-        let anim_from_frame = &current_anim_blend[anim_frame_from_idx];
-        let anim_to_frame =
-            &current_anim_blend[(anim_frame_from_idx + 1).min(anim_frame_count - 1)];
-
-        let gait_from_frame = &current_gait_blend[gait_frame_from_idx];
-        let gait_to_frame =
-            &current_gait_blend[(gait_frame_from_idx + 1).min(gait_frame_count - 1)];
-
-        let anim_target = (anim_time * current_sequence_info.frame_per_second).fract();
-        let gait_target = (gait_time * current_gait_info.frame_per_second).fract();
+        let sequence = get_sequence_transformations(
+            &self.model_transformations,
+            &self.model_transformation_infos,
+            self.world_transformation,
+            self.current_sequence_index,
+            [0, 0],
+            time,
+        );
 
         if gaitsequence == 0 {
-            anim_from_frame
-                .iter()
-                .zip(anim_to_frame.iter())
-                .map(|((from_pos, from_rot), (to_pos, to_rot))| {
-                    let lerped_posrot = (
-                        from_pos.lerp(*to_pos, anim_target),
-                        from_rot.nlerp(*to_rot, anim_target),
-                    );
-
-                    let (pos, rot) = model_to_world_transformation(
-                        lerped_posrot,
-                        self.world_transformation.0,
-                        self.world_transformation.1,
-                    );
-
-                    build_mvp_from_pos_and_rot(pos, rot)
-                })
-                .collect()
-        } else {
-            let gait_bones: HashSet<usize> = (40..56).into_iter().chain(0..=1).collect();
-
-            (0..anim_from_frame.len())
-                .map(|bone_idx| {
-                    if gait_bones.contains(&bone_idx) {
-                        let ((from_pos, from_rot), (to_pos, to_rot)) =
-                            (&gait_from_frame[bone_idx], &gait_to_frame[bone_idx]);
-
-                        let lerped_posrot = (
-                            from_pos.lerp(*to_pos, gait_target),
-                            from_rot.nlerp(*to_rot, gait_target),
-                        );
-
-                        model_to_world_transformation(
-                            lerped_posrot,
-                            self.world_transformation.0,
-                            self.world_transformation.1,
-                        )
-                    } else {
-                        let ((from_pos, from_rot), (to_pos, to_rot)) =
-                            (&anim_from_frame[bone_idx], &anim_to_frame[bone_idx]);
-
-                        let lerped_posrot = (
-                            from_pos.lerp(*to_pos, anim_target),
-                            from_rot.nlerp(*to_rot, anim_target),
-                        );
-
-                        model_to_world_transformation(
-                            lerped_posrot,
-                            self.world_transformation.0,
-                            self.world_transformation.1,
-                        )
-                    }
-                })
-                .map(|(pos, rot)| build_mvp_from_pos_and_rot(pos, rot))
-                .collect()
+            return sequence;
         }
+
+        let gait = get_sequence_transformations(
+            &self.model_transformations,
+            &self.model_transformation_infos,
+            self.world_transformation,
+            gaitsequence,
+            blending,
+            time,
+        );
+
+        let gait_bones: HashSet<usize> = (40..55).into_iter().chain(0..=1).collect();
+
+        let bone_count = sequence.len();
+
+        (0..bone_count)
+            .map(|bone_idx| {
+                if gait_bones.contains(&bone_idx) {
+                    gait[bone_idx]
+                } else {
+                    sequence[bone_idx]
+                }
+            })
+            .collect()
     }
 
     pub fn build_mvp(&self, time: f32) -> Vec<cgmath::Matrix4<f32>> {
-        self.build_mvp_with_gait_sequence(time, 0)
+        self.build_playermodel_mvp(time, 0, [0u8; 2])
     }
 }
 
@@ -345,4 +277,150 @@ pub fn model_to_world_transformation(
 
 pub fn origin_posrot() -> PosRot {
     (cgmath::Vector3::zero(), cgmath::Quaternion::one())
+}
+
+// https://github.com/SamVanheer/HalfLifeAssetManager/blob/4df74a58a50438b8f4b974e04ab9f24fdfcbb811/src/hlam/formats/studiomodel/BoneTransformer.cpp#L15
+fn get_sequence_transformations(
+    model_transformations: &MdlPosRot,
+    model_transformation_infos: &Vec<ModelTransformationInfo>,
+    world_transformation: PosRot,
+    sequence_idx: usize,
+    blending_factor: [u8; 2],
+    time: f32,
+) -> Vec<cgmath::Matrix4<f32>> {
+    let blends = &model_transformations[sequence_idx];
+    let [blend_x, blend_y] = blending_factor;
+    let current_info = &model_transformation_infos[sequence_idx];
+
+    let blend_count = blends.len();
+
+    let ((from_frame_idx, to_frame_idx), lerp_target) = get_lerp_target(
+        time,
+        blends[0].len(), // all blends have the same frame count
+        current_info.looping,
+        current_info.frame_per_second,
+    );
+
+    let lerp_frame = |i: usize| {
+        get_lerp_frame(
+            &blends[i][from_frame_idx],
+            &blends[i][to_frame_idx],
+            lerp_target,
+        )
+    };
+
+    let lerp_frame_world_mvp = |i: usize| {
+        get_lerp_frame_world_mvp(
+            &blends[i][from_frame_idx],
+            &blends[i][to_frame_idx],
+            world_transformation,
+            lerp_target,
+        )
+    };
+
+    if blend_count == 9 {
+        let mut blend_res = vec![];
+        let mut target_x = 0.;
+        let mut target_y = 0.;
+
+        let mut shorter_code = |a, b, c, d| {
+            // closure can't recursive so this functin can jus have the same name and it works just fine
+            let blend0 = lerp_frame(a);
+            let blend1 = lerp_frame(b);
+            let blend2 = lerp_frame(c);
+            let blend3 = lerp_frame(d);
+
+            blend_res = vec![blend0, blend1, blend2, blend3];
+        };
+
+        if blend_x > 127 {
+            target_x = (blend_x - 127) as f32 * 2.;
+
+            if blend_y > 127 {
+                target_y = (blend_y as f32 - 127.) * 2.;
+                shorter_code(4, 5, 7, 8);
+            } else {
+                target_y = blend_y as f32 * 2.;
+                shorter_code(1, 2, 4, 5);
+            }
+        } else {
+            target_x = blend_x as f32 * 2.;
+
+            if blend_y <= 127 {
+                target_y = blend_y as f32 * 2.;
+                shorter_code(0, 1, 3, 4);
+            } else {
+                target_y = (blend_y - 127) as f32 * 2.;
+                shorter_code(3, 4, 6, 7);
+            }
+        }
+
+        target_x /= 255.;
+        target_y /= 255.;
+
+        let lerped1 = get_lerp_frame(&blend_res[0], &blend_res[1], target_x);
+        let lerped2 = get_lerp_frame(&blend_res[2], &blend_res[3], target_x);
+
+        return get_lerp_frame_world_mvp(&lerped1, &lerped2, world_transformation, target_y);
+    } else if blend_count > 0 {
+        // use blend 0 and that's it
+        // TODO, all the blends
+        return lerp_frame_world_mvp(0);
+    } else {
+        unreachable!("model does not have any blends");
+    }
+}
+
+fn get_lerp_target(
+    time: f32,
+    frame_count: usize,
+    looping: bool,
+    fps: f32,
+) -> ((usize, usize), f32) {
+    let total_time = frame_count as f32 / fps;
+    let actual_time = if looping { time % total_time } else { time };
+
+    let from_index = ((actual_time * fps).floor() as usize).min(frame_count - 1);
+    let to_index = (from_index + 1).min(frame_count - 1);
+    let lerp_target = (actual_time * fps).fract();
+
+    ((from_index, to_index), lerp_target)
+}
+
+fn get_lerp_frame(
+    from_frame: &Vec<PosRot>,
+    to_frame: &Vec<PosRot>,
+    lerp_target: f32,
+) -> Vec<PosRot> {
+    from_frame
+        .iter()
+        .zip(to_frame)
+        .map(|((from_pos, from_rot), (to_pos, to_rot))| {
+            (
+                from_pos.lerp(*to_pos, lerp_target),
+                from_rot.nlerp(*to_rot, lerp_target),
+            )
+        })
+        .collect()
+}
+
+fn get_lerp_frame_world_mvp(
+    from_frame: &Vec<PosRot>,
+    to_frame: &Vec<PosRot>,
+    (world_pos, world_rot): PosRot,
+    lerp_target: f32,
+) -> Vec<cgmath::Matrix4<f32>> {
+    from_frame
+        .iter()
+        .zip(to_frame)
+        .map(|((from_pos, from_rot), (to_pos, to_rot))| {
+            let lerped_posrot = (
+                from_pos.lerp(*to_pos, lerp_target),
+                from_rot.nlerp(*to_rot, lerp_target),
+            );
+
+            let (pos, rot) = model_to_world_transformation(lerped_posrot, world_pos, world_rot);
+            build_mvp_from_pos_and_rot(pos, rot)
+        })
+        .collect()
 }

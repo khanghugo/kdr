@@ -94,6 +94,7 @@ pub struct GhostFrameAnim {
     pub frame: Option<f32>,
     pub animtime: Option<f32>,
     pub gaitsequence: Option<i32>,
+    pub blending: [u8; 2],
 }
 
 #[derive(Debug)]

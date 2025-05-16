@@ -19,6 +19,7 @@ pub fn demo_ghost_parse(filename: &str, demo: &Demo) -> eyre::Result<GhostInfo> 
     let mut anim_frame: Option<f32> = None;
     let mut animtime: Option<f32> = None;
     let mut gaitsequence: Option<i32> = None;
+    let mut blending: [u8; 2] = [0u8; 2];
 
     let mut origin = [0f32; 3];
     let mut viewangles = [0f32; 3];
@@ -130,6 +131,7 @@ pub fn demo_ghost_parse(filename: &str, demo: &Demo) -> eyre::Result<GhostInfo> 
                 sequence = None;
                 anim_frame = None;
                 animtime = None;
+                gaitsequence = None;
 
                 None
             }
@@ -333,6 +335,16 @@ pub fn demo_ghost_parse(filename: &str, demo: &Demo) -> eyre::Result<GhostInfo> 
                                         from_fn(|i| gaitsequence_bytes[i]);
                                     gaitsequence = Some(i32::from_le_bytes(gaitsequence_bytes));
                                 }
+
+                                if let Some(blending0) = delta.get("blending[0]\0") {
+                                    // blending is just [u8; 1]
+                                    blending[0] = blending0[0];
+                                }
+
+                                if let Some(blending1) = delta.get("blending[1]\0") {
+                                    // blending is just [u8; 1]
+                                    blending[1] = blending1[0];
+                                }
                             }
                             _ => (),
                         },
@@ -342,20 +354,13 @@ pub fn demo_ghost_parse(filename: &str, demo: &Demo) -> eyre::Result<GhostInfo> 
                 let frame_extra = GhostFrameExtra {
                     sound: sound_vec.to_owned(),
                     entity_text,
-                    anim: if sequence.is_some()
-                        || anim_frame.is_some()
-                        || animtime.is_some()
-                        || gaitsequence.is_some()
-                    {
-                        Some(GhostFrameAnim {
-                            sequence,
-                            frame: anim_frame,
-                            animtime,
-                            gaitsequence,
-                        })
-                    } else {
-                        None
-                    },
+                    anim: Some(GhostFrameAnim {
+                        sequence,
+                        frame: anim_frame,
+                        animtime,
+                        gaitsequence,
+                        blending,
+                    }),
                     say_text,
                     weapon_change,
                     weapon_sequence,
