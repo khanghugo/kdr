@@ -17,9 +17,9 @@ use winit::platform::web::WindowExtWebSys;
 #[allow(unused_imports)]
 use crate::app::constants::{DEFAULT_HEIGHT, DEFAULT_WIDTH, MAX_MVP};
 
-pub mod bsp_lightmap;
+mod bsp_lightmap;
 pub mod camera;
-pub mod egui_renderer;
+mod egui_renderer;
 pub mod finalize;
 pub mod mvp_buffer;
 pub mod oit;
@@ -29,6 +29,8 @@ pub mod skybox;
 pub mod texture_buffer;
 pub mod utils;
 pub mod world_buffer;
+
+pub use egui_renderer::EguiRenderer;
 
 pub struct RenderContext {
     pub device: wgpu::Device,
