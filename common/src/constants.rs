@@ -7,6 +7,7 @@ pub const REQUEST_MAP_LIST_ENDPOINT: &str = "request-map-list";
 pub const REQUEST_REPLAY_LIST: &str = "request-replay-list";
 
 pub const REQUEST_MAP_GAME_MOD_QUERY: &str = "game-mod";
+pub const REQUEST_MAP_URI_QUERY: &str = "resource-uri-id";
 
 pub const KDR_CANVAS_ID: &str = "kdr-canvas";
 

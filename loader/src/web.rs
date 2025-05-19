@@ -35,32 +35,21 @@ impl WebResourceProvider {
     }
 }
 
-impl ProgressResourceProvider for WebResourceProvider {
-    async fn request_map_with_progress(
-        &self,
-        identifier: &crate::MapIdentifier,
+impl WebResourceProvider {
+    pub async fn request_with_progress(
+        url: &str,
+        body: &HashMap<&str, &str>,
         progress_callback: impl Fn(f32) + Send + 'static,
-    ) -> Result<crate::Resource, ResourceProviderError> {
-        let map_name = fix_bsp_file_name(identifier.map_name.as_str());
-
-        let url = format!("{}/{}", self.base_url, REQUEST_MAP_ENDPOINT);
+    ) -> Result<Vec<u8>, ResourceProviderError> {
         let client = reqwest::Client::new();
-
-        let mut map = HashMap::new();
-        map.insert(MAP_NAME_KEY, &map_name);
-        map.insert(GAME_MOD_KEY, &identifier.game_mod);
 
         let response = client
             .post(url)
-            .json(&map)
+            .json(&body)
             .send()
             .await
-            // dont map err for status
-            // we want to read the error body at the very least so the client can display it
-            // .error_for_status()
             .map_err(|op| ResourceProviderError::RequestError { source: op })?;
 
-        // this means the server cannot find the request, so we just exit and return error
         const NOT_FOUND_CODE: u16 = 404;
         let status_code = response.status().as_u16();
 
@@ -86,7 +75,6 @@ impl ProgressResourceProvider for WebResourceProvider {
                     message: "No message".to_string(),
                 })?;
 
-        // progress reporting
         let total_size = response.content_length().unwrap_or(0);
         let mut downloaded = 0u64;
         let mut byte_stream = response.bytes_stream();
@@ -103,8 +91,13 @@ impl ProgressResourceProvider for WebResourceProvider {
             }
         }
 
-        let zip_bytes = all_bytes;
+        Ok(all_bytes)
+    }
 
+    pub fn web_resource_zip_bytes_to_resource(
+        zip_bytes: Vec<u8>,
+        map_name: String,
+    ) -> Result<crate::Resource, ResourceProviderError> {
         let extracted_files = extract_zip_to_hashmap(&zip_bytes)
             .map_err(|op| ResourceProviderError::ZipDecompress { source: op })?;
 
@@ -124,65 +117,49 @@ impl ProgressResourceProvider for WebResourceProvider {
         })
     }
 
+    pub async fn request_map_with_uri_with_progress(
+        identifier: &crate::MapIdentifier,
+        uri: &str,
+        progress_callback: impl Fn(f32) + Send + 'static,
+    ) -> Result<crate::Resource, ResourceProviderError> {
+        let map_name = fix_bsp_file_name(identifier.map_name.as_str());
+        let body = HashMap::new();
+
+        let all_bytes = Self::request_with_progress(uri, &body, progress_callback).await?;
+
+        Self::web_resource_zip_bytes_to_resource(all_bytes, map_name)
+    }
+}
+
+impl ProgressResourceProvider for WebResourceProvider {
+    async fn request_map_with_progress(
+        &self,
+        identifier: &crate::MapIdentifier,
+        progress_callback: impl Fn(f32) + Send + 'static,
+    ) -> Result<crate::Resource, ResourceProviderError> {
+        let map_name = fix_bsp_file_name(identifier.map_name.as_str());
+        let mut body = HashMap::new();
+        let url = format!("{}/{}", self.base_url, REQUEST_MAP_ENDPOINT);
+
+        body.insert(MAP_NAME_KEY, map_name.as_str());
+        body.insert(GAME_MOD_KEY, &identifier.game_mod);
+
+        let all_bytes = Self::request_with_progress(&url, &body, progress_callback).await?;
+
+        Self::web_resource_zip_bytes_to_resource(all_bytes, map_name)
+    }
+
     async fn request_replay_with_progress(
         &self,
         replay_name: &str,
         progress_callback: impl Fn(f32) + Send + 'static,
     ) -> Result<ghost::GhostBlob, ResourceProviderError> {
-        // mimicking request_map_with_progress
         let url = format!("{}/{}", self.base_url, REQUEST_REPLAY_ENDPOINT);
-        let client = reqwest::Client::new();
+        let mut body = HashMap::new();
 
-        let mut map = HashMap::new();
-        map.insert(REPLAY_NAME_KEY, &replay_name);
+        body.insert(REPLAY_NAME_KEY, replay_name);
 
-        let response = client
-            .post(url)
-            .json(&map)
-            .send()
-            .await
-            .map_err(|op| ResourceProviderError::RequestError { source: op })?;
-
-        const NOT_FOUND_CODE: u16 = 404;
-        let status_code = response.status().as_u16();
-
-        if status_code == NOT_FOUND_CODE {
-            if let Ok(body) = response.text().await {
-                return Err(ResourceProviderError::ResponseError {
-                    status_code,
-                    message: body,
-                });
-            }
-
-            return Err(ResourceProviderError::ResponseError {
-                status_code,
-                message: "No message".to_string(),
-            });
-        };
-
-        let response =
-            response
-                .error_for_status()
-                .map_err(|_op| ResourceProviderError::ResponseError {
-                    status_code,
-                    message: "No message".to_string(),
-                })?;
-
-        let total_size = response.content_length().unwrap_or(0);
-        let mut downloaded = 0u64;
-        let mut byte_stream = response.bytes_stream();
-        let mut all_bytes = Vec::new();
-
-        while let Some(chunk) = byte_stream.next().await {
-            let chunk =
-                chunk.map_err(|op| ResourceProviderError::ResponsePayloadError { source: op })?;
-            downloaded += chunk.len() as u64;
-            all_bytes.extend_from_slice(&chunk);
-
-            if total_size > 0 {
-                progress_callback(downloaded as f32 / total_size as f32);
-            }
-        }
+        let all_bytes = Self::request_with_progress(&url, &body, progress_callback).await?;
 
         let ghost_blob: GhostBlob = rmp_serde::from_slice(&all_bytes).unwrap();
 

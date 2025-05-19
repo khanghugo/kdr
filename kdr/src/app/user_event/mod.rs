@@ -37,6 +37,12 @@ impl App {
             AppEvent::RequestMap(map_identifier) => {
                 self.request_map(map_identifier);
             }
+            #[cfg(target_arch = "wasm32")]
+            AppEvent::RequestMapURI(identifier, uri) => {
+                // this will fetch data from the given uri
+                // the uri is basically the download link
+                self.request_map_uri(identifier, uri);
+            }
             AppEvent::UpdateFetchProgress(progress_x) => {
                 match &mut self.state.file_state.loading_state {
                     LoadingState::Fetching { progress, .. } => {
@@ -210,6 +216,7 @@ impl App {
                 self.request_toggle_fullscreen();
             }
             AppEvent::CreatePuppeteerConnection => {
+                #[cfg(target_arch = "wasm32")]
                 self.create_puppeteer_connection();
             }
             AppEvent::ErrorEvent(app_error) => {

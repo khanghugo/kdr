@@ -257,6 +257,10 @@ impl GhostInfo {
                 .unwrap_or(false)
         })
     }
+
+    pub fn has_viewoffset(&self) -> bool {
+        self.frames.iter().all(|frame| frame.viewoffset_z == 0.)
+    }
 }
 
 pub fn file_name_get_stem(file_name: &str) -> Option<String> {

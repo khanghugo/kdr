@@ -74,6 +74,8 @@ pub enum AppEvent {
     FinishCreateRenderContext(RenderContext),
     CreateEgui,
     RequestMap(MapIdentifier),
+    #[cfg(target_arch = "wasm32")]
+    RequestMapURI(MapIdentifier, String),
     ReceiveResource(Resource),
     NewFileSelected,
     RequestReplay(String),
