@@ -140,6 +140,7 @@ impl App {
                 }))
                 .unwrap_or_else(|_| warn!("cannot send AppError::ProviderError")),
         };
+
         let send_update_fetch_progress = move |v: f32| {
             event_loop_proxy2
                 .send_event(AppEvent::UpdateFetchProgress(v))
