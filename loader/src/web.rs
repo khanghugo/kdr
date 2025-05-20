@@ -35,17 +35,32 @@ impl WebResourceProvider {
     }
 }
 
+enum RequestMethod {
+    GET,
+    POST,
+}
+
 impl WebResourceProvider {
-    pub async fn request_with_progress(
+    async fn request_with_progress(
         url: &str,
         body: &HashMap<&str, &str>,
         progress_callback: impl Fn(f32) + Send + 'static,
+        method: RequestMethod,
     ) -> Result<Vec<u8>, ResourceProviderError> {
         let client = reqwest::Client::new();
 
-        let response = client
-            .post(url)
-            .json(&body)
+        let builder = match method {
+            RequestMethod::GET => client.get(url),
+            RequestMethod::POST => client.post(url),
+        };
+
+        let builder = if body.is_empty() {
+            builder
+        } else {
+            builder.json(&body)
+        };
+
+        let response = builder
             .send()
             .await
             .map_err(|op| ResourceProviderError::RequestError { source: op })?;
@@ -125,7 +140,8 @@ impl WebResourceProvider {
         let map_name = fix_bsp_file_name(identifier.map_name.as_str());
         let body = HashMap::new();
 
-        let all_bytes = Self::request_with_progress(uri, &body, progress_callback).await?;
+        let all_bytes =
+            Self::request_with_progress(uri, &body, progress_callback, RequestMethod::GET).await?;
 
         Self::web_resource_zip_bytes_to_resource(all_bytes, map_name)
     }
@@ -144,7 +160,9 @@ impl ProgressResourceProvider for WebResourceProvider {
         body.insert(MAP_NAME_KEY, map_name.as_str());
         body.insert(GAME_MOD_KEY, &identifier.game_mod);
 
-        let all_bytes = Self::request_with_progress(&url, &body, progress_callback).await?;
+        let all_bytes =
+            Self::request_with_progress(&url, &body, progress_callback, RequestMethod::POST)
+                .await?;
 
         Self::web_resource_zip_bytes_to_resource(all_bytes, map_name)
     }
@@ -159,7 +177,9 @@ impl ProgressResourceProvider for WebResourceProvider {
 
         body.insert(REPLAY_NAME_KEY, replay_name);
 
-        let all_bytes = Self::request_with_progress(&url, &body, progress_callback).await?;
+        let all_bytes =
+            Self::request_with_progress(&url, &body, progress_callback, RequestMethod::POST)
+                .await?;
 
         let ghost_blob: GhostBlob = rmp_serde::from_slice(&all_bytes).unwrap();
 

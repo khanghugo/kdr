@@ -197,8 +197,8 @@ impl App {
                 self.receive_replay_list(replay_list);
             }
             #[cfg(target_arch = "wasm32")]
-            AppEvent::ParseLocationSearch => {
-                self.parse_location_search();
+            AppEvent::CheckHostConfiguration => {
+                self.check_host_configuration();
             }
             AppEvent::UnknownFormatModal => {
                 self.state.ui_state.unknown_format_modal.enabled = true;

@@ -15,18 +15,36 @@ use crate::{
 };
 
 impl App {
-    pub(super) fn parse_location_search(&mut self) {
+    // parses search location aka query and then determine if we need to do things or not
+    pub(super) fn check_host_configuration(&mut self) {
         let Some(window) = web_sys::window() else {
             warn!("Parsing location search without window");
             return;
         };
 
         let Ok(search) = window.location().search() else {
+            // this seems like it should never happen
+            // i guess web technology is so advanced that they don't have null value to bridge this
             warn!("Parsing loation search without search");
             return;
         };
 
         let queries = parse_location_search(&search);
+
+        // if no queries, it means this is "normal mode"
+        // if websocket is supplied, we will connect to it
+        if queries.is_empty() {
+            if self.options.websocket_url.is_some() {
+                self.event_loop_proxy
+                    .send_event(AppEvent::CreatePuppeteerConnection)
+                    .unwrap_or_else(|_| warn!("Failed to send CreatePuppeteerConnection"));
+            }
+
+            return;
+        }
+
+        // otherwise, no websocket or anything
+        // TODO: maybe don't fetch map list and such?
 
         // prioritize replay before map
         if let Some(replay) = queries.get(REQUEST_REPLAY_ENDPOINT) {

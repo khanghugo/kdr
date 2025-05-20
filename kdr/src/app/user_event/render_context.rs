@@ -49,8 +49,8 @@ impl App {
         #[cfg(target_arch = "wasm32")]
         {
             self.event_loop_proxy
-                .send_event(AppEvent::ParseLocationSearch)
-                .unwrap_or_else(|_| warn!("Failed to send ParseLocationSearch"));
+                .send_event(AppEvent::CheckHostConfiguration)
+                .unwrap_or_else(|_| warn!("Failed to send CheckHostConfiguration"));
         }
 
         // create egui after render context is done initializing
@@ -102,13 +102,6 @@ impl App {
         self.egui_renderer = egui_renderer.into();
 
         info!("Finished creating egui renderer");
-
-        // after creating egui, then we are allowed to connect to websocket
-        // it is so that we have better feedback
-        #[cfg(target_arch = "wasm32")]
-        self.event_loop_proxy
-            .send_event(AppEvent::CreatePuppeteerConnection)
-            .unwrap_or_else(|_| warn!("Failed to send CreatePuppeteerConnection"));
     }
 
     pub(super) fn finish_create_world(

@@ -96,7 +96,7 @@ pub enum AppEvent {
     FinishCreateWorld(BspResource, WorldStaticBuffer, Option<SkyboxBuffer>),
     UpdateFetchProgress(f32),
     #[cfg(target_arch = "wasm32")]
-    ParseLocationSearch,
+    CheckHostConfiguration,
     UnknownFormatModal,
     RequestResize,
     RequestEnterFullScreen,
