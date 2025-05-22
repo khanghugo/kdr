@@ -92,16 +92,13 @@ impl Resource {
 /// Trait to fetch resources. This is here so that we can have both native and web implementations.
 pub trait ResourceProvider {
     /// Gets map resource from given map identifier.
-    async fn request_map(
-        &self,
-        identifier: &MapIdentifier,
-    ) -> Result<Resource, ResourceProviderError>;
+    async fn get_map(&self, identifier: &MapIdentifier) -> Result<Resource, ResourceProviderError>;
 
     /// Gets replay blob and its type. The client then need to parse the data by itself based on type and data
     ///
     /// `replay_name` is more like "replay path". Web server needs to canonicalize the path and compare prefix
     /// to make sure that the path is not outside given directory.
-    async fn request_replay(&self, replay_name: &str) -> Result<GhostBlob, ResourceProviderError>;
+    async fn get_replay(&self, replay_name: &str) -> Result<GhostBlob, ResourceProviderError>;
 
     /// The client should also be able to parse a replay and get the map name out of it.
     ///
@@ -130,7 +127,7 @@ pub trait ResourceProvider {
     }
 
     /// Gets map list from the game directory
-    async fn request_map_list(&self) -> Result<MapList, ResourceProviderError>;
+    async fn get_map_list(&self) -> Result<MapList, ResourceProviderError>;
 
     /// Gets replay list
     ///
@@ -139,7 +136,7 @@ pub trait ResourceProvider {
     ///
     /// On web, replay list is retrieved from an API from the server.
     /// The server implementation is to scan specified folders for ghosts.
-    async fn request_replay_list(&self) -> Result<ReplayList, ResourceProviderError>;
+    async fn get_replay_list(&self) -> Result<ReplayList, ResourceProviderError>;
 
     /// Gets resources not related to the map.
     ///
@@ -151,13 +148,13 @@ pub trait ResourceProvider {
 
 /// A different trait that most likely only the web will use. Whatever
 pub trait ProgressResourceProvider: ResourceProvider {
-    async fn request_map_with_progress(
+    async fn get_map_with_progress(
         &self,
         identifier: &MapIdentifier,
         progress_callback: impl Fn(f32) + Send + 'static,
     ) -> Result<Resource, ResourceProviderError>;
 
-    async fn request_replay_with_progress(
+    async fn get_replay_with_progress(
         &self,
         replay_name: &str,
         progress_callback: impl Fn(f32) + Send + 'static,

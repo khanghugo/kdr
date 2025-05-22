@@ -5,8 +5,7 @@ use std::{
 
 use bsp::Bsp;
 use common::{
-    REQUEST_COMMON_RESOURCE_ENDPOINT, REQUEST_MAP_ENDPOINT, REQUEST_MAP_LIST_ENDPOINT,
-    REQUEST_REPLAY_ENDPOINT, REQUEST_REPLAY_LIST,
+    API_SCOPE_VERSION, GET_MAPS_ENDPOINT, GET_REPLAYS_ENDPOINT, REQUEST_COMMON_RESOURCE_ENDPOINT,
 };
 use futures_util::StreamExt;
 use ghost::GhostBlob;
@@ -17,10 +16,6 @@ use crate::{
 };
 
 use super::ResourceProvider;
-
-const MAP_NAME_KEY: &str = "map_name";
-const GAME_MOD_KEY: &str = "game_mod";
-const REPLAY_NAME_KEY: &str = "replay_name";
 
 #[derive(Debug, Clone)]
 pub struct WebResourceProvider {
@@ -41,26 +36,14 @@ enum RequestMethod {
 }
 
 impl WebResourceProvider {
-    async fn request_with_progress(
+    async fn get_with_progress(
         url: &str,
-        body: &HashMap<&str, &str>,
         progress_callback: impl Fn(f32) + Send + 'static,
-        method: RequestMethod,
     ) -> Result<Vec<u8>, ResourceProviderError> {
         let client = reqwest::Client::new();
 
-        let builder = match method {
-            RequestMethod::GET => client.get(url),
-            RequestMethod::POST => client.post(url),
-        };
-
-        let builder = if body.is_empty() {
-            builder
-        } else {
-            builder.json(&body)
-        };
-
-        let response = builder
+        let response = client
+            .get(url)
             .send()
             .await
             .map_err(|op| ResourceProviderError::RequestError { source: op })?;
@@ -138,49 +121,41 @@ impl WebResourceProvider {
         progress_callback: impl Fn(f32) + Send + 'static,
     ) -> Result<crate::Resource, ResourceProviderError> {
         let map_name = fix_bsp_file_name(identifier.map_name.as_str());
-        let body = HashMap::new();
 
-        let all_bytes =
-            Self::request_with_progress(uri, &body, progress_callback, RequestMethod::GET).await?;
+        let all_bytes = Self::get_with_progress(uri, progress_callback).await?;
 
         Self::web_resource_zip_bytes_to_resource(all_bytes, map_name)
     }
 }
 
 impl ProgressResourceProvider for WebResourceProvider {
-    async fn request_map_with_progress(
+    async fn get_map_with_progress(
         &self,
         identifier: &crate::MapIdentifier,
         progress_callback: impl Fn(f32) + Send + 'static,
     ) -> Result<crate::Resource, ResourceProviderError> {
         let map_name = fix_bsp_file_name(identifier.map_name.as_str());
-        let mut body = HashMap::new();
-        let url = format!("{}/{}", self.base_url, REQUEST_MAP_ENDPOINT);
+        let url = format!(
+            "{}/{API_SCOPE_VERSION}/{GET_MAPS_ENDPOINT}/{}/{}",
+            self.base_url, identifier.game_mod, map_name
+        );
 
-        body.insert(MAP_NAME_KEY, map_name.as_str());
-        body.insert(GAME_MOD_KEY, &identifier.game_mod);
-
-        let all_bytes =
-            Self::request_with_progress(&url, &body, progress_callback, RequestMethod::POST)
-                .await?;
+        let all_bytes = Self::get_with_progress(&url, progress_callback).await?;
 
         Self::web_resource_zip_bytes_to_resource(all_bytes, map_name)
     }
 
-    async fn request_replay_with_progress(
+    async fn get_replay_with_progress(
         &self,
         replay_name: &str,
         progress_callback: impl Fn(f32) + Send + 'static,
     ) -> Result<ghost::GhostBlob, ResourceProviderError> {
-        let url = format!("{}/{}", self.base_url, REQUEST_REPLAY_ENDPOINT);
-        let mut body = HashMap::new();
+        let url = format!(
+            "{}/{API_SCOPE_VERSION}/{GET_REPLAYS_ENDPOINT}/{}",
+            self.base_url, replay_name
+        );
 
-        body.insert(REPLAY_NAME_KEY, replay_name);
-
-        let all_bytes =
-            Self::request_with_progress(&url, &body, progress_callback, RequestMethod::POST)
-                .await?;
-
+        let all_bytes = Self::get_with_progress(&url, progress_callback).await?;
         let ghost_blob: GhostBlob = rmp_serde::from_slice(&all_bytes).unwrap();
 
         Ok(ghost_blob)
@@ -188,18 +163,17 @@ impl ProgressResourceProvider for WebResourceProvider {
 }
 
 impl ResourceProvider for WebResourceProvider {
-    async fn request_map(
+    async fn get_map(
         &self,
         identifier: &super::MapIdentifier,
     ) -> Result<super::Resource, super::error::ResourceProviderError> {
         let dummy_callback = |_: f32| {};
 
-        self.request_map_with_progress(identifier, dummy_callback)
-            .await
+        self.get_map_with_progress(identifier, dummy_callback).await
     }
 
-    async fn request_map_list(&self) -> Result<crate::MapList, ResourceProviderError> {
-        let url = format!("{}/{}", self.base_url, REQUEST_MAP_LIST_ENDPOINT);
+    async fn get_map_list(&self) -> Result<crate::MapList, ResourceProviderError> {
+        let url = format!("{}/{API_SCOPE_VERSION}/{GET_MAPS_ENDPOINT}", self.base_url);
 
         let response = reqwest::get(url)
             .await
@@ -212,8 +186,11 @@ impl ResourceProvider for WebResourceProvider {
             .map_err(|op| ResourceProviderError::ResponsePayloadError { source: op })
     }
 
-    async fn request_replay_list(&self) -> Result<crate::ReplayList, ResourceProviderError> {
-        let url = format!("{}/{}", self.base_url, REQUEST_REPLAY_LIST);
+    async fn get_replay_list(&self) -> Result<crate::ReplayList, ResourceProviderError> {
+        let url = format!(
+            "{}/{API_SCOPE_VERSION}/{GET_REPLAYS_ENDPOINT}",
+            self.base_url
+        );
 
         let response = reqwest::get(url)
             .await
@@ -226,18 +203,21 @@ impl ResourceProvider for WebResourceProvider {
             .map_err(|op| ResourceProviderError::ResponsePayloadError { source: op })
     }
 
-    async fn request_replay(
+    async fn get_replay(
         &self,
         replay_name: &str,
     ) -> Result<ghost::GhostBlob, ResourceProviderError> {
         let dummy_callback = |_: f32| {};
 
-        self.request_replay_with_progress(replay_name, dummy_callback)
+        self.get_replay_with_progress(replay_name, dummy_callback)
             .await
     }
 
     async fn request_common_resource(&self) -> Result<ResourceMap, ResourceProviderError> {
-        let url = format!("{}/{}", self.base_url, REQUEST_COMMON_RESOURCE_ENDPOINT);
+        let url = format!(
+            "{}/{API_SCOPE_VERSION}/{REQUEST_COMMON_RESOURCE_ENDPOINT}",
+            self.base_url
+        );
 
         let response = reqwest::get(url)
             .await

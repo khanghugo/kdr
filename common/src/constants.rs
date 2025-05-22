@@ -1,11 +1,13 @@
 pub const UNKNOWN_GAME_MOD: &str = "unknown";
 
-pub const REQUEST_MAP_ENDPOINT: &str = "request-map";
-pub const REQUEST_REPLAY_ENDPOINT: &str = "request-replay";
-pub const REQUEST_COMMON_RESOURCE_ENDPOINT: &str = "request-common";
-pub const REQUEST_MAP_LIST_ENDPOINT: &str = "request-map-list";
-pub const REQUEST_REPLAY_LIST: &str = "request-replay-list";
+pub const API_SCOPE_VERSION: &str = "v1";
+pub const GET_MAPS_ENDPOINT: &str = "maps";
+pub const GET_REPLAYS_ENDPOINT: &str = "replays";
+pub const REQUEST_COMMON_RESOURCE_ENDPOINT: &str = "common-resource";
 
+// for CheckHostConfiguration
+pub const REQUEST_REPLAY_NAME_QUERY: &str = "replay-name";
+pub const REQUEST_MAP_NAME_QUERY: &str = "map-name";
 pub const REQUEST_MAP_GAME_MOD_QUERY: &str = "game-mod";
 pub const REQUEST_MAP_URI_QUERY: &str = "resource-uri-id";
 

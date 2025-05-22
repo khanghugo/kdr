@@ -91,8 +91,8 @@ pub fn create_common_resource(game_dir: &Path, res: &[PathBuf]) -> Vec<u8> {
     return zip_files(wasm_files);
 }
 
-pub async fn get_map_list(resource_provider: &NativeResourceProvider) -> MapList {
-    let map_list = resource_provider.request_map_list().await.unwrap();
+pub async fn fetch_map_list(resource_provider: &NativeResourceProvider) -> MapList {
+    let map_list = resource_provider.get_map_list().await.unwrap();
 
     info!(
         "Found ({}) maps for map list",
@@ -102,7 +102,7 @@ pub async fn get_map_list(resource_provider: &NativeResourceProvider) -> MapList
     map_list
 }
 
-pub async fn get_replay_list(config: &KDRApiServerConfig) -> ReplayList {
+pub async fn fetch_replay_list(config: &KDRApiServerConfig) -> ReplayList {
     let formats: Vec<&str> = config.replay_formats.iter().map(|s| s.as_str()).collect();
     let replay_list: ReplayList = config
         .replay_folders
@@ -123,7 +123,7 @@ pub async fn get_replay_list(config: &KDRApiServerConfig) -> ReplayList {
     replay_list
 }
 
-pub fn get_replay(config: &KDRApiServerConfig, replay_name: &str) -> Option<GhostBlob> {
+pub fn fetch_replay(config: &KDRApiServerConfig, replay_name: &str) -> Option<GhostBlob> {
     config.replay_folders.iter().find_map(|folder| {
         let path = folder.join(replay_name);
         let canonicalized = path.canonicalize().ok()?;

@@ -39,20 +39,20 @@ impl NativeResourceProvider {
 
 // Need to impl it here as well so in our main code, we call the same function
 impl ProgressResourceProvider for NativeResourceProvider {
-    async fn request_map_with_progress(
+    async fn get_map_with_progress(
         &self,
         identifier: &MapIdentifier,
         _progress_callback: impl Fn(f32) + Send + 'static,
     ) -> Result<crate::Resource, ResourceProviderError> {
-        self.request_map(identifier).await
+        self.get_map(identifier).await
     }
 
-    async fn request_replay_with_progress(
+    async fn get_replay_with_progress(
         &self,
         replay_name: &str,
         _progress_callback: impl Fn(f32) + Send + 'static,
     ) -> Result<ghost::GhostBlob, ResourceProviderError> {
-        self.request_replay(replay_name).await
+        self.get_replay(replay_name).await
     }
 }
 
@@ -66,7 +66,7 @@ impl ResourceProvider for NativeResourceProvider {
     /// Funny enough, the server processing side in the future would use this portion of code to fetch data.
     ///
     /// So this function will be refactored or maybe just straight up used in the wrong context.
-    async fn request_map(
+    async fn get_map(
         &self,
         identifier: &MapIdentifier,
     ) -> Result<super::Resource, ResourceProviderError> {
@@ -139,7 +139,7 @@ impl ResourceProvider for NativeResourceProvider {
     }
 
     // TODO: maybe write this into a file
-    async fn request_map_list(&self) -> Result<crate::MapList, ResourceProviderError> {
+    async fn get_map_list(&self) -> Result<crate::MapList, ResourceProviderError> {
         let mut map_list = MapList::new();
 
         // TODO: maybe par_iter?
@@ -178,14 +178,14 @@ impl ResourceProvider for NativeResourceProvider {
         Ok(map_list)
     }
 
-    async fn request_replay_list(&self) -> Result<crate::ReplayList, ResourceProviderError> {
+    async fn get_replay_list(&self) -> Result<crate::ReplayList, ResourceProviderError> {
         match scan_folder_for_files(&self.game_dir, &self.game_dir, &["dem"], true) {
             Some(yse) => Ok(yse),
             None => Err(ResourceProviderError::DemoList),
         }
     }
 
-    async fn request_replay(
+    async fn get_replay(
         &self,
         replay_name: &str,
     ) -> Result<ghost::GhostBlob, ResourceProviderError> {

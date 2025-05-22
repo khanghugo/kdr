@@ -93,7 +93,7 @@ pub async fn native_way(
     resource_provider: &NativeResourceProvider,
 ) -> Result<Vec<u8>, ServerError> {
     let resources = resource_provider
-        .request_map(identifier)
+        .get_map(identifier)
         .await
         .map_err(|op| ServerError::ResourceProviderError { source: op })?;
 

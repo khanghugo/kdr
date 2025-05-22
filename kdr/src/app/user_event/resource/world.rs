@@ -153,7 +153,7 @@ impl App {
 
         spawn_async(async move {
             let resource_res = resource_provider
-                .request_map_with_progress(&map_identifier, move |progress| {
+                .get_map_with_progress(&map_identifier, move |progress| {
                     send_update_fetch_progress(progress);
                 })
                 .await;
@@ -239,7 +239,7 @@ impl App {
         };
 
         spawn_async(async move {
-            let map_list = resource_provider.request_map_list().await;
+            let map_list = resource_provider.get_map_list().await;
             send_receive_message(map_list);
         });
     }

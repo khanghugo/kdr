@@ -59,7 +59,7 @@ impl App {
             };
 
         spawn_async(async move {
-            let what = provider.request_replay(&replay_name2).await;
+            let what = provider.get_replay(&replay_name2).await;
 
             send_message(what);
         });
@@ -168,7 +168,7 @@ impl App {
         };
 
         spawn_async(async move {
-            let replay_list = resource_provider.request_replay_list().await;
+            let replay_list = resource_provider.get_replay_list().await;
             send_receive_message(replay_list);
         });
     }

@@ -12,7 +12,8 @@ use crate::{
     ServerArgs,
     send_res::{gchimp_resmake_way, native_way},
     utils::{
-        create_common_resource, get_map_list, get_replay, get_replay_list, sanitize_identifier,
+        create_common_resource, fetch_map_list, fetch_replay, fetch_replay_list,
+        sanitize_identifier,
     },
 };
 
@@ -29,8 +30,8 @@ struct AppData {
     config: KDRApiServerConfig,
 }
 
-#[get("/request-common")]
-async fn request_common_resource(data: web::Data<AppData>) -> impl Responder {
+#[get("/common-resource")]
+async fn get_common_resource(data: web::Data<AppData>) -> impl Responder {
     info!("Request common resource");
 
     if let Some(bytes) = &data.common_resource {
@@ -48,14 +49,11 @@ async fn request_common_resource(data: web::Data<AppData>) -> impl Responder {
     }
 }
 
-// must be a POST request
-#[post("/request-map")]
-async fn request_map(req: web::Json<MapIdentifier>, data: web::Data<AppData>) -> impl Responder {
-    let map_name = &req.map_name;
-    let game_mod = &req.game_mod;
+#[get("/maps/{game_mod}/{map_name}")]
+async fn get_map(path: web::Path<(String, String)>, data: web::Data<AppData>) -> impl Responder {
+    let (game_mod, map_name) = path.into_inner();
 
     let _span = info_span!("resource request", request_id = %Uuid::new_v4()).entered();
-    info!("Request identifier: {:?}", req);
 
     if map_name.is_empty() {
         info!("Request has no map name");
@@ -67,7 +65,10 @@ async fn request_map(req: web::Json<MapIdentifier>, data: web::Data<AppData>) ->
         return HttpResponse::BadRequest().body("No game mod provided.");
     }
 
-    let Some(sanitized_identifier) = sanitize_identifier(&req) else {
+    let map_identifier = MapIdentifier { map_name, game_mod };
+    info!("Request identifier: {:?}", map_identifier);
+
+    let Some(sanitized_identifier) = sanitize_identifier(&map_identifier) else {
         info!("Request fails sanitizer");
         return HttpResponse::BadRequest().body("Invalid resource identifier.");
     };
@@ -101,24 +102,19 @@ async fn request_map(req: web::Json<MapIdentifier>, data: web::Data<AppData>) ->
     };
 }
 
-#[derive(Debug, Deserialize)]
-struct ReplayRequest {
-    replay_name: String,
-}
-
-#[post("/request-replay")]
-async fn request_replay(req: web::Json<ReplayRequest>, data: web::Data<AppData>) -> impl Responder {
-    let replay_name = &req.replay_name;
+#[get("/replays/{replay_name}")]
+async fn get_replay(path: web::Path<String>, data: web::Data<AppData>) -> impl Responder {
+    let replay_name = path.into_inner();
 
     let _span = info_span!("replay request", request_id = %Uuid::new_v4()).entered();
-    info!("Replay request: {:?}", req);
+    info!("Replay request: {:?}", replay_name);
 
     if replay_name.is_empty() {
         info!("Request has no replay name");
         return HttpResponse::BadRequest().body("No replay provided.");
     }
 
-    let Some(replay_blob) = get_replay(&data.config, replay_name) else {
+    let Some(replay_blob) = fetch_replay(&data.config, replay_name.as_str()) else {
         warn!("Cannot get replay: `{}`", replay_name);
 
         return HttpResponse::NotFound().body(CANNOT_FIND_REQUESTED_REPLAY_ERR);
@@ -134,15 +130,15 @@ struct UpdateRequest {
     secret: String,
 }
 
-#[get("/request-map-list")]
-async fn request_map_list(data: web::Data<AppData>) -> impl Responder {
+#[get("/maps")]
+async fn get_map_list(data: web::Data<AppData>) -> impl Responder {
     info!("Request map list");
 
     HttpResponse::Ok().json(&*data.map_list.read().unwrap())
 }
 
-#[get("/request-replay-list")]
-async fn request_replay_list(data: web::Data<AppData>) -> impl Responder {
+#[get("/replays")]
+async fn get_replay_list(data: web::Data<AppData>) -> impl Responder {
     info!("Request replay list");
 
     HttpResponse::Ok().json(&*data.replay_list.read().unwrap())
@@ -156,7 +152,7 @@ async fn update_map_list(
     let input_secret = &req.secret;
 
     if input_secret == &data.config.secret {
-        let new_map_list = get_map_list(&data.resource_provider).await;
+        let new_map_list = fetch_map_list(&data.resource_provider).await;
 
         match data.map_list.write() {
             Ok(mut lock) => {
@@ -178,7 +174,7 @@ async fn update_replay_list(
     let input_secret = &req.secret;
 
     if input_secret == &data.config.secret {
-        let new_replay_list = get_replay_list(&data.config).await;
+        let new_replay_list = fetch_replay_list(&data.config).await;
 
         match data.replay_list.write() {
             Ok(mut lock) => {
@@ -190,6 +186,11 @@ async fn update_replay_list(
     } else {
         HttpResponse::Forbidden().finish()
     }
+}
+
+#[get("health")]
+async fn health_check() -> impl Responder {
+    HttpResponse::Ok().finish()
 }
 
 #[actix_web::main]
@@ -211,8 +212,8 @@ pub async fn start_server(args: ServerArgs) -> std::io::Result<()> {
         create_common_resource(game_dir.as_path(), &config.common_resource).into()
     };
 
-    let map_list = get_map_list(&resource_provider).await;
-    let replay_list = get_replay_list(&config).await;
+    let map_list = fetch_map_list(&resource_provider).await;
+    let replay_list = fetch_replay_list(&config).await;
 
     let use_resmake_zip = config.use_resmake_zip;
 
@@ -247,14 +248,17 @@ pub async fn start_server(args: ServerArgs) -> std::io::Result<()> {
         let app = App::new()
             // enable compression
             .wrap(Compress::default())
-            // apis
-            .service(request_map)
-            .service(request_replay)
-            .service(request_common_resource)
-            .service(request_map_list)
-            .service(request_replay_list)
-            .service(update_map_list)
-            .service(update_replay_list)
+            .service(
+                actix_web::web::scope("/v1")
+                    .service(get_map)
+                    .service(get_replay)
+                    .service(get_common_resource)
+                    .service(get_map_list)
+                    .service(get_replay_list)
+                    .service(update_map_list)
+                    .service(update_replay_list)
+                    .service(health_check),
+            )
             .app_data(web::Data::new(data.clone()));
 
         #[cfg(feature = "cors")]

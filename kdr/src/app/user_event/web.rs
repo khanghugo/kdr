@@ -1,6 +1,6 @@
 use common::{
-    REQUEST_MAP_ENDPOINT, REQUEST_MAP_GAME_MOD_QUERY, REQUEST_MAP_URI_QUERY,
-    REQUEST_REPLAY_ENDPOINT,
+    GET_MAPS_ENDPOINT, GET_REPLAYS_ENDPOINT, REQUEST_MAP_GAME_MOD_QUERY, REQUEST_MAP_NAME_QUERY,
+    REQUEST_MAP_URI_QUERY, REQUEST_REPLAY_NAME_QUERY,
 };
 use loader::{
     MapIdentifier,
@@ -47,7 +47,7 @@ impl App {
         // TODO: maybe don't fetch map list and such?
 
         // prioritize replay before map
-        if let Some(replay) = queries.get(REQUEST_REPLAY_ENDPOINT) {
+        if let Some(replay) = queries.get(REQUEST_REPLAY_NAME_QUERY) {
             info!("Received replay request in query: {}", replay);
 
             // audio will only start when user interaction is recorded
@@ -61,14 +61,14 @@ impl App {
             return;
         }
 
-        if let Some(map_name) = queries.get(REQUEST_MAP_ENDPOINT) {
+        if let Some(map_name) = queries.get(REQUEST_MAP_NAME_QUERY) {
             if let Some(game_mod) = queries.get(REQUEST_MAP_GAME_MOD_QUERY) {
-                if let Some(resource_uri_id) = queries.get(REQUEST_MAP_URI_QUERY) {
-                    let identifier = MapIdentifier {
-                        map_name: map_name.to_string(),
-                        game_mod: game_mod.to_string(),
-                    };
+                let identifier = MapIdentifier {
+                    map_name: map_name.to_string(),
+                    game_mod: game_mod.to_string(),
+                };
 
+                if let Some(resource_uri_id) = queries.get(REQUEST_MAP_URI_QUERY) {
                     // alternatively, the host can host maps from a different server
                     info!(
                         "Received map request in query directing to a different server: {:?} @ {}",
@@ -79,11 +79,6 @@ impl App {
                         .send_event(AppEvent::RequestMapURI(identifier, resource_uri_id.clone()))
                         .unwrap_or_else(|_| warn!("Failed to send RequestMapURI"));
                 } else {
-                    let identifier = MapIdentifier {
-                        map_name: map_name.to_string(),
-                        game_mod: game_mod.to_string(),
-                    };
-
                     info!("Received map request in query: {:?}", identifier);
 
                     self.event_loop_proxy
