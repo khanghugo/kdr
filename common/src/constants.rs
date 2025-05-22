@@ -6,10 +6,10 @@ pub const GET_REPLAYS_ENDPOINT: &str = "replays";
 pub const REQUEST_COMMON_RESOURCE_ENDPOINT: &str = "common-resource";
 
 // for CheckHostConfiguration
-pub const REQUEST_REPLAY_NAME_QUERY: &str = "replay-name";
-pub const REQUEST_MAP_NAME_QUERY: &str = "map-name";
-pub const REQUEST_MAP_GAME_MOD_QUERY: &str = "game-mod";
-pub const REQUEST_MAP_URI_QUERY: &str = "resource-uri-id";
+pub const REQUEST_REPLAY_NAME_QUERY: &str = "replay";
+pub const REQUEST_MAP_NAME_QUERY: &str = "map";
+pub const REQUEST_MAP_GAME_MOD_QUERY: &str = "game";
+pub const REQUEST_MAP_URI_QUERY: &str = "uri";
 
 pub const KDR_CANVAS_ID: &str = "kdr-canvas";
 
