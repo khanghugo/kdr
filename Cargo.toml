@@ -1,5 +1,5 @@
 [workspace]
-members = ["config", "ghost", "kdr", "loader", "puppeteer", "puppeteer-ws-mock-server", "rest-api-server"]
+members = ["config", "ghost", "kdr", "loader", "puppeteer", "puppeteer-ws-mock-server", "rest-api-server", "spr"]
 
 [workspace.package]
 authors = ["Lê Hàn Minh Khang (Khang Le) <mkhangle20@gmail.com>"]
