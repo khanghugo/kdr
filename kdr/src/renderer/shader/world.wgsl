@@ -4,10 +4,9 @@ struct VertexOut {
     @location(1) tex_coord: vec2f,
     @location(2) normal: vec3f,
     @location(3) @interpolate(flat) layer_idx: u32,
-    @location(4) @interpolate(flat) model_idx: u32,
-    @location(5) @interpolate(flat) type_: u32,
-    @location(6) data_a: vec3f,
-    @location(7) @interpolate(flat) data_b: vec2u,
+    @location(4) @interpolate(flat) type_: u32,
+    @location(5) data_a: vec3f,
+    @location(6) @interpolate(flat) data_b: vec3u,
 };
 
 @group(0) @binding(0)
@@ -21,33 +20,30 @@ var<uniform> entity_mvp: array<mat4x4f, 1024>; // make sure to match the max ent
 
 @vertex
 fn skybox_mask_vs(
-    @location(0) pos: vec3f,
+    @location(0) world_position: vec3f,
     @location(1) tex_coord: vec2f,
     @location(2) normal: vec3f,
     @location(3) @interpolate(flat) layer_idx: u32,
-    @location(4) @interpolate(flat) model_idx: u32,
-    @location(5) @interpolate(flat) type_: u32,
-    @location(6) data_a: vec3f,
-    @location(7) @interpolate(flat) data_b: vec2u,
+    @location(4) @interpolate(flat) type_: u32,
+    @location(5) data_a: vec3f,
+    @location(6) @interpolate(flat) data_b: vec3u,
 ) -> VertexOut {
     var output: VertexOut;
 
     let bone_idx = data_b[1];
     let model_view = entity_mvp[bone_idx];
 
-    let clip_pos = camera_proj * camera_view * model_view * vec4(pos, 1.0);
+    output.position = vs_handle_mvp(world_position, model_view, data_b, type_);
 
-    output.position = clip_pos;
-    output.world_position = pos;
+    output.world_position = world_position;
     output.tex_coord = tex_coord;
     output.normal = normal;
     output.layer_idx = layer_idx;
-    output.model_idx = model_idx;
     output.type_ = type_;
     output.data_a = data_a;
     output.data_b = data_b;
 
-    let is_sky = type_ == 0 && data_b[1] == 1;
+    let is_sky = type_ == 0 && bone_idx == 1;
 
     // reverse z
     // if not sky, make it far plane, which means it will fail stencil depth
@@ -69,33 +65,85 @@ fn skybox_mask_vs(
 
 @vertex
 fn vs_main(
-    @location(0) pos: vec3f,
+    @location(0) world_position: vec3f,
     @location(1) tex_coord: vec2f,
     @location(2) normal: vec3f,
     @location(3) @interpolate(flat) layer_idx: u32,
-    @location(4) @interpolate(flat) model_idx: u32,
-    @location(5) @interpolate(flat) type_: u32,
-    @location(6) data_a: vec3f,
-    @location(7) @interpolate(flat) data_b: vec2u,
+    @location(4) @interpolate(flat) type_: u32,
+    @location(5) data_a: vec3f,
+    @location(6) @interpolate(flat) data_b: vec3u,
 ) -> VertexOut {
     var output: VertexOut;
 
     let bone_idx = data_b[1];
     let model_view = entity_mvp[bone_idx];
 
-    let clip_pos = camera_proj * camera_view * model_view * vec4(pos, 1.0);
+    output.position = vs_handle_mvp(world_position, model_view, data_b, type_);
 
-    output.position = clip_pos;
-    output.world_position = pos;
+    output.world_position = world_position;
     output.tex_coord = tex_coord;
     output.normal = normal;
     output.layer_idx = layer_idx;
-    output.model_idx = model_idx;
     output.type_ = type_;
     output.data_a = data_a;
     output.data_b = data_b;
 
     return output;
+}
+
+fn vs_handle_mvp(world_position: vec3f, model_view: mat4x4f, data_b: vec3u, type_: u32) -> vec4f {
+    if type_ == 2 {
+        let packed_frame_orientation = data_b[2];
+        let frame_count = packed_frame_orientation >> 16;
+        let orientation_type = packed_frame_orientation & 0xFFFF;
+
+        let sprite_pos = model_view[3].xyz;
+        let scale = length(model_view[0].xyz);
+        let cam_right = vec3f(camera_view[0][0], camera_view[1][0], camera_view[2][0]);
+        let cam_up    = vec3f(camera_view[0][1], camera_view[1][1], camera_view[2][1]);
+    
+        switch orientation_type {
+            // parallel up right
+            case 0u: {
+                let world_pos = sprite_pos + vec3f(
+                    world_position.x * cam_right.x * scale,
+                    world_position.x * cam_right.y * scale,
+                    world_position.y * scale  // Z uses local Y (no camera up)
+                );
+
+                return camera_proj * camera_view * vec4f(world_pos, 1.0);
+            }
+            // facing up right
+            // fcked up i wont care
+            case 1u: {}
+            // parallel
+            case 2u: {
+                let world_pos = sprite_pos + (world_position.x * cam_right + world_position.y * cam_up) * scale;
+
+                return camera_proj * camera_view * vec4f(world_pos, 1.0);
+            }
+            // oriented
+            // use the mvp
+            case 3u: {
+                return camera_proj * camera_view * model_view * vec4(world_position, 1.0);
+            }
+            // parallel oriented
+            case 4u: {
+                let rotated_right = model_view * vec4f(cam_right, 0.0);
+                let rotated_up    = model_view * vec4f(cam_up, 0.0);
+
+                let world_pos = sprite_pos + (world_position.x * rotated_right.xyz + world_position.y * rotated_up.xyz) * scale;
+
+                return camera_proj * camera_view * vec4f(world_pos, 1.0);
+            }
+            // nothing
+            default: {
+                return camera_proj * camera_view * model_view * vec4(world_position, 1.0);
+            }
+        }
+    }
+
+    return camera_proj * camera_view * model_view * vec4(world_position, 1.0);
 }
 
 fn gamma_correct(color: vec3f) -> vec3f {
@@ -216,10 +264,9 @@ fn calculate_base_color(
     tex_coord: vec2f,
     normal: vec3f,
     layer_idx: u32,
-    model_idx: u32,
     type_: u32,
     data_a: vec3f,
-    data_b: vec2u,
+    data_b: vec3u,
 ) -> vec4f {
     var albedo: vec4f;
 
@@ -328,12 +375,11 @@ fn fs_opaque(
     @location(1) tex_coord: vec2f,
     @location(2) normal: vec3f,
     @location(3) @interpolate(flat) layer_idx: u32,
-    @location(4) @interpolate(flat) model_idx: u32,
-    @location(5) @interpolate(flat) type_: u32,
-    @location(6) data_a: vec3f,
-    @location(7) @interpolate(flat) data_b: vec2u,
+    @location(4) @interpolate(flat) type_: u32,
+    @location(5) data_a: vec3f,
+    @location(6) @interpolate(flat) data_b: vec3u,
 ) -> @location(0) vec4f {
-    let color = calculate_base_color(position, tex_coord, normal, layer_idx, model_idx, type_, data_a, data_b);
+    let color = calculate_base_color(position, tex_coord, normal, layer_idx, type_, data_a, data_b);
 
     // at this stage, the fragment is either discarded or it is fully opaque
     // hardcode alpha 1.0 here just to be safe
@@ -356,14 +402,13 @@ fn fs_transparent(
     @location(1) tex_coord: vec2f,
     @location(2) normal: vec3f,
     @location(3) @interpolate(flat) layer_idx: u32,
-    @location(4) @interpolate(flat) model_idx: u32,
-    @location(5) @interpolate(flat) type_: u32,
-    @location(6) data_a: vec3f,
-    @location(7) @interpolate(flat) data_b: vec2u,
+    @location(4) @interpolate(flat) type_: u32,
+    @location(5) data_a: vec3f,
+    @location(6) @interpolate(flat) data_b: vec3u,
 ) -> FragOutput {
     // let is_opposite = dot(normal, normalize(world_position - camera_pos)) > 0.0;
 
-    let color = calculate_base_color(position, tex_coord, normal, layer_idx, model_idx, type_, data_a, data_b);
+    let color = calculate_base_color(position, tex_coord, normal, layer_idx, type_, data_a, data_b);
 
     // -position.z goes like from 0 to 2
     // *100.0 because that is what the world looks like

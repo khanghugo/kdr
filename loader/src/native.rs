@@ -102,7 +102,7 @@ impl ResourceProvider for NativeResourceProvider {
 
         let mut resource_map = ResourceMap::new();
 
-        get_models(
+        get_models_and_sprites(
             &mut resource_map,
             &bsp,
             &self.game_dir,
@@ -251,8 +251,12 @@ pub fn scan_folder_for_files(
     Some(replay_list)
 }
 
-fn get_models(resource_map: &mut ResourceMap, bsp: &Bsp, game_dir: &Path, game_mod: &str) {
-    // need to find .mdl and .spr, for now. maybe sound in the future
+fn get_models_and_sprites(
+    resource_map: &mut ResourceMap,
+    bsp: &Bsp,
+    game_dir: &Path,
+    game_mod: &str,
+) {
     for entity in bsp.entities.iter() {
         let is_model_entity = entity
             .get("classname")
@@ -268,7 +272,7 @@ fn get_models(resource_map: &mut ResourceMap, bsp: &Bsp, game_dir: &Path, game_m
         };
 
         // just to make sure
-        if !model_path.ends_with(".mdl") {
+        if !(model_path.ends_with(".mdl") || model_path.ends_with(".spr")) {
             continue;
         }
 

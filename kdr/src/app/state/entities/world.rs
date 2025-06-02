@@ -22,7 +22,7 @@ impl AppState {
                     // for brush entities
                     EntityModel::OpaqueEntityBrush(_) | EntityModel::TransparentEntityBrush(_) => {}
                     // sprite
-                    EntityModel::Sprite => todo!(),
+                    EntityModel::Sprite { .. } => {}
                     // studio model entites
                     EntityModel::BspMdlEntity { .. } => {
                         let skeletal_transformation = entity.transformation.get_skeletal_mut();

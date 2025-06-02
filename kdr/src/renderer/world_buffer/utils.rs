@@ -57,6 +57,21 @@ pub fn get_mdl_textures(mdl: &mdl::Mdl) -> Vec<RgbaImage> {
         .collect()
 }
 
+pub fn get_sprite_textures(spr: &spr::Spr) -> Vec<RgbaImage> {
+    spr.frames
+        .iter()
+        .map(|frame| {
+            eightbpp_to_rgba8(
+                &frame.image,
+                &spr.palette,
+                frame.header.width as u32,
+                frame.header.height as u32,
+                None,
+            )
+        })
+        .collect()
+}
+
 /// Key: Batch Index aka Texture Array Index
 ///
 /// Value: (World Vertex Array, Index Array)

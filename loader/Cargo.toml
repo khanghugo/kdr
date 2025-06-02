@@ -8,6 +8,7 @@ edition.workspace = true
 wad = { path = "../wad" }
 bsp = { path = "../bsp" }
 mdl = { path = "../mdl" }
+spr = { path = "../spr" }
 ghost = { path = "../ghost" }
 common = { path = "../common" }
 

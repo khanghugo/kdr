@@ -44,8 +44,12 @@ pub enum EntityModel {
         /// submodel
         submodel: usize,
     },
-    // TODO: implement sprite loading, sprite will likely be inside transparent buffer
-    Sprite,
+    // Data stored inside is the sprite name to get it from the `models` hash map inside [`BspResource`].
+    Sprite {
+        sprite_name: String,
+        custom_render: CustomRender,
+        frame_rate: f32,
+    },
 }
 
 pub struct CustomRender {
@@ -76,6 +80,13 @@ impl WorldEntity {
     }
 }
 
+pub enum ModelLookUpType {
+    Mdl(mdl::Mdl),
+    Spr(spr::Spr),
+}
+
+type ModelLookUp = HashMap<String, ModelLookUpType>;
+
 /// Holds all data related to BSP for rendering. The client will process the data for the renderer to use.
 ///
 /// This struct must acquires all data from [`loader::Resource`].
@@ -92,8 +103,9 @@ pub struct BspResource {
     pub external_wad_textures: Vec<Wad>,
     // All model entities point here to reuse the model data. With this, we won't have duplicated texture data.
     // There is still duplicated vertex data though but those are cheaper than textures.
+    // Model entities include studio model (.mdl) and sprites (.spr).
     // Key is model path. Value is model data.
-    pub model_lookup: HashMap<String, mdl::Mdl>,
+    pub model_lookup: ModelLookUp,
     // Similar to how model look up works. This time, we nicely have an abstract sound data type (looking at rodio with type erasure)
     pub sound_lookup: HashMap<String, StaticSoundData>,
 }
@@ -108,8 +120,6 @@ impl BspResource {
         let mut sound_lookup = HashMap::new();
 
         load_world_entities(&resource, &mut entity_dictionary, &mut model_lookup);
-        // load_viewmodels(&resource, &mut entity_dictionary, &mut model_lookup);
-        // load_player_models(&resource, &mut entity_dictionary, &mut model_lookup);
 
         load_skybox(&resource, &mut skybox);
 
@@ -138,7 +148,7 @@ impl BspResource {
 fn load_world_entities(
     resource: &Resource,
     entity_dictionary: &mut EntityDictionary,
-    model_lookup: &mut HashMap<String, mdl::Mdl>,
+    model_lookup: &mut ModelLookUp,
 ) {
     let mut available_world_index = 0;
     let mut assign_world_index = move || {
@@ -259,11 +269,7 @@ fn load_world_entities(
                         )),
                     },
                 );
-
-                return;
-            }
-
-            if is_mdl {
+            } else if is_mdl {
                 let is_model_loaded = model_lookup.contains_key(model_path);
 
                 // cannot do hashmap.or_insert_with becuase we won't be able to exit
@@ -278,13 +284,17 @@ fn load_world_entities(
                         return;
                     };
 
-                    model_lookup.insert(model_path.to_string(), mdl);
+                    model_lookup.insert(model_path.to_string(), ModelLookUpType::Mdl(mdl));
                 }
 
-                let mdl = model_lookup
+                let ModelLookUpType::Mdl(mdl) = model_lookup
                     .get(model_path)
                     // this this should always work
-                    .expect("cannot get recently inserted model.");
+                    .expect("cannot get recently inserted model.")
+                else {
+                    warn!("`{}` is not a studio model", model_path);
+                    return;
+                };
 
                 let submodel = entity
                     .get("body")
@@ -341,158 +351,74 @@ fn load_world_entities(
                         ),
                     },
                 );
-            }
+            } else if is_sprite {
+                let is_opaque = [0, 4].contains(&rendermode) || renderamt == 255.0;
+                let custom_render = CustomRender {
+                    rendermode,
+                    renderamt: if is_opaque { 255.0 } else { renderamt },
+                    renderfx,
+                };
+                let framerate = entity
+                    .get("framerate")
+                    .and_then(|x| x.parse::<f32>().ok())
+                    .unwrap_or(10.);
 
-            // TODO
-            if is_sprite {
-                42;
+                let is_model_loaded = model_lookup.contains_key(model_path);
+
+                if !is_model_loaded {
+                    let Some(spr_bytes) = resource.resources.get(model_path) else {
+                        warn!("cannot find '{}' from fetched resources", model_path);
+                        return;
+                    };
+
+                    let Ok(spr) = spr::Spr::open_from_bytes(spr_bytes) else {
+                        warn!("cannot parse sprite '{}'", model_path);
+                        return;
+                    };
+
+                    model_lookup.insert(model_path.to_string(), ModelLookUpType::Spr(spr));
+                }
+
+                let ModelLookUpType::Spr(_spr) = model_lookup
+                    .get(model_path)
+                    // this this should always work
+                    .expect("cannot get recently inserted model sprite.")
+                else {
+                    warn!("`{}` is not a sprite", model_path);
+                    return;
+                };
+
+                let entity_world_angles = entity_bsp_angles.get_world_angles();
+                let entity_world_angles_rad = [
+                    Rad(entity_world_angles[0].to_radians()),
+                    Rad(entity_world_angles[1].to_radians()),
+                    Rad(entity_world_angles[2].to_radians()),
+                ];
+                let entity_world_rotation =
+                    cgmath::Quaternion::from_angle_z(entity_world_angles_rad[2])
+                        * cgmath::Quaternion::from_angle_y(entity_world_angles_rad[1])
+                        * cgmath::Quaternion::from_angle_x(entity_world_angles_rad[0]);
+
+                let transformation =
+                    WorldTransformation::Entity((entity_world_position, entity_world_rotation));
+
+                entity_dictionary.insert(
+                    bsp_entity_index,
+                    WorldEntity {
+                        world_index: assign_world_index(),
+                        model: EntityModel::Sprite {
+                            sprite_name: model_path.to_owned(),
+                            custom_render,
+                            frame_rate: framerate,
+                        },
+                        transformation,
+                    },
+                );
+            } else {
+                warn!("unreachable world entity: classname {classname} model_path {model_path}");
             }
         });
 }
-
-// fn load_viewmodels(
-//     resource: &Resource,
-//     entity_dictionary: &mut EntityDictionary,
-//     model_lookup: &mut HashMap<String, mdl::Mdl>,
-// ) {
-//     let available_world_index = entity_dictionary
-//         .values()
-//         .fold(0, |acc, e| e.world_index.max(acc))
-//         + 1;
-
-//     resource
-//         .resources
-//         .iter()
-//         // only concerned about view models
-//         .filter(|(k, _)| {
-//             let file_path = Path::new(k);
-//             let file_name = file_path.file_name().unwrap().to_str().unwrap();
-
-//             if file_name.starts_with("v_") && file_name.ends_with(".mdl") {
-//                 true
-//             } else {
-//                 false
-//             }
-//         })
-//         .enumerate()
-//         .for_each(|(viewmodel_index, (model_path, model_bytes))| {
-//             // check that model is not loaded
-//             let mdl = model_lookup
-//                 .entry(model_path.to_string())
-//                 .or_insert_with(|| {
-//                     // insert model
-//                     match Mdl::open_from_bytes(&model_bytes) {
-//                         Ok(x) => x,
-//                         Err(err) => {
-//                             panic!("cannot parse model {}: {}", model_path, err);
-//                         }
-//                     }
-//                 });
-
-//             let model_transformations = setup_studio_model_transformations(&mdl);
-//             let model_transformation_infos: Vec<ModelTransformationInfo> = mdl
-//                 .sequences
-//                 .iter()
-//                 .map(|sequence| ModelTransformationInfo {
-//                     frame_per_second: sequence.header.fps,
-//                     // explicit no loop for all view models
-//                     looping: false,
-//                 })
-//                 .collect();
-
-//             entity_dictionary.insert(
-//                 // this doesn't do anything
-//                 3000 + viewmodel_index,
-//                 WorldEntity {
-//                     world_index: available_world_index + viewmodel_index,
-//                     model: EntityModel::ViewModel {
-//                         model_name: model_path.to_string(),
-//                         submodel: 0,
-//                         active: false,
-//                     },
-//                     transformation: WorldTransformation::Skeletal(WorldTransformationSkeletal {
-//                         current_sequence_index: 0,
-//                         world_transformation: origin_posrot(),
-//                         model_transformations,
-//                         model_transformation_infos,
-//                     }),
-//                 },
-//             );
-//         });
-// }
-
-// similar code to `load_viewmodels` with some slight differences
-// at the moment, there is only one instance of each model
-// the reason is that the player model is included in the world buffer, very sad time
-// fn load_player_models(
-//     resource: &Resource,
-//     entity_dictionary: &mut EntityDictionary,
-//     model_lookup: &mut HashMap<String, mdl::Mdl>,
-// ) {
-//     let available_world_index = entity_dictionary
-//         .values()
-//         .fold(0, |acc, e| e.world_index.max(acc))
-//         + 1;
-
-//     resource
-//         .resources
-//         .iter()
-//         .filter(|(file_name, _)| {
-//             if file_name.ends_with(".mdl") && file_name.starts_with("models/player") {
-//                 true
-//             } else {
-//                 false
-//             }
-//         })
-//         // loop over the models endlessly
-//         .cycle()
-//         .take(32)
-//         .enumerate()
-//         .for_each(|(model_index, (model_path, model_bytes))| {
-//             // check that model is not loaded
-//             let mdl = model_lookup
-//                 .entry(model_path.to_string())
-//                 .or_insert_with(|| {
-//                     // insert model
-//                     match Mdl::open_from_bytes(&model_bytes) {
-//                         Ok(x) => x,
-//                         Err(err) => {
-//                             panic!("cannot parse model {}: {}", model_path, err);
-//                         }
-//                     }
-//                 });
-
-//             let model_transformations = setup_studio_model_transformations(&mdl);
-//             let model_transformation_infos: Vec<ModelTransformationInfo> = mdl
-//                 .sequences
-//                 .iter()
-//                 .map(|sequence| ModelTransformationInfo {
-//                     frame_per_second: sequence.header.fps,
-//                     looping: sequence.header.flags.contains(SequenceFlag::LOOPING),
-//                 })
-//                 .collect();
-
-//             entity_dictionary.insert(
-//                 // this doesn't do anything
-//                 5000 + model_index,
-//                 WorldEntity {
-//                     world_index: available_world_index + model_index,
-//                     model: EntityModel::PlayerModel {
-//                         model_name: model_path.to_string(),
-//                         submodel: 0,
-//                         // no player to start with
-//                         player_index: None,
-//                     },
-//                     transformation: WorldTransformation::Skeletal(WorldTransformationSkeletal {
-//                         current_sequence_index: 0,
-//                         world_transformation: origin_posrot(),
-//                         model_transformations,
-//                         model_transformation_infos,
-//                     }),
-//                 },
-//             );
-//         });
-// }
 
 fn load_skybox(resource: &Resource, skybox: &mut Vec<RgbaImage>) {
     // TODO find the skybox from the resources instead of deducing stuffs here
@@ -559,13 +485,6 @@ fn load_sound(resource: &Resource, sound_lookup: &mut HashMap<String, StaticSoun
         };
 
         sound_lookup.insert(file_path.to_owned(), sound_data);
-
-        // sound_lookup.insert(file_path.to_owned(), BspSoundData {
-        //     data: sound_data,
-        //     is_loop: ,
-        //     pos: todo!(),
-        //     volume: todo!(),
-        // });
     });
 }
 

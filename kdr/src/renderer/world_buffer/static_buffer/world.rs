@@ -95,10 +95,9 @@ pub(super) fn process_bsp_face(
             tex_coord: texcoord.into(),
             normal: normal.to_array().into(),
             layer: texture_layer_index as u32,
-            model_idx: world_entity_index as u32,
             type_: 0,
             data_a: [lightmap_coord[0], lightmap_coord[1], renderamt],
-            data_b: [rendermode as u32, type_],
+            data_b: [rendermode as u32, type_, 0],
         })
         .collect();
 

@@ -88,12 +88,9 @@ impl WorldLoader {
                                 tex_coord: [u, v],
                                 normal: trivert.normal.to_array(),
                                 layer: *layer_idx as u32,
-                                // actual model index is different
-                                // because 0 is worldspawn
-                                model_idx: 0 as u32,
                                 type_: 1,
                                 data_a: [0f32; 3],
-                                data_b: [texture_flags.bits() as u32, bone_index as u32],
+                                data_b: [texture_flags.bits() as u32, bone_index as u32, 0],
                             }
                         });
 

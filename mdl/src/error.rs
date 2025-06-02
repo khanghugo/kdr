@@ -1,5 +1,3 @@
-use nom::error::ParseError;
-
 #[derive(Debug, thiserror::Error)]
 pub enum MdlError {
     #[error("Failed to parse MDL header")]

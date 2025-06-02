@@ -7,7 +7,7 @@ use std::collections::HashMap;
 
 use common::BuildMvpResult;
 use image::RgbaImage;
-use loader::bsp_resource::{BspResource, CustomRender, EntityModel, WorldEntity};
+use loader::bsp_resource::{BspResource, CustomRender, EntityModel, ModelLookUpType, WorldEntity};
 use model::create_world_model_vertices;
 use tracing::{info, warn};
 use world::{get_bsp_textures, process_bsp_face};
@@ -16,14 +16,14 @@ use crate::renderer::{
     bsp_lightmap::LightMapAtlasBuffer,
     mvp_buffer::MvpBuffer,
     texture_buffer::texture_array::{TextureArrayBuffer, create_texture_array},
-    world_buffer::utils::get_mdl_textures,
+    world_buffer::utils::{get_mdl_textures, get_sprite_textures},
 };
 
 mod model;
 mod world;
 
 use super::{
-    WorldLoader, WorldVertex, WorldVertexBuffer,
+    WorldLoader, WorldVertex, WorldVertexBuffer, WorldVertexType,
     utils::{BatchLookup, create_world_vertex_buffer},
 };
 
@@ -172,10 +172,31 @@ impl WorldLoader {
                         return;
                     };
 
+                    let ModelLookUpType::Mdl(mdl_data) = mdl_data else {
+                        warn!("model is not a studio model {}", model_name);
+                        return;
+                    };
+
                     entity_textures.insert(model_name.to_string(), get_mdl_textures(&mdl_data));
                 }
-                EntityModel::Sprite => {
-                    todo!("cannot load sprite at the moment")
+                EntityModel::Sprite {
+                    ref sprite_name, ..
+                } => {
+                    if entity_textures.contains_key(sprite_name) {
+                        return;
+                    }
+
+                    let Some(spr_data) = resource.model_lookup.get(sprite_name) else {
+                        warn!("cannot get sprite for loading texture {}", sprite_name);
+                        return;
+                    };
+
+                    let ModelLookUpType::Spr(spr_data) = spr_data else {
+                        warn!("model is not a sprite {}", sprite_name);
+                        return;
+                    };
+
+                    entity_textures.insert(sprite_name.to_string(), get_sprite_textures(&spr_data));
                 }
                 // for other entities, we don't load texture
                 EntityModel::OpaqueEntityBrush(_)
@@ -198,7 +219,9 @@ impl WorldLoader {
                 EntityModel::BspMdlEntity { ref model_name, .. } => {
                     Some((model_name, entity.world_index))
                 }
-                EntityModel::Sprite => todo!("not implemented for sprite loading"),
+                EntityModel::Sprite {
+                    ref sprite_name, ..
+                } => Some((sprite_name, entity.world_index)),
                 // be explicit
                 // not being explicit bit me in the ass
                 EntityModel::OpaqueEntityBrush(_)
@@ -307,7 +330,7 @@ fn create_batch_lookups(
 
         let is_transparent = matches!(
             entity.model,
-            EntityModel::TransparentEntityBrush(_) | EntityModel::Sprite
+            EntityModel::TransparentEntityBrush(_) | EntityModel::Sprite { .. }
         );
 
         let assigned_lookup = if is_transparent {
@@ -410,6 +433,11 @@ fn create_batch_lookups(
                     return;
                 };
 
+                let ModelLookUpType::Mdl(mdl) = mdl else {
+                    warn!("Model `{}` is not a studio model", model_name);
+                    return;
+                };
+
                 create_world_model_vertices(
                     mdl,
                     *submodel,
@@ -438,7 +466,74 @@ fn create_batch_lookups(
                 // make sure it is saturating sub just in case someone made a model with 0 bone
                 current_bsp_model_skeletal_bone_mvp_idx += mdl.bones.len().saturating_sub(1);
             }
-            EntityModel::Sprite => todo!("sprite world vertex is not supported"),
+            EntityModel::Sprite {
+                sprite_name,
+                custom_render,
+                frame_rate,
+            } => {
+                let Some(spr) = resource.model_lookup.get(sprite_name) else {
+                    warn!("Cannot find sprite `{sprite_name}` to create a batch lookup");
+
+                    return;
+                };
+
+                let ModelLookUpType::Spr(spr) = spr else {
+                    warn!("Model `{}` is not a sprite model", sprite_name);
+                    return;
+                };
+
+                let (array_idx, layer_idx) = world_texture_lookup
+                    // start with the texture 0 and then the shader will animate the texture
+                    .get(&(world_entity_index, 0))
+                    .expect("cannot get world texture");
+
+                // V0------V1
+                // |      / |
+                // |    0   |
+                // |  /     |
+                // V2------V3
+
+                let half_width = spr.header.max_width as f32 / 2.;
+                let half_height = spr.header.max_height as f32 / 2.;
+
+                let v0 = ([-half_width, half_height], [0., 0.]);
+                let v1 = ([half_width, half_height], [1., 0.]);
+                let v2 = ([-half_width, -half_height], [0., 1.]);
+                let v3 = ([half_width, -half_height], [1., 1.]);
+
+                let frame_count = spr.frames.len() as u32;
+                let orientation_type = spr.header.orientation as u32;
+                let packed_frame_orientation = frame_count << 16 | orientation_type;
+
+                let vertices: Vec<WorldVertex> = [v0, v1, v2, v3]
+                    .into_iter()
+                    .map(|(pos, uv)| WorldVertex {
+                        pos: [pos[0], pos[1], 0.],
+                        tex_coord: uv,
+                        normal: [0.; 3],
+                        layer: *layer_idx as u32,
+                        type_: WorldVertexType::Sprite.into(),
+                        data_a: [*frame_rate, 0., custom_render.renderamt],
+                        data_b: [
+                            custom_render.rendermode as u32,
+                            world_entity_index as u32,
+                            packed_frame_orientation,
+                        ],
+                    })
+                    .collect();
+                let indices = [0, 1, 2, 2, 1, 3];
+
+                let batch = assigned_lookup
+                    .entry(*array_idx)
+                    .or_insert((Vec::new(), Vec::new()));
+
+                let new_vertices_offset = batch.0.len();
+
+                batch.0.extend(vertices);
+                batch
+                    .1
+                    .extend(indices.into_iter().map(|i| i + new_vertices_offset as u32));
+            }
         };
     });
 

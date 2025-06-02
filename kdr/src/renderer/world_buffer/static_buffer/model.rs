@@ -60,12 +60,9 @@ pub(super) fn create_world_model_vertices(
                             tex_coord: [u, v],
                             normal: trivert.normal.to_array(),
                             layer: *layer_idx as u32,
-                            // actual model index is different
-                            // because 0 is worldspawn
-                            model_idx: world_entity_index as u32,
                             type_: vertex_type,
                             data_a: [0f32; 3],
-                            data_b: [texture_flags.bits() as u32, buffer_bone_idx as u32],
+                            data_b: [texture_flags.bits() as u32, buffer_bone_idx as u32, 0],
                         }
                     });
 

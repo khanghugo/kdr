@@ -19,6 +19,22 @@ pub struct WorldPushConstants {
     pub render_flags: PushConstantRenderFlags,
 }
 
+pub enum WorldVertexType {
+    Bsp,
+    Mdl,
+    Sprite,
+}
+
+impl From<WorldVertexType> for u32 {
+    fn from(value: WorldVertexType) -> Self {
+        match value {
+            WorldVertexType::Bsp => 0,
+            WorldVertexType::Mdl => 1,
+            WorldVertexType::Sprite => 2,
+        }
+    }
+}
+
 #[repr(C)]
 #[derive(Pod, Zeroable, Clone, Copy)]
 /// Common vertex data structure for both bsp and mdl
@@ -26,17 +42,19 @@ pub struct WorldVertex {
     pub pos: [f32; 3],
     pub tex_coord: [f32; 2],
     pub normal: [f32; 3],
+    // layer index to get the texture from texture array
     pub layer: u32,
-    pub model_idx: u32,
     // type of the vertex, bsp vertex or mdl vertex
-    // 0: bsp, 1: mdl, 2: player model aka p mdl
+    // 0: bsp, 1: mdl, 2 is sprite
     pub type_: u32,
     // for bsp: [lightmap_u, lightmap_v, renderamt]
     // for mdl: unused
+    // for sprite: [framerate, unused, renderamt]
     pub data_a: [f32; 3],
-    // for bsp: [rendermode, is_sky]
-    // for mdl: [textureflag, bone index]
-    pub data_b: [u32; 2],
+    // for bsp: [rendermode, mvp index, unused]
+    // for mdl: [textureflag, bone index, unused]
+    // for sprite: [rendermode, mvp index, frame count (u16) | orientation type (u16)]
+    pub data_b: [u32; 3],
 }
 
 impl WorldVertex {
@@ -63,35 +81,29 @@ impl WorldVertex {
                     offset: 20,
                     shader_location: 2,
                 },
-                // texture layer
+                // packed layer model
                 wgpu::VertexAttribute {
                     format: wgpu::VertexFormat::Uint32,
                     offset: 32,
                     shader_location: 3,
                 },
-                // model index to get model view projection matrix
+                // vertex type
                 wgpu::VertexAttribute {
                     format: wgpu::VertexFormat::Uint32,
                     offset: 36,
                     shader_location: 4,
                 },
-                // vertex type
-                wgpu::VertexAttribute {
-                    format: wgpu::VertexFormat::Uint32,
-                    offset: 40,
-                    shader_location: 5,
-                },
                 // data_a
                 wgpu::VertexAttribute {
                     format: wgpu::VertexFormat::Float32x3,
-                    offset: 44,
-                    shader_location: 6,
+                    offset: 40,
+                    shader_location: 5,
                 },
                 // data_b
                 wgpu::VertexAttribute {
-                    format: wgpu::VertexFormat::Uint32x2,
-                    offset: 56,
-                    shader_location: 7,
+                    format: wgpu::VertexFormat::Uint32x3,
+                    offset: 52,
+                    shader_location: 6,
                 },
             ],
         }
