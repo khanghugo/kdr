@@ -43,7 +43,7 @@ fn skybox_mask_vs(
     output.data_a = data_a;
     output.data_b = data_b;
 
-    let is_sky = type_ == 0 && bone_idx == 1;
+    let is_sky = type_ == 0 && data_b[2] == 1;
 
     // reverse z
     // if not sky, make it far plane, which means it will fail stencil depth
@@ -253,8 +253,13 @@ fn nearest_aa_filtering(_uv: vec2f, layer_idx: u32) -> vec4f {
 @group(3) @binding(0) var lightmap: texture_2d<f32>;
 @group(3) @binding(1) var lightmap_sampler: sampler;
 
+struct PushConstants {
+    render_flags: u32,
+    time: f32,
+}
+
 // push constant is just `render_nodraw == 1`
-var<push_constant> render_flags: u32;
+var<push_constant> push_constants: PushConstants;
 
 const RENDER_NODRAW_FLAG: u32 = 1u << 0u;
 const FULL_BRIGHT_FLAG: u32 = 1u << 1u;
@@ -276,8 +281,8 @@ fn calculate_base_color(
     // albedo = pixel_art_filter2(tex_coord, layer_idx);
 
     // need to explicitly specify we are shifting a u32 with u32
-    let render_nodraw = (render_flags & RENDER_NODRAW_FLAG) != 0u;
-    let full_bright = (render_flags & FULL_BRIGHT_FLAG) != 0u;
+    let render_nodraw = (push_constants.render_flags & RENDER_NODRAW_FLAG) != 0u;
+    let full_bright = (push_constants.render_flags & FULL_BRIGHT_FLAG) != 0u;
 
     if type_ == 0 {
         // this is bsp vertex
@@ -362,6 +367,15 @@ fn calculate_base_color(
         }
 
         return vec4(final_color, alpha);
+    } else if type_ == 2 {
+        let frame_count = data_b[2] >> 16;
+        let frame_rate = data_a[0];
+        let time = push_constants.time;
+
+        let curr_frame = u32(time * frame_rate) % frame_count;
+
+        // the frames are continuous
+        albedo = textureSample(texture, linear_sampler, tex_coord, layer_idx + curr_frame);
     }
 
     return albedo;

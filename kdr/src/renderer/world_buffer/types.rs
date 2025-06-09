@@ -17,6 +17,7 @@ bitflags! {
 #[repr(C)]
 pub struct WorldPushConstants {
     pub render_flags: PushConstantRenderFlags,
+    pub time: f32,
 }
 
 pub enum WorldVertexType {
@@ -51,8 +52,9 @@ pub struct WorldVertex {
     // for mdl: unused
     // for sprite: [framerate, unused, renderamt]
     pub data_a: [f32; 3],
-    // for bsp: [rendermode, mvp index, unused]
-    // for mdl: [textureflag, bone index, unused]
+    // for bsp: [rendermode, mvp index, face type]
+    //  face type meaning it is normal 0, sky 1, or nodraw 2
+    // for mdl: [textureflag, mvp/bone index, unused]
     // for sprite: [rendermode, mvp index, frame count (u16) | orientation type (u16)]
     pub data_b: [u32; 3],
 }

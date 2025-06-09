@@ -164,6 +164,7 @@ impl AppState {
 
         let world_push_constants = WorldPushConstants {
             render_flags: push_constant_render_flags,
+            time: self.time,
         };
 
         let push_data = bytemuck::bytes_of(&world_push_constants);
@@ -452,7 +453,10 @@ impl AppState {
             };
 
             let mut transparent_pass = encoder.begin_render_pass(&transparent_pass_descriptor);
+
+            // transparent pass uses push constants as well
             transparent_pass.set_pipeline(&render_context.world_transparent_render_pipeline);
+            transparent_pass.set_push_constants(wgpu::ShaderStages::FRAGMENT, 0, push_data);
 
             transparent_pass.set_bind_group(0, &render_context.camera_buffer.bind_group, &[]);
 
