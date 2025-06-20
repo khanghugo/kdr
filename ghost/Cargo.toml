@@ -6,7 +6,7 @@ edition.workspace = true
 
 [dependencies]
 # basically just the latest git commit
-dem = { path = "/home/khang/dem" }
+dem = { git = "https://github.com/khanghugo/dem.git", rev = "c89f76f1efadf746283c04ce3f8e37654e3f632f" }
 common = { path = "../common" }
 eyre = "0.6.12"
 serde = { version = "1.0.219", features = ["derive"] }
