@@ -2,7 +2,11 @@
 
 Currently work in progress, check back later
 
-## Progresses - Subjected to changes and addition but not subtraction.
+Demo website
+
+<http://kdr.romanian-jumpers.com/app>
+
+## Progresses - Subjected to changes and addition but not subtraction
 
 - Renderer
   - BSP
@@ -59,7 +63,7 @@ Currently work in progress, check back later
     - [ ] HDR
     - [X] ~~Anisotropic~~ Kuwahara Filtering
     - [X] Some random other shader effects just to prove that it is easy to add.
-    - [ ] Posterize 
+    - [ ] Posterize
   - [ ] MSAA. Doesn't seem like a lot of work but not the priority.
 - Navigation
   - [X] Noclip movement
