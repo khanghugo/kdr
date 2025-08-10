@@ -181,7 +181,12 @@ impl Bsp {
         }
 
         if !matches!(
-            self.trace_point_hull(hull_type, node.children()[side ^ 1] as i32, mid),
+            self.trace_point_hull_internal(
+                &nodes,
+                hull_type,
+                node.children()[side ^ 1] as i32,
+                mid
+            ),
             LeafContent::ContentsSolid
         ) {
             // if not solid then keep tracing with the latter half
@@ -210,7 +215,7 @@ impl Bsp {
         let head_node = self.models[0].head_nodes[hull_type as i32 as usize];
 
         while matches!(
-            self.trace_point_hull(hull_type, head_node, mid),
+            self.trace_point_hull_internal(&nodes, hull_type, head_node, mid),
             LeafContent::ContentsSolid
         ) {
             frac -= 0.1;
@@ -232,9 +237,37 @@ impl Bsp {
         return false;
     }
 
+    // for internal use because it looks very clean
+    fn trace_point_hull_internal(
+        &self,
+        nodes: &NodesType,
+        hull_type: HullType,
+        mut num: i32,
+        p1: glam::Vec3,
+    ) -> LeafContent {
+        while num >= 0 {
+            let node = nodes.get_unchecked(num as usize);
+            let plane = &self.planes[node.plane() as usize];
+
+            let distance = plane_diff(p1, plane);
+
+            if distance < 0. {
+                num = node.children()[1] as i32;
+            } else {
+                num = node.children()[0] as i32;
+            }
+        }
+
+        self.interpret_leaf_content(hull_type, num)
+    }
+
     // code pulled from xash3d repo
-    // for some reasons this one we don't need to worry about offsetting the first hull
-    fn trace_point_hull(&self, hull_type: HullType, mut num: i32, p1: glam::Vec3) -> LeafContent {
+    pub fn trace_point_hull(
+        &self,
+        hull_type: HullType,
+        mut num: i32,
+        p1: glam::Vec3,
+    ) -> LeafContent {
         let num = match hull_type {
             // POINT hull uses "bsp.nodes"
             HullType::Point => {
