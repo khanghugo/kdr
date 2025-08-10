@@ -10,8 +10,10 @@ const DIST_EPSILON: f32 = 1. / 32.;
 
 #[inline]
 fn plane_diff(p: glam::Vec3, plane: &Plane) -> f32 {
-    if (plane.type_ as u32) < 3 {
-        p[plane.type_ as usize] - plane.distance
+    let type_ = plane.type_ as usize;
+
+    if (type_) < 3 {
+        p[type_] - plane.distance
     } else {
         plane.normal.dot(p.into()) - plane.distance
     }
@@ -63,6 +65,8 @@ impl<'a> NodeType<'a> {
 impl Bsp {
     fn interpret_leaf_content(&self, hull_type: HullType, num: i32) -> LeafContent {
         match hull_type {
+            // bitwise NOT
+            // ~(-69) -> 68
             HullType::Point => self.leaves[!num as usize].contents,
             HullType::Stand | HullType::Monster | HullType::Duck => {
                 LeafContent::try_from(num).expect("unknown leaf content")
@@ -79,7 +83,14 @@ impl Bsp {
         let mut tr = TraceResult::default();
         let head_node = self.models[0].head_nodes[hull_type as i32 as usize];
 
-        self.trace_line_hull_recursive(hull_type, head_node, p1, p2, 0., 1., &mut tr);
+        let nodes = match hull_type {
+            HullType::Point => NodesType::Nodes(&self.nodes),
+            HullType::Stand | HullType::Monster | HullType::Duck => {
+                NodesType::ClipNodes(&self.clipnodes)
+            }
+        };
+
+        self.trace_line_hull_recursive(&nodes, hull_type, head_node, p1, p2, 0., 1., &mut tr);
 
         return tr;
     }
@@ -87,6 +98,7 @@ impl Bsp {
     // code pullled from xash3d repo
     fn trace_line_hull_recursive(
         &self,
+        nodes: &NodesType,
         hull_type: HullType,
         num: i32,
         p1: glam::Vec3,
@@ -110,13 +122,6 @@ impl Bsp {
         // let node_index = (hull_start + num) as usize;
         let node_index = num as usize;
 
-        let nodes = match hull_type {
-            HullType::Point => NodesType::Nodes(&self.nodes),
-            HullType::Stand | HullType::Monster | HullType::Duck => {
-                NodesType::ClipNodes(&self.clipnodes)
-            }
-        };
-
         if node_index >= nodes.len() {
             return false;
         }
@@ -130,6 +135,7 @@ impl Bsp {
         // positive side
         if d1 >= 0. && d2 >= 0. {
             return self.trace_line_hull_recursive(
+                nodes,
                 hull_type,
                 node.children()[0] as i32,
                 p1,
@@ -143,6 +149,7 @@ impl Bsp {
         // negative side
         if d1 < 0. && d2 < 0. {
             return self.trace_line_hull_recursive(
+                nodes,
                 hull_type,
                 node.children()[1] as i32,
                 p1,
@@ -169,6 +176,7 @@ impl Bsp {
 
         // back to front
         if !self.trace_line_hull_recursive(
+            nodes,
             hull_type,
             node.children()[side] as i32,
             p1,
@@ -191,6 +199,7 @@ impl Bsp {
         ) {
             // if not solid then keep tracing with the latter half
             return self.trace_line_hull_recursive(
+                nodes,
                 hull_type,
                 node.children()[side ^ 1] as i32,
                 mid,
@@ -262,6 +271,8 @@ impl Bsp {
     }
 
     // code pulled from xash3d repo
+    // for public use
+    // and readability
     pub fn trace_point_hull(
         &self,
         hull_type: HullType,
