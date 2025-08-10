@@ -30,11 +30,15 @@ pub struct PostProcessingControlState {
 
 pub struct ControlPanelUIState {
     pub crosshair: bool,
+    pub enable_debug_panel: bool,
 }
 
 impl Default for ControlPanelUIState {
     fn default() -> Self {
-        Self { crosshair: true }
+        Self {
+            crosshair: true,
+            enable_debug_panel: false,
+        }
     }
 }
 
@@ -161,6 +165,8 @@ impl AppState {
                     ui.checkbox(&mut self.input_state.free_cam, "Freecam");
 
                     ui.checkbox(&mut self.ui_state.control_panel.crosshair, "Crosshair");
+
+                    ui.checkbox(&mut self.ui_state.control_panel.enable_debug_panel, "Debug");
                 });
 
                 // resolutions

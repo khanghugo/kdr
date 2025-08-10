@@ -22,6 +22,7 @@ pub mod audio;
 pub mod entities;
 pub mod file;
 pub mod input;
+mod misc;
 pub mod movement;
 pub mod overlay;
 pub mod playback;
@@ -30,8 +31,9 @@ pub mod window;
 
 pub type SortedMapList = Vec<(String, Vec<String>)>;
 
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct OtherResources {
+    pub bsp: Option<bsp::Bsp>,
     // from MapList type, we sort it so it becomes a vector
     pub common_resource: ResourceMap,
     pub map_list: SortedMapList,
@@ -119,6 +121,9 @@ impl AppState {
 
         self.text_tick();
         self.audio_state_tick();
+
+        // whatever i want here
+        self.misc_tick();
     }
 
     fn delta_update(&mut self) {

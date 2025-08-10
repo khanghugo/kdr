@@ -1,6 +1,7 @@
 mod constants;
 pub mod error;
 mod parser;
+mod tracer;
 mod types;
 mod utils;
 mod writer;
@@ -11,6 +12,7 @@ pub use types::Bsp;
 pub use types::*;
 
 pub use glam::Vec3;
+pub use tracer::*;
 
 #[cfg(test)]
 mod test {

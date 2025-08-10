@@ -3,10 +3,13 @@ use map_list::MapListUIState;
 use replay_list::ReplayListUIState;
 use unknown_format_modal::UnknownFormatModalUIState;
 
+use crate::app::state::overlay::debug_panel::DebugPanelUIState;
+
 use super::AppState;
 
 pub mod control_panel;
 mod crosshair;
+mod debug_panel;
 mod loading_spinner;
 mod map_list;
 mod puppet_player_info;
@@ -23,6 +26,7 @@ pub struct UIState {
     pub pp_control: PostProcessingControlState,
     pub map_list: MapListUIState,
     pub replay_list: ReplayListUIState,
+    pub debug_panel: DebugPanelUIState,
     pub unknown_format_modal: UnknownFormatModalUIState,
     pub toaster: egui_notify::Toasts,
 }
@@ -35,6 +39,7 @@ impl Default for UIState {
             pp_control: PostProcessingControlState::default(),
             map_list: MapListUIState::default(),
             replay_list: ReplayListUIState::default(),
+            debug_panel: DebugPanelUIState::default(),
             unknown_format_modal: UnknownFormatModalUIState::default(),
             toaster: egui_notify::Toasts::default(),
         }
@@ -63,6 +68,7 @@ impl AppState {
                 self.replay_list(ctx);
                 self.map_list(ctx);
                 self.puppet_player_list(ctx);
+                self.debug_panel(ctx);
             }
 
             self.draw_entity_text(ctx);

@@ -182,5 +182,8 @@ impl App {
                 render_context.queue(),
             ),
         });
+
+        // store bsp to do things
+        self.state.other_resources.bsp = bsp_resource.bsp.into();
     }
 }
