@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, convert::TryFrom};
 
 use glam::Vec3;
 use wad::types::MipTex;
@@ -18,9 +18,10 @@ pub struct LumpHeader {
 
 pub type Entity = HashMap<String, String>;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Default)]
 #[repr(C)]
 pub enum PlaneType {
+    #[default]
     X = 0,
     Y = 1,
     Z = 2,
@@ -49,7 +50,7 @@ impl TryFrom<i32> for PlaneType {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct Plane {
     pub normal: Vec3,
     pub distance: f32,
