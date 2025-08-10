@@ -191,7 +191,7 @@ fn _parse_animation_frame_rle_sledge(br: &[u8], read_count: usize) -> IResult<Ve
 
         while j < run[1] && i < read_count {
             if !vals.is_empty() {
-                let idx = (run[0] - 1).min(j);
+                let idx: u8 = (run[0] - 1).min(j);
                 values[i] = vals[idx as usize];
             }
 
@@ -595,7 +595,7 @@ fn parse_texture_header(i: &[u8]) -> IResult<TextureHeader> {
         |(name, flags, width, height, index)| TextureHeader {
             name: from_fn(|i| name[i]),
             flags: TextureFlag::from_bits(flags).unwrap_or_else(|| {
-                println!("unknown texture flag {flags}");
+                // println!("unknown texture flag {flags}");
                 TextureFlag::empty()
             }),
             width,
