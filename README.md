@@ -4,7 +4,7 @@ Currently work in progress, check back later
 
 Demo website
 
-<http://kdr.romanian-jumpers.com/app>
+<https://kdr.gchimp.rs/app>
 
 ## Progresses - Subjected to changes and addition but not subtraction
 
